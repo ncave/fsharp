@@ -947,6 +947,7 @@
     <Compile Include="..\LegacyHostedCompilerForTesting.fs" Condition="'$(MonoPackaging)' != 'true'">
       <Link>Misc/LegacyHostedCompilerForTesting.fs</Link>
     </Compile>
+    <Compile Include="service_slim.fs" />
   </ItemGroup>
 
   <ItemGroup>

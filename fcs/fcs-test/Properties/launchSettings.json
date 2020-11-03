@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "fcs-test": {
+      "commandName": "Project",
+      "workingDirectory": "$(SolutionDir)"
+    }
+  }
+}
