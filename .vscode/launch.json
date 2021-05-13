@@ -8,7 +8,7 @@
             "name": ".NET Core Launch (console)",
             "type": "coreclr",
             "request": "launch",
-            "program": "${workspaceFolder}/artifacts/bin/fcs-test/Debug/netcoreapp3.1/fcs-test.dll",
+            "program": "${workspaceFolder}/artifacts/bin/fcs-test/Debug/net5.0/fcs-test.dll",
             "args": [],
             "cwd": "${workspaceFolder}/fcs/fcs-test",
             "console": "internalConsole",
