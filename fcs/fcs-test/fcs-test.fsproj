@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net5.0</TargetFramework>
     <DisableImplicitFSharpCoreReference>true</DisableImplicitFSharpCoreReference>
   </PropertyGroup>
 
@@ -20,7 +20,7 @@
   <ItemGroup>
     <!-- <PackageReference Include="FSharp.Core" Version="5.0.0" /> -->
     <PackageReference Include="Dotnet.ProjInfo" Version="0.44.0" />
-    <PackageReference Include="Fable.Core" Version="3.1.6" />
-    <PackageReference Include="Fable.Import.Browser" Version="*" />
+    <PackageReference Include="Fable.Core" Version="3.2.6" />
+    <PackageReference Include="Fable.Import.Browser" Version="1.4.0" />
   </ItemGroup>
 </Project>

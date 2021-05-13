@@ -199,10 +199,11 @@ type internal TypeCheckInfo =
         tcAccessRights: AccessorDomain *
         projectFileName: string *
         mainInputFileName: string *
+        projectOptions: FSharpProjectOptions *
         sResolutions: TcResolutions *
         sSymbolUses: TcSymbolUses *
         sFallback: NameResolutionEnv *
-        loadClosure : LoadClosure option *
+        loadClosure: LoadClosure option *
         implFileOpt: TypedImplFile option *
         openDeclarations: OpenDeclaration[]
             -> TypeCheckInfo
@@ -219,7 +220,7 @@ type internal TypeCheckInfo =
 type public FSharpCheckFileResults =
     internal new :
         filename: string *
-        errors: FSharpErrorInfo[] *
+        errors: FSharpDiagnostic[] *
         scopeOptX: TypeCheckInfo option *
         dependencyFiles: string[] *
         builderX: IncrementalBuilder option *

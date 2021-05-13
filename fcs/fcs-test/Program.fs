@@ -1,7 +1,9 @@
 ﻿open System.IO
-open System.Collections.Generic
+// open System.Collections.Generic
 open FSharp.Compiler
+open FSharp.Compiler.CodeAnalysis
 open FSharp.Compiler.SourceCodeServices
+open FSharp.Compiler.EditorServices
 
 let getProjectOptions (folder: string) (projectFile: string) =
     let runProcess (workingDir: string) (exePath: string) (args: string) =
@@ -55,7 +57,7 @@ let mkProjectCommandLineArgsForScript (dllName, fileNames) =
             yield "-r:" + r
      |]
 
-let getProjectOptionsFromCommandLineArgs(projName, argv) = 
+let getProjectOptionsFromCommandLineArgs(projName, argv): FSharpProjectOptions = 
       { ProjectFileName = projName
         ProjectId = None
         SourceFiles = [| |]
@@ -66,7 +68,6 @@ let getProjectOptionsFromCommandLineArgs(projName, argv) =
         LoadTime = System.DateTime.MaxValue
         UnresolvedReferences = None
         OriginalLoadReferences = []
-        ExtraProjectInfo = None
         Stamp = None }
 
 let printAst title (projectResults: FSharpCheckProjectResults) =
@@ -94,33 +95,30 @@ let main argv =
 
     // // parse and typecheck a project
     // let projectResults = checker.ParseAndCheckProject(projName, fileNames, sources)
-    // projectResults.Errors |> Array.iter (fun e -> printfn "%A: %A" (e.Severity) e)
+    // projectResults.Diagnostics |> Array.iter (fun e -> printfn "%A: %A" (e.Severity) e)
     // printAst "ParseAndCheckProject" projectResults
 
     // or just parse and typecheck a file in project
-    let parseResults, tcResultsOpt, projectResults =
+    let parseResults, typeCheckResults, projectResults =
         checker.ParseAndCheckFileInProject(fileName, projName, fileNames, sources)
-    projectResults.Errors |> Array.iter (fun e -> printfn "%A: %A" (e.Severity) e)
+    projectResults.Diagnostics |> Array.iter (fun e -> printfn "%A: %A" (e.Severity) e)
 
-    match tcResultsOpt with
-    | Some typeCheckResults ->
-        printAst "ParseAndCheckFileInProject" projectResults
+    printAst "ParseAndCheckFileInProject" projectResults
 
-        let inputLines = source.Split('\n')
+    let inputLines = source.Split('\n')
 
-        // Get tool tip at the specified location
-        let tip = typeCheckResults.GetToolTipText(4, 7, inputLines.[3], ["foo"], FSharpTokenTag.IDENT)
-        (sprintf "%A" tip).Replace("\n","") |> printfn "\n---> ToolTip Text = %A" // should be "FSharpToolTipText [...]"
+    // Get tool tip at the specified location
+    let tip = typeCheckResults.GetToolTip(4, 7, inputLines.[3], ["foo"], Tokenization.FSharpTokenTag.IDENT)
+    (sprintf "%A" tip).Replace("\n","") |> printfn "\n---> ToolTip Text = %A" // should print "FSharpToolTipText [...]"
 
-        // Get declarations (autocomplete) for msg
-        let partialName = { QualifyingIdents = []; PartialIdent = "msg"; EndColumn = 17; LastDotPos = None }
-        let decls = typeCheckResults.GetDeclarationListInfo(Some parseResults, 6, inputLines.[5], partialName, (fun _ -> []))
-        [ for item in decls.Items -> item.Name ] |> printfn "\n---> msg AutoComplete = %A" // should be string methods
+    // Get declarations (autocomplete) for msg
+    let partialName = { QualifyingIdents = []; PartialIdent = "msg"; EndColumn = 17; LastDotPos = None }
+    let decls = typeCheckResults.GetDeclarationListInfo(Some parseResults, 6, inputLines.[5], partialName, (fun _ -> []))
+    [ for item in decls.Items -> item.Name ] |> printfn "\n---> msg AutoComplete = %A" // should print string methods
 
-        // Get declarations (autocomplete) for canvas
-        let partialName = { QualifyingIdents = []; PartialIdent = "canvas"; EndColumn = 10; LastDotPos = None }
-        let decls = typeCheckResults.GetDeclarationListInfo(Some parseResults, 8, inputLines.[7], partialName, (fun _ -> []))
-        [ for item in decls.Items -> item.Name ] |> printfn "\n---> canvas AutoComplete = %A"
+    // Get declarations (autocomplete) for canvas
+    let partialName = { QualifyingIdents = []; PartialIdent = "canvas"; EndColumn = 10; LastDotPos = None }
+    let decls = typeCheckResults.GetDeclarationListInfo(Some parseResults, 8, inputLines.[7], partialName, (fun _ -> []))
+    [ for item in decls.Items -> item.Name ] |> printfn "\n---> canvas AutoComplete = %A"
 
-    | _ -> ()
     0
