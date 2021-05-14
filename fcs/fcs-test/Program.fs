@@ -1,5 +1,4 @@
 ﻿open System.IO
-// open System.Collections.Generic
 open FSharp.Compiler
 open FSharp.Compiler.CodeAnalysis
 open FSharp.Compiler.SourceCodeServices
@@ -93,10 +92,11 @@ let main argv =
     let projectOptions = getProjectOptionsFromCommandLineArgs (projName, args)
     let checker = InteractiveChecker.Create(projectOptions)
 
-    // // parse and typecheck a project
-    // let projectResults = checker.ParseAndCheckProject(projName, fileNames, sources)
-    // projectResults.Diagnostics |> Array.iter (fun e -> printfn "%A: %A" (e.Severity) e)
-    // printAst "ParseAndCheckProject" projectResults
+    // parse and typecheck a project
+    let sourceReader _key = (1, lazy source)
+    let projectResults = checker.ParseAndCheckProject(projName, fileNames, sourceReader)
+    projectResults.Diagnostics |> Array.iter (fun e -> printfn "%A: %A" (e.Severity) e)
+    printAst "ParseAndCheckProject" projectResults
 
     // or just parse and typecheck a file in project
     let parseResults, typeCheckResults, projectResults =
