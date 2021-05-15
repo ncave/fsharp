@@ -15,7 +15,6 @@ open FSharp.Compiler.AbstractIL
 open FSharp.Compiler.AbstractIL.IL
 open FSharp.Compiler.AbstractIL.ILBinaryReader
 open FSharp.Compiler.CodeAnalysis
-
 open FSharp.Compiler.CheckExpressions
 open FSharp.Compiler.CheckDeclarations
 open FSharp.Compiler.CompilerConfig
@@ -123,7 +122,9 @@ type internal CompilerStateCache(projectOptions: FSharpProjectOptions) as this =
     member x.Reset() =
         lock lockObj (fun () -> compilerStateLazy <- lazy initializeCompilerState())
 
-type InteractiveChecker internal (compilerStateCache) =
+[<AutoOpen>]
+module internal ParseAndCheck =
+
     let userOpName = "Unknown"
     let suggestNamesForErrors = true
 
@@ -223,6 +224,9 @@ type InteractiveChecker internal (compilerStateCache) =
         let errors = fileNames |> Array.choose errorMap.TryFind
         errors |> Array.iter (Array.sortInPlaceBy (fun x -> x.StartLine, x.StartColumn))
         errors |> Array.concat
+
+
+type InteractiveChecker internal (compilerStateCache) =
 
     static member Create(projectOptions: FSharpProjectOptions) =
         InteractiveChecker(CompilerStateCache(projectOptions))
