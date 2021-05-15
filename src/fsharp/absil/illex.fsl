@@ -14,7 +14,7 @@ open FSharp.Compiler.AbstractIL.AsciiParser
 open FSharp.Compiler.AbstractIL.AsciiConstants 
 
 
-let lexeme (lexbuf : LexBuffer<char>) = LexBuffer<char>.LexemeString lexbuf
+let lexeme (lexbuf : LexBuffer<_>) = LexBuffer<_>.LexemeString lexbuf
 let lexemeChar (lexbuf : LexBuffer<char>) n = lexbuf.LexemeChar n
 
 let unexpectedChar _lexbuf =

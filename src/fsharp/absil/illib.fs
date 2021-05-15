@@ -605,6 +605,9 @@ module String =
         else None
 
     let getLines (str: string) =
+#if FABLE_COMPILER
+        System.Text.RegularExpressions.Regex.Split(str, "\r\n|\r|\n");
+#else
         use reader = new StringReader(str)
         [|
             let mutable line = reader.ReadLine()
@@ -616,6 +619,7 @@ module String =
                 // http://stackoverflow.com/questions/19365404/stringreader-omits-trailing-linebreak
                 yield String.Empty
         |]
+#endif
 
 module Dictionary = 
     let inline newWithSize (size: int) = Dictionary<_, _>(size, HashIdentity.Structural)

@@ -6,16 +6,20 @@ module internal FSharp.Compiler.UnicodeLexing
 open System.IO
 open Internal.Utilities.Text.Lexing
 
-type Lexbuf =  LexBuffer<char>
+type Lexbuf = LexBuffer<LexBufferChar>
 
 let StringAsLexbuf (reportLibraryOnlyFeatures, langVersion, s: string) =
+#if FABLE_COMPILER
+    LexBuffer<LexBufferChar>.FromString (reportLibraryOnlyFeatures, langVersion, s)
+#else
     LexBuffer<char>.FromChars (reportLibraryOnlyFeatures, langVersion, s.ToCharArray())
+#endif
 
 let FunctionAsLexbuf (reportLibraryOnlyFeatures, langVersion, bufferFiller) =
-    LexBuffer<char>.FromFunction(reportLibraryOnlyFeatures, langVersion, bufferFiller)
+    LexBuffer<LexBufferChar>.FromFunction(reportLibraryOnlyFeatures, langVersion, bufferFiller)
 
 let SourceTextAsLexbuf (reportLibraryOnlyFeatures, langVersion, sourceText) =
-    LexBuffer<char>.FromSourceText(reportLibraryOnlyFeatures, langVersion, sourceText)
+    LexBuffer<LexBufferChar>.FromSourceText(reportLibraryOnlyFeatures, langVersion, sourceText)
 
 let StreamReaderAsLexbuf (reportLibraryOnlyFeatures, langVersion, reader: StreamReader) =
     let mutable isFinished = false

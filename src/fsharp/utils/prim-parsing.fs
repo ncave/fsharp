@@ -13,7 +13,7 @@ exception RecoverableParseError
 exception Accept of obj
 
 [<Sealed>]
-type internal IParseState(ruleStartPoss:Position[], ruleEndPoss:Position[], lhsPos:Position[], ruleValues:obj[], lexbuf:LexBuffer<char>) = 
+type internal IParseState(ruleStartPoss:Position[], ruleEndPoss:Position[], lhsPos:Position[], ruleValues:obj[], lexbuf:LexBuffer<LexBufferChar>) = 
     member p.LexBuffer = lexbuf
 
     member p.InputRange index = ruleStartPoss.[index-1], ruleEndPoss.[index-1]
