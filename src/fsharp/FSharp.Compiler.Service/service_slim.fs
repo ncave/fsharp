@@ -240,13 +240,21 @@ type InteractiveChecker internal (compilerStateCache) =
     /// Parses and checks the whole project, good for compilers (Fable etc.)
     /// Does not retain name resolutions and symbol uses which are quite memory hungry (so no intellisense etc.).
     /// Already parsed files will be cached so subsequent compilations will be faster.
-    member _.ParseAndCheckProject (projectFileName: string, fileNames: string[], sourceReader: string->int*Lazy<string>) =
+    member _.ParseAndCheckProject (projectFileName: string, fileNames: string[], sourceReader: string->int*Lazy<string>, ?lastFile: string) =
         let compilerState = compilerStateCache.Get()
         // parse files
         let parsingOptions = FSharpParsingOptions.FromTcConfig(compilerState.tcConfig, fileNames, false)
-        let parseResults = fileNames |> Array.map (fun fileName ->
-            let sourceHash, source = sourceReader fileName
-            ParseFile(fileName, sourceHash, source, parsingOptions, compilerState))
+        let parseResults =
+            let fileNames =
+                match lastFile with
+                | None -> fileNames
+                | Some fileName ->
+                    let fileIndex = fileNames |> Array.findIndex ((=) fileName)
+                    fileNames |> Array.take (fileIndex + 1)
+
+            fileNames |> Array.map (fun fileName ->
+                let sourceHash, source = sourceReader fileName
+                ParseFile(fileName, sourceHash, source, parsingOptions, compilerState))
 
         // type check files
         let tcState, topAttrs, tcImplFiles, _tcEnvAtEnd, _moduleNamesDict, tcErrors =
