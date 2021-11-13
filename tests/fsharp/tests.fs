@@ -17,6 +17,7 @@ open TestFramework
 open Scripting
 open SingleTest
 open HandleExpects
+open FSharp.Test
 
 #if NETCOREAPP
 // Use these lines if you want to test CoreCLR
@@ -31,7 +32,7 @@ let FSI_BASIC = FSI_FILE
 #endif
 // ^^^^^^^^^^^^ To run these tests in F# Interactive , 'build net40', then send this chunk, then evaluate body of a test ^^^^^^^^^^^^
 
-let inline getTestsDirectory dir = __SOURCE_DIRECTORY__ ++ dir
+let inline getTestsDirectory dir = getTestsDirectory __SOURCE_DIRECTORY__ dir
 let singleTestBuildAndRun = getTestsDirectory >> singleTestBuildAndRun
 let singleTestBuildAndRunVersion = getTestsDirectory >> singleTestBuildAndRunVersion
 let testConfig = getTestsDirectory >> testConfig
@@ -58,13 +59,65 @@ module CoreTests =
     let ``apporder-FSI_BASIC`` () = singleTestBuildAndRun "core/apporder" FSI_BASIC
 
     [<Test>]
-    let ``array-FSC_BASIC_OPT_MINUS`` () = singleTestBuildAndRun "core/array" FSC_BASIC_OPT_MINUS
+    let ``array-FSC_BASIC_OPT_MINUS-5.0`` () = singleTestBuildAndRunVersion "core/array" FSC_BASIC_OPT_MINUS "5.0"
 
     [<Test>]
-    let ``array-FSC_BASIC`` () = singleTestBuildAndRun "core/array" FSC_BASIC
+    let ``array-FSC_BASIC-5.0`` () = singleTestBuildAndRunVersion "core/array" FSC_BASIC "5.0"
+
+    [<Test; Ignore("Some tests fail on .NET6 preview6, and fixed in preview7, disabling until preview7 gets released.")>]
+    let ``array-FSI_BASIC-5.0`` () = singleTestBuildAndRunVersion "core/array" FSI_BASIC "5.0"
 
     [<Test>]
-    let ``array-FSI_BASIC`` () = singleTestBuildAndRun "core/array" FSI_BASIC
+    let ``array-FSC_BASIC-preview`` () = singleTestBuildAndRunVersion "core/array" FSC_BASIC "preview"
+
+    [<Test>]
+    let ``array-no-dot-FSC_BASIC_OPT_MINUS`` () = singleTestBuildAndRunVersion "core/array-no-dot" FSC_BASIC_OPT_MINUS "preview"
+
+    [<Test>]
+    let ``array-no-dot-FSC_BASIC`` () = singleTestBuildAndRunVersion "core/array-no-dot" FSC_BASIC "preview"
+
+    [<Test; Ignore("Some tests fail on .NET6 preview6, and fixed in preview7, disabling until preview7 gets released.")>]
+    let ``array-no-dot-FSI_BASIC`` () = singleTestBuildAndRunVersion "core/array-no-dot" FSI_BASIC "preview"
+
+    [<Test>]
+    let ``array-no-dot-warnings-langversion-default`` () =
+        let cfg = testConfig "core/array-no-dot-warnings"
+        singleVersionedNegTest cfg "default" "test-langversion-default"
+
+    [<Test>]
+    let ``array-no-dot-warnings-langversion-5_0`` () =
+        let cfg = testConfig "core/array-no-dot-warnings"
+        singleVersionedNegTest cfg "5.0" "test-langversion-5.0"
+
+    [<Test>]
+    let ``ref-ops-deprecation-langversion-preview`` () =
+        let cfg = testConfig "core/ref-ops-deprecation"
+        singleVersionedNegTest cfg "preview" "test-langversion-preview"
+
+    [<Test>]
+    let ``auto-widen-version-5_0``() = 
+        let cfg = testConfig "core/auto-widen/5.0"
+        singleVersionedNegTest cfg "5.0" "test"
+
+    [<Test>]
+    let ``auto-widen-version-FSC_BASIC_OPT_MINUS-preview``() =
+        singleTestBuildAndRunVersion "core/auto-widen/preview" FSC_BASIC_OPT_MINUS "preview"
+
+    [<Test>]
+    let ``auto-widen-version-FSC_BASIC-preview``() =
+        singleTestBuildAndRunVersion "core/auto-widen/preview" FSC_BASIC "preview"
+
+    [<Test>]
+    let ``auto-widen-version-preview-warns-on``() = 
+        let cfg = testConfig "core/auto-widen/preview"
+        let cfg = { cfg with fsc_flags = cfg.fsc_flags + " --warnon:3388 --warnon:3389 --warnon:3390 --warnaserror+ --define:NEGATIVE" }
+        singleVersionedNegTest cfg "preview" "test"
+
+    [<Test>]
+    let ``auto-widen-version-preview-default-warns``() = 
+        let cfg = testConfig "core/auto-widen/preview-default-warns"
+        let cfg = { cfg with fsc_flags = cfg.fsc_flags + " --warnaserror+ --define:NEGATIVE" }
+        singleVersionedNegTest cfg "preview" "test"
 
     [<Test>]
     let ``comprehensions-FSC_BASIC_OPT_MINUS`` () = singleTestBuildAndRun "core/comprehensions" FSC_BASIC_OPT_MINUS
@@ -84,7 +137,7 @@ module CoreTests =
     [<Test>]
     let ``comprehensionshw-FSI_BASIC`` () = singleTestBuildAndRun "core/comprehensions-hw" FSI_BASIC
 
-    [<Test; Ignore("test fails in debug mode, see https://github.com/dotnet/fsharp/pull/11763")>]
+    [<Test>]
     let ``genericmeasures-FSC_BASIC_OPT_MINUS`` () = singleTestBuildAndRun "core/genericmeasures" FSC_BASIC_OPT_MINUS
 
     [<Test>]
@@ -266,6 +319,15 @@ module CoreTests =
 
     [<Test>]
     let ``nbody-FSI_BASIC`` () = singleTestBuildAndRun "perf/nbody" FSI_BASIC
+
+    [<Test>]
+    let ``forexpression-FSC_BASIC_OPT_MINUS`` () = singleTestBuildAndRun "core/forexpression" FSC_BASIC_OPT_MINUS
+
+    [<Test>]
+    let ``forexpression-FSC_BASIC`` () = singleTestBuildAndRun "core/forexpression" FSC_BASIC
+
+    [<Test>]
+    let ``forexpression-FSI_BASIC`` () = singleTestBuildAndRun "core/forexpression" FSI_BASIC
 
     [<Test>]
     let ``letrec (mutrec variations part two) FSC_BASIC_OPT_MINUS`` () = singleTestBuildAndRun "core/letrec-mutrec2" FSC_BASIC_OPT_MINUS
@@ -459,6 +521,45 @@ module CoreTests =
         exec cfg ("." ++ "test.exe") ""
 
         testOkFile.CheckExists()
+
+    [<Test>]
+    let ``state-machines-non-optimized`` () = 
+        let cfg = testConfig "core/state-machines"
+
+        use testOkFile = fileguard cfg "test.ok"
+
+        fsc cfg "%s -o:test.exe -g --tailcalls- --optimize- --langversion:preview" cfg.fsc_flags ["test.fsx"]
+
+        peverify cfg "test.exe"
+
+        exec cfg ("." ++ "test.exe") ""
+
+        testOkFile.CheckExists()
+
+    [<Test>]
+    let ``state-machines-optimized`` () = 
+        let cfg = testConfig "core/state-machines"
+
+        use testOkFile = fileguard cfg "test.ok"
+
+        fsc cfg "%s -o:test.exe -g --tailcalls+ --optimize+ --langversion:preview" cfg.fsc_flags ["test.fsx"]
+
+        peverify cfg "test.exe"
+
+        exec cfg ("." ++ "test.exe") ""
+
+        testOkFile.CheckExists()
+
+    [<Test>]
+    let ``state-machines neg-resumable-01`` () =
+        let cfg = testConfig "core/state-machines"
+        singleVersionedNegTest cfg "preview" "neg-resumable-01"
+
+
+    [<Test>]
+    let ``state-machines neg-resumable-02`` () =
+        let cfg = testConfig "core/state-machines"
+        singleVersionedNegTest cfg "preview" "neg-resumable-02"
 
     [<Test>]
     let ``lots-of-conditionals``() =
@@ -941,8 +1042,8 @@ module CoreTests =
 
         let fsc_flags_errors_ok = ""
 
-        let rawFileOut = Path.GetTempFileName()
-        let rawFileErr = Path.GetTempFileName()
+        let rawFileOut = tryCreateTemporaryFileName ()
+        let rawFileErr = tryCreateTemporaryFileName ()
         ``fsi <a >b 2>c`` "%s --nologo %s" fsc_flags_errors_ok flag ("test.fsx", rawFileOut, rawFileErr)
 
         // REM REVIEW: want to normalise CWD paths, not suppress them.
@@ -969,39 +1070,39 @@ module CoreTests =
         | diffs -> Assert.Fail (sprintf "'%s' and '%s' differ; %A" diffFileErr expectedFileErr diffs)
 
     [<Test>]
-    let ``printing-1 --langversion:4.7`` () =
+    let ``printing-default-stdout-47 --langversion:4_7`` () =
          printing "--langversion:4.7" "z.output.test.default.stdout.47.txt" "z.output.test.default.stdout.47.bsl" "z.output.test.default.stderr.txt" "z.output.test.default.stderr.bsl"
 
     [<Test>]
-    let ``printing-1 --langversion:5.0`` () =
+    let ``printing-default-stdout-50 --langversion:5_0`` () =
          printing "--langversion:5.0" "z.output.test.default.stdout.50.txt" "z.output.test.default.stdout.50.bsl" "z.output.test.default.stderr.txt" "z.output.test.default.stderr.bsl"
 
     [<Test>]
-    let ``printing-2 --langversion:4.7`` () =
+    let ``printing-1000-stdout-47 --langversion:4_7`` () =
          printing "--langversion:4.7 --use:preludePrintSize1000.fsx" "z.output.test.1000.stdout.47.txt" "z.output.test.1000.stdout.47.bsl" "z.output.test.1000.stderr.txt" "z.output.test.1000.stderr.bsl"
 
     [<Test>]
-    let ``printing-2 --langversion:5.0`` () =
+    let ``printing-1000-stdout-50 --langversion:5_0`` () =
          printing "--langversion:5.0 --use:preludePrintSize1000.fsx" "z.output.test.1000.stdout.50.txt" "z.output.test.1000.stdout.50.bsl" "z.output.test.1000.stderr.txt" "z.output.test.1000.stderr.bsl"
 
     [<Test>]
-    let ``printing-3  --langversion:4.7`` () =
+    let ``printing-200-stdout-47 --langversion:4_7`` () =
          printing "--langversion:4.7 --use:preludePrintSize200.fsx" "z.output.test.200.stdout.47.txt" "z.output.test.200.stdout.47.bsl" "z.output.test.200.stderr.txt" "z.output.test.200.stderr.bsl"
 
     [<Test>]
-    let ``printing-3  --langversion:5.0`` () =
+    let ``printing-200-stdout-50 --langversion:5_0`` () =
          printing "--langversion:5.0 --use:preludePrintSize200.fsx" "z.output.test.200.stdout.50.txt" "z.output.test.200.stdout.50.bsl" "z.output.test.200.stderr.txt" "z.output.test.200.stderr.bsl"
 
     [<Test>]
-    let ``printing-4  --langversion:4.7`` () =
+    let ``printing-off-stdout-47 --langversion:4_7`` () =
          printing "--langversion:4.7 --use:preludeShowDeclarationValuesFalse.fsx" "z.output.test.off.stdout.47.txt" "z.output.test.off.stdout.47.bsl" "z.output.test.off.stderr.txt" "z.output.test.off.stderr.bsl"
 
     [<Test>]
-    let ``printing-4  --langversion:5.0`` () =
+    let ``printing-off-stdout-50 --langversion:5_0`` () =
          printing "--langversion:5.0 --use:preludeShowDeclarationValuesFalse.fsx" "z.output.test.off.stdout.50.txt" "z.output.test.off.stdout.50.bsl" "z.output.test.off.stderr.txt" "z.output.test.off.stderr.bsl"
 
     [<Test>]
-    let ``printing-5`` () =
+    let ``printing-quiet-stdout`` () =
          printing "--quiet" "z.output.test.quiet.stdout.txt" "z.output.test.quiet.stdout.bsl" "z.output.test.quiet.stderr.txt" "z.output.test.quiet.stderr.bsl"
 
     type SigningType =
@@ -1256,9 +1357,6 @@ module CoreTests =
     [<Test>]
     let ``libtest-FSI_STDIN`` () = singleTestBuildAndRun "core/libtest" FSI_STDIN
 
-    [<Test; Ignore("incorrect signature file generated, test has been disabled a long time")>]
-    let ``libtest-GENERATED_SIGNATURE`` () = singleTestBuildAndRun "core/libtest" GENERATED_SIGNATURE
-
     [<Test>]
     let ``libtest-FSC_OPT_MINUS_DEBUG`` () = singleTestBuildAndRun "core/libtest" FSC_OPT_MINUS_DEBUG
 
@@ -1468,7 +1566,7 @@ module CoreTests =
     let ``math-numbersVS2008-FSI_BASIC`` () = singleTestBuildAndRun "core/math/numbersVS2008" FSI_BASIC
 
     [<Test>]
-    let ``patterns-FSC_BASIC`` () = singleTestBuildAndRun "core/patterns" FSC_BASIC
+    let ``patterns-FSC_BASIC`` () = singleTestBuildAndRunVersion "core/patterns" FSC_BASIC "preview"
 
 //BUGBUG: https://github.com/Microsoft/visualfsharp/issues/6601
 //    [<Test>]
@@ -1955,19 +2053,19 @@ module CoreTests =
 [<NonParallelizable>]
 module VersionTests =
     [<Test>]
-    let ``member-selfidentifier-version4.6``() = singleTestBuildAndRunVersion "core/members/self-identifier/version46" FSC_BUILDONLY "4.6"
+    let ``member-selfidentifier-version4_6``() = singleTestBuildAndRunVersion "core/members/self-identifier/version46" FSC_BUILDONLY "4.6"
 
     [<Test>]
-    let ``member-selfidentifier-version4.7``() = singleTestBuildAndRun "core/members/self-identifier/version47" FSC_BUILDONLY
+    let ``member-selfidentifier-version4_7``() = singleTestBuildAndRun "core/members/self-identifier/version47" FSC_BUILDONLY
 
     [<Test>]
-    let ``indent-version4.6``() = singleTestBuildAndRunVersion "core/indent/version46" FSC_BUILDONLY "4.6"
+    let ``indent-version4_6``() = singleTestBuildAndRunVersion "core/indent/version46" FSC_BUILDONLY "4.6"
 
     [<Test>]
-    let ``indent-version4.7``() = singleTestBuildAndRun "core/indent/version47" FSC_BUILDONLY
+    let ``indent-version4_7``() = singleTestBuildAndRun "core/indent/version47" FSC_BUILDONLY
 
     [<Test>]
-    let ``nameof-version4.6``() = singleTestBuildAndRunVersion "core/nameof/version46" FSC_BUILDONLY "4.6"
+    let ``nameof-version4_6``() = singleTestBuildAndRunVersion "core/nameof/version46" FSC_BUILDONLY "4.6"
 
     [<Test>]
     let ``nameof-versionpreview``() = singleTestBuildAndRunVersion "core/nameof/preview" FSC_BUILDONLY "preview"
@@ -2375,6 +2473,13 @@ module TypecheckTests =
         exec cfg ("." ++ "pos39.exe") ""
 
     [<Test>]
+    let ``sigs pos40`` () =
+        let cfg = testConfig "typecheck/sigs"
+        fsc cfg "%s --langversion:6.0 --target:exe -o:pos40.exe" cfg.fsc_flags ["pos40.fs"]
+        peverify cfg "pos40.exe"
+        exec cfg ("." ++ "pos40.exe") ""
+
+    [<Test>]
     let ``sigs pos23`` () =
         let cfg = testConfig "typecheck/sigs"
         fsc cfg "%s --target:exe -o:pos23.exe" cfg.fsc_flags ["pos23.fs"]
@@ -2572,24 +2677,33 @@ module TypecheckTests =
     let ``type check neg20`` () = singleNegTest (testConfig "typecheck/sigs") "neg20"
 
     [<Test>]
-    let ``type check neg21`` () = singleNegTest (testConfig "typecheck/sigs") "neg21"
+    let ``type check neg20 version 5_0`` () =
+        let cfg = testConfig "typecheck/sigs/version50"
+        singleVersionedNegTest cfg "5.0" "neg20"
 
     [<Test>]
-    let ``type check neg22`` () = singleNegTest (testConfig "typecheck/sigs") "neg22"
+    let ``type check neg21`` () = singleNegTest (testConfig "typecheck/sigs") "neg21"
 
     [<Test>]
     let ``type check neg23`` () = singleNegTest (testConfig "typecheck/sigs") "neg23"
 
     [<Test>]
-    let ``type check neg24 version 4.6`` () =
+    let ``type check neg24 version 4_6`` () =
         let cfg = testConfig "typecheck/sigs/version46"
         // For some reason this warning is off by default in the test framework but in this case we are testing for it
         let cfg = { cfg with fsc_flags = cfg.fsc_flags.Replace("--nowarn:20", "") }
         singleVersionedNegTest cfg "4.6" "neg24"
 
     [<Test>]
-    let ``type check neg24 version 4.7`` () =
+    let ``type check neg24 version 4_7`` () =
         let cfg = testConfig "typecheck/sigs/version47"
+        // For some reason this warning is off by default in the test framework but in this case we are testing for it
+        let cfg = { cfg with fsc_flags = cfg.fsc_flags.Replace("--nowarn:20", "") }
+        singleVersionedNegTest cfg "4.7" "neg24"
+
+    [<Test>]
+    let ``type check neg24 version preview`` () =
+        let cfg = testConfig "typecheck/sigs"
         // For some reason this warning is off by default in the test framework but in this case we are testing for it
         let cfg = { cfg with fsc_flags = cfg.fsc_flags.Replace("--nowarn:20", "") }
         singleVersionedNegTest cfg "preview" "neg24"
@@ -2657,8 +2771,10 @@ module TypecheckTests =
     [<Test>]
     let ``type check neg44`` () = singleNegTest (testConfig "typecheck/sigs") "neg44"
 
+#if !DEBUG // requires release version of compiler to avoid very deep stacks
     [<Test>]
     let ``type check neg45`` () = singleNegTest (testConfig "typecheck/sigs") "neg45"
+#endif
 
     [<Test>]
     let ``type check neg46`` () = singleNegTest (testConfig "typecheck/sigs") "neg46"
@@ -2790,9 +2906,6 @@ module TypecheckTests =
     let ``type check neg86`` () = singleNegTest (testConfig "typecheck/sigs") "neg86"
 
     [<Test>]
-    let ``type check neg87`` () = singleNegTest (testConfig "typecheck/sigs") "neg87"
-
-    [<Test>]
     let ``type check neg88`` () = singleNegTest (testConfig "typecheck/sigs") "neg88"
 
     [<Test>]
@@ -2920,6 +3033,12 @@ module TypecheckTests =
 
     [<Test>]
     let ``type check neg130`` () = singleNegTest (testConfig "typecheck/sigs") "neg130"
+
+    [<Test>]
+    let ``type check neg131`` () = singleVersionedNegTest (testConfig "typecheck/sigs") "6.0" "neg131"
+
+    [<Test>]
+    let ``type check neg132`` () = singleVersionedNegTest (testConfig "typecheck/sigs") "5.0" "neg132"
 
     [<Test>]
     let ``type check neg_anon_1`` () = singleNegTest (testConfig "typecheck/sigs") "neg_anon_1"
@@ -3116,15 +3235,18 @@ namespace CST.RI.Anshun
 
 module GeneratedSignatureTests =
     [<Test>]
+    let ``libtest-GENERATED_SIGNATURE`` () = singleTestBuildAndRun "core/libtest" GENERATED_SIGNATURE
+
+    [<Test>]
     let ``members-basics-GENERATED_SIGNATURE`` () = singleTestBuildAndRun "core/members/basics" GENERATED_SIGNATURE
 
-    [<Test; Ignore("Flaky w.r.t. PEVerify.  https://github.com/Microsoft/visualfsharp/issues/2616")>]
+    [<Test>]
     let ``access-GENERATED_SIGNATURE``() = singleTestBuildAndRun "core/access" GENERATED_SIGNATURE
 
     [<Test>]
     let ``array-GENERATED_SIGNATURE``() = singleTestBuildAndRun "core/array" GENERATED_SIGNATURE
 
-    [<Test; Ignore("incorrect signature file generated, test has been disabled a long time")>]
+    [<Test>]
     let ``genericmeasures-GENERATED_SIGNATURE`` () = singleTestBuildAndRun "core/genericmeasures" GENERATED_SIGNATURE
 
     [<Test>]

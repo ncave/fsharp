@@ -32,23 +32,19 @@ Build from the command line:
 
 After it's finished, open `FSharp.sln` in your editor of choice.
 
-### Visual Studio Online quickstart
-
-If you'd like to use Visual Studio online (or VSCode with VSO as backend), just click this button to create a new online environment:
-
-<a href="https://online.visualstudio.com/environments/new?name=my-fsharp&repo=dotnet/fsharp"><img src="https://img.shields.io/static/v1?style=flat-square&logo=microsoft&label=VS%20Online&message=Create&color=blue" alt="VS Online"></a>
-
-This will provision an environment with all necessary dependencies. Initial build of the environment may take up to 10 minutes, as it's also performing initial build of the F# compiler.
-
 ### Documentation for contributors
 
-See [DEVGUIDE.md](DEVGUIDE.md) for more details on configurations for building the codebase. In practice, you only really need to run `build.cmd`/`build.sh`.
+* See [DEVGUIDE.md](DEVGUIDE.md) for more details on configurations for building the codebase. In practice, you only really need to run `build.cmd`/`build.sh`.
 
-See [TESTGUIDE.md](TESTGUIDE.md) for information about the various test suites in this codebase and how to run them individually.
+* See [TESTGUIDE.md](TESTGUIDE.md) for information about the various test suites in this codebase and how to run them individually.
 
-See the [Compiler Guide](docs/compiler-guide.md) for an in-depth guide to the F# compiler. It is essential reading for any larger contributions to the F# compiler codebase.
+* [The F# Documentation](https://docs.microsoft.com/en-us/dotnet/fsharp/) is the primary documentation for F#. The source for the content is [here](https://github.com/dotnet/docs/tree/main/docs/fsharp).
 
-See [the F# Language Specification](https://fsharp.org/specs/language-spec/) for an in-depth description of the F# language. This is essential for understanding some behaviors of the F# compiler and some of the rules within the compiler codebase. For example, the order and way name resolution happens is specified here, which greatly impacts how the code in Name Resolutions works and why certain decisions are made.
+* [The F# Compiler Guide](https://fsharp.github.io/fsharp-compiler-docs/) is essential reading for any larger contributions to the F# compiler codebase and contains links to learning videos, architecture diagrams and other resources. It also contains the public searchable docs for FSharp.Compiler.Service (or equivalent of Roslyn). The source for the content is [in this repo under `docs/`](docs/) and the site is built automatically by [this small repo](https://github.com/fsharp/fsharp-compiler-docs).
+
+* [The F# Language Design Process](https://github.com/fsharp/fslang-design/) is the fundamental design process for the language, from [suggestions](https://github.com/fsharp/fslang-suggestions) to completed RFCs.  There are also [tooling RFCs](https://github.com/fsharp/fslang-design/tree/main/tooling) for some topics where cross-community co-operation and visibility is most useful.
+
+* [The F# Language Specification](https://fsharp.org/specs/language-spec/) is an in-depth description of the F# language. This is essential for understanding some behaviors of the F# compiler and some of the rules within the compiler codebase. For example, the order and way name resolution happens is specified here, which greatly impacts how the code in Name Resolutions works and why certain decisions are made.
 
 ### No contribution is too small
 
@@ -62,7 +58,7 @@ Even if you find a single-character typo, we're happy to take the change! Althou
 
 ## Per-build NuGet packages
 
-Per-build verions of our NuGet packages are available via this URL: `https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-tools/nuget/v3/index.json `
+Per-build [versions](https://dev.azure.com/dnceng/public/_packaging?_a=package&feed=dotnet-tools&view=versions&package=FSharp.Compiler.Service&protocolType=NuGet) of our NuGet packages are available via this URL: `https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-tools/nuget/v3/index.json `
 
 ## Branches
 
