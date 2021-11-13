@@ -482,7 +482,7 @@ type public FSharpCheckProjectResults =
                  TcImports *
                  CcuThunk *
                  ModuleOrNamespaceType *
-                 TcSymbolUses list *
+                 Choice<IncrementalBuilder, TcSymbolUses> *
                  TopAttribs option *
                  IRawFSharpAssemblyData option *
                  ILAssemblyRef *
@@ -522,7 +522,6 @@ type internal FsiInteractiveChecker =
           ->  FsiInteractiveChecker 
 
     member internal ParseAndCheckInteraction : 
-        ctok: CompilationThreadToken * 
         sourceText:ISourceText * 
         ?userOpName: string 
           -> Cancellable<FSharpParseFileResults * FSharpCheckFileResults * FSharpCheckProjectResults>

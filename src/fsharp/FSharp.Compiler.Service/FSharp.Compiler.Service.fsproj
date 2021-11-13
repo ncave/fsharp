@@ -59,6 +59,7 @@
     <NuspecProperty Include="SystemThreadingTasksParallelPackageVersion=$(SystemThreadingTasksParallelVersion)" />
     <NuspecProperty Include="SystemThreadingThreadPackageVersion=$(SystemThreadingThreadVersion)" />
     <NuspecProperty Include="SystemThreadingThreadPoolPackageVersion=$(SystemThreadingThreadPoolVersion)" />
+    <NuspecProperty Include="SystemRuntimeCompilerServicesUnsafePackageVersion=$(SystemRuntimeCompilerServicesUnsafeVersion)" />
   </ItemGroup>
 
   <ItemGroup>
@@ -701,6 +702,12 @@
     <Compile Include="..\DependencyManager/DependencyProvider.fs">
       <Link>Driver\DependencyProvider.fs</Link>
     </Compile>
+    <Compile Include="..\BuildGraph.fsi">
+      <Link>Driver\BuildGraph.fsi</Link>
+    </Compile>
+    <Compile Include="..\BuildGraph.fs">
+      <Link>Driver\BuildGraph.fs</Link>
+    </Compile>
     <Compile Include="..\CompilerConfig.fsi">
       <Link>Driver\CompilerConfig.fsi</Link>
     </Compile>
@@ -798,12 +805,6 @@
     </Compile>
     <Compile Include="..\symbols\SymbolPatterns.fs">
       <Link>Symbols/SymbolPatterns.fs</Link>
-    </Compile>
-    <Compile Include="..\service\Reactor.fsi">
-      <Link>Service/Reactor.fsi</Link>
-    </Compile>
-    <Compile Include="..\service\Reactor.fs">
-      <Link>Service/Reactor.fs</Link>
     </Compile>
 
     <!-- the incremental builder and service . -->
@@ -988,6 +989,7 @@
     <PackageReference Include="Microsoft.Build.Framework" Version="$(MicrosoftBuildVersion)" />
     <PackageReference Include="Microsoft.Build.Tasks.Core" Version="$(MicrosoftBuildVersion)" />
     <PackageReference Include="Microsoft.Build.Utilities.Core" Version="$(MicrosoftBuildVersion)" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="$(SystemRuntimeCompilerServicesUnsafeVersion)" />
   </ItemGroup>
 
 </Project>
