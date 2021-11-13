@@ -14,7 +14,7 @@
       </trans-unit>
       <trans-unit id="AddMissingInstanceMemberParameter">
         <source>Add missing instance member parameter</source>
-        <target state="new">Add missing instance member parameter</target>
+        <target state="translated">Agregar parámetro de miembro de instancia que falta</target>
         <note />
       </trans-unit>
       <trans-unit id="AddNewKeyword">
@@ -54,7 +54,7 @@
       </trans-unit>
       <trans-unit id="FSharpDisposableTopLevelValuesClassificationType">
         <source>F# Disposable Values (top-level)</source>
-        <target state="translated">Valores descartables de F# (nivel superior)</target>
+        <target state="translated">Valores desechables en F# (nivel superior)</target>
         <note />
       </trans-unit>
       <trans-unit id="FSharpDisposableTypesClassificationType">
@@ -259,7 +259,7 @@
       </trans-unit>
       <trans-unit id="UseNameof">
         <source>Use 'nameof'</source>
-        <target state="new">Use 'nameof'</target>
+        <target state="translated">Usar 'nameof'</target>
         <note />
       </trans-unit>
       <trans-unit id="UseUpcastKeyword">

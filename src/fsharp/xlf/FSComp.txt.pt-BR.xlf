@@ -92,6 +92,11 @@
         <target state="translated">expressões de computação aplicáveis</target>
         <note />
       </trans-unit>
+      <trans-unit id="featureAttributesToRightOfModuleKeyword">
+        <source>attributes to the right of the 'module' keyword</source>
+        <target state="translated">atributos à direita da palavra-chave 'módulo'</target>
+        <note />
+      </trans-unit>
       <trans-unit id="featureDefaultInterfaceMemberConsumption">
         <source>default interface member consumption</source>
         <target state="translated">consumo de membro da interface padrão</target>
@@ -99,7 +104,7 @@
       </trans-unit>
       <trans-unit id="featureDiscardUseValue">
         <source>discard pattern in use binding</source>
-        <target state="new">discard pattern in use binding</target>
+        <target state="translated">descartar o padrão em uso de associação</target>
         <note />
       </trans-unit>
       <trans-unit id="featureDotlessFloat32Literal">
@@ -137,6 +142,11 @@
         <target state="translated">nameof</target>
         <note />
       </trans-unit>
+      <trans-unit id="featureNonVariablePatternsToRightOfAsPatterns">
+        <source>non-variable patterns to the right of 'as' patterns</source>
+        <target state="translated">padrões não-variáveis à direita dos padrões 'as'.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="featureNullableOptionalInterop">
         <source>nullable optional interop</source>
         <target state="translated">interoperabilidade opcional anulável</target>
@@ -159,7 +169,7 @@
       </trans-unit>
       <trans-unit id="featurePrintfBinaryFormat">
         <source>binary formatting for integers</source>
-        <target state="new">binary formatting for integers</target>
+        <target state="translated">formatação binária para números inteiros</target>
         <note />
       </trans-unit>
       <trans-unit id="featureRelaxWhitespace">
@@ -179,7 +189,7 @@
       </trans-unit>
       <trans-unit id="featureStructActivePattern">
         <source>struct representation for active patterns</source>
-        <target state="new">struct representation for active patterns</target>
+        <target state="translated">representação estrutural para padrões ativos</target>
         <note />
       </trans-unit>
       <trans-unit id="featureWildCardInForLoop">
@@ -354,7 +364,7 @@
       </trans-unit>
       <trans-unit id="scriptSdkNotDeterminedNoHost">
         <source>The .NET SDK for this script could not be determined. dotnet.exe could not be found ensure a .NET SDK is installed.</source>
-        <target state="new">The .NET SDK for this script could not be determined. dotnet.exe could not be found ensure a .NET SDK is installed.</target>
+        <target state="translated">Não foi possível determinar o .NET SDK para este script. Não foi possível encontrar dotnet.exe e certifique-se de que o SDK do .NET esteja instalado.</target>
         <note />
       </trans-unit>
       <trans-unit id="scriptSdkNotDeterminedUnexpected">
@@ -409,7 +419,7 @@
       </trans-unit>
       <trans-unit id="tcInvalidStructReturn">
         <source>The use of '[&lt;Struct&gt;]' on values, functions and methods is only allowed on partial active pattern definitions</source>
-        <target state="new">The use of '[&lt;Struct&gt;]' on values, functions and methods is only allowed on partial active pattern definitions</target>
+        <target state="translated">O uso de '[&lt;Struct&gt;]' em valores, funções e métodos somente é permitido em definições de padrões ativos parciais</target>
         <note />
       </trans-unit>
       <trans-unit id="tcInvalidUseBangBindingNoAndBangs">
