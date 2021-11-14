@@ -139,8 +139,8 @@ module internal ParseAndCheck =
 
         let niceNameGen = NiceNameGenerator()
         let assemblyName = projectOptions.ProjectFileName |> Path.GetFileNameWithoutExtension
-        let tcInitialEnv = GetInitialTcEnv (assemblyName, rangeStartup, tcConfig, tcImports, tcGlobals)
-        let tcInitialState = GetInitialTcState (rangeStartup, assemblyName, tcConfig, tcGlobals, tcImports, niceNameGen, tcInitialEnv)
+        let tcInitial, openDecls0 = GetInitialTcEnv (assemblyName, rangeStartup, tcConfig, tcImports, tcGlobals)
+        let tcInitialState = GetInitialTcState (rangeStartup, assemblyName, tcConfig, tcGlobals, tcImports, niceNameGen, tcInitial, openDecls0)
 
         // parse cache, keyed on file name and source hash
         let parseCache = ConcurrentDictionary<string * int, FSharpParseFileResults>(HashIdentity.Structural)
@@ -162,11 +162,10 @@ module internal ParseAndCheck =
                                          topAttrsOpt: TopAttribs option, tcImplFilesOpt: TypedImplFile list option,
                                          compilerState) =
         let assemblyRef = mkSimpleAssemblyRef "stdin"
-        let assemblyDataOpt = None
         let access = tcState.TcEnvFromImpls.AccessRights
         let dependencyFiles = parseResults |> Seq.map (fun x -> x.DependencyFiles) |> Array.concat
         let details = (compilerState.tcGlobals, compilerState.tcImports, tcState.Ccu, tcState.CcuSig, (Choice2Of2 TcSymbolUses.Empty), topAttrsOpt,
-                        assemblyDataOpt, assemblyRef, access, tcImplFilesOpt, dependencyFiles, compilerState.projectOptions)
+                        assemblyRef, access, tcImplFilesOpt, dependencyFiles, compilerState.projectOptions)
         let keepAssemblyContents = true
         FSharpCheckProjectResults (projectFileName, Some compilerState.tcConfig, keepAssemblyContents, errors, Some details)
 
@@ -257,7 +256,7 @@ type InteractiveChecker internal (compilerStateCache) =
         let! compilerState = compilerStateCache.Get()
         // parse files
         let parsingOptions = FSharpParsingOptions.FromTcConfig(compilerState.tcConfig, fileNames, false)
-        let! parseResults, ms = measureTimeAsync <| fun _ ->
+        let! parseResults = // measureTimeAsync <| fun _ ->
             let fileNames =
                 match lastFile with
                 | None -> fileNames
@@ -270,12 +269,12 @@ type InteractiveChecker internal (compilerStateCache) =
                 return ParseFile(fileName, sourceHash, source, parsingOptions, compilerState)
             })
             |> Async.Parallel
-        printfn "FCS: Parsing finished in %ims" ms
+        // printfn "FCS: Parsing finished in %ims" ms
 
         // type check files
-        let (tcState, topAttrs, tcImplFiles, _tcEnvAtEnd, _moduleNamesDict, tcErrors), ms = measureTime <| fun _ ->            
+        let (tcState, topAttrs, tcImplFiles, _tcEnvAtEnd, _moduleNamesDict, tcErrors) = // measureTime <| fun _ ->            
             TypeCheckClosedInputSet (parseResults, compilerState.tcInitialState, compilerState)
-        printfn "FCS: Checking finished in %ims" ms
+        // printfn "FCS: Checking finished in %ims" ms
 
         // make project results
         let parseErrors = parseResults |> Array.collect (fun p -> p.Diagnostics)
