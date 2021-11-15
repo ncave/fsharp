@@ -236,9 +236,45 @@ type public FSharpParsingOptions =
     static member internal FromTcConfigBuilder:
         tcConfigB: TcConfigBuilder * sourceFiles: string[] * isInteractive: bool -> FSharpParsingOptions
 
+[<Sealed>]
+type internal TypeCheckInfo =
+    internal new :
+        _sTcConfig: TcConfig *
+        g: TcGlobals *
+        ccuSigForFile: ModuleOrNamespaceType *
+        thisCcu: CcuThunk *
+        tcImports: TcImports *
+        tcAccessRights: AccessorDomain *
+        projectFileName: string *
+        mainInputFileName: string *
+        projectOptions: FSharpProjectOptions *
+        sResolutions: TcResolutions *
+        sSymbolUses: TcSymbolUses *
+        sFallback: NameResolutionEnv *
+        loadClosure: LoadClosure option *
+        implFileOpt: TypedImplFile option *
+        openDeclarations: OpenDeclaration[]
+            -> TypeCheckInfo
+    member ScopeResolutions: TcResolutions
+    member ScopeSymbolUses: TcSymbolUses
+    member TcGlobals: TcGlobals
+    member TcImports: TcImports
+    member CcuSigForFile: ModuleOrNamespaceType
+    member ThisCcu: CcuThunk
+    member ImplementationFile: TypedImplFile option
+
 /// A handle to the results of CheckFileInProject.
 [<Sealed>]
 type public FSharpCheckFileResults =
+    internal new :
+        filename: string *
+        errors: FSharpDiagnostic[] *
+        scopeOptX: TypeCheckInfo option *
+        dependencyFiles: string[] *
+        builderX: IncrementalBuilder option *
+        keepAssemblyContents: bool
+            -> FSharpCheckFileResults
+
     /// The errors returned by parsing a source file.
     member Diagnostics: FSharpDiagnostic[]
 
