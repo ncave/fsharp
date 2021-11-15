@@ -256,7 +256,8 @@ type InteractiveChecker internal (compilerStateCache) =
         let! compilerState = compilerStateCache.Get()
         // parse files
         let parsingOptions = FSharpParsingOptions.FromTcConfig(compilerState.tcConfig, fileNames, false)
-        let! parseResults = // measureTimeAsync <| fun _ ->
+        // We can paralellize this, but only in the first compilation because later it causes issues when invalidating the cache
+        let parseResults = // measureTime <| fun _ ->
             let fileNames =
                 match lastFile with
                 | None -> fileNames
@@ -264,11 +265,10 @@ type InteractiveChecker internal (compilerStateCache) =
                     let fileIndex = fileNames |> Array.findIndex ((=) fileName)
                     fileNames |> Array.take (fileIndex + 1)
 
-            fileNames |> Array.map (fun fileName -> async {
+            fileNames |> Array.map (fun fileName ->
                 let sourceHash, source = sourceReader fileName
-                return ParseFile(fileName, sourceHash, source, parsingOptions, compilerState)
-            })
-            |> Async.Parallel
+                ParseFile(fileName, sourceHash, source, parsingOptions, compilerState)
+            )
         // printfn "FCS: Parsing finished in %ims" ms
 
         // type check files
