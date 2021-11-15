@@ -2516,6 +2516,9 @@ let GenMethodDefAsRow cenv env midx (md: ILMethodDef) =
         if cenv.entrypoint <> None then failwith "duplicate entrypoint"
         else cenv.entrypoint <- Some (true, midx)
     let codeAddr =
+#if EXPORT_METADATA
+        0x0000
+#else
       (match md.Body with
       | MethodBody.IL ilmbodyLazy ->
           let ilmbody = ilmbodyLazy.Value
@@ -2562,6 +2565,7 @@ let GenMethodDefAsRow cenv env midx (md: ILMethodDef) =
       | MethodBody.Native ->
           failwith "cannot write body of native method - Abstract IL cannot roundtrip mixed native/managed binaries"
       | _ -> 0x0000)
+#endif
 
     UnsharedRow
        [| ULong codeAddr
@@ -3599,6 +3603,7 @@ and writeBinaryAndReportMappingsAux (stream: Stream, leaveStreamOpen: bool,
         match signer, modul.Manifest with
         | Some _, _ -> signer
         | _, None -> signer
+#if !EXPORT_METADATA
         | None, Some {PublicKey=Some pubkey} ->
             (dprintn "Note: The output assembly will be delay-signed using the original public"
              dprintn "Note: key. In order to load it you will need to either sign it with"
@@ -3608,6 +3613,7 @@ and writeBinaryAndReportMappingsAux (stream: Stream, leaveStreamOpen: bool,
              dprintn "Note: private key when converting the assembly, assuming you have access to"
              dprintn "Note: it."
              Some (ILStrongNameSigner.OpenPublicKey pubkey))
+#endif
         | _ -> signer
 
     let modul =

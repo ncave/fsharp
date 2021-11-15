@@ -1,0 +1,18 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": ".NET Core Launch (console)",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/artifacts/bin/fcs-export/Debug/net6.0/fcs-export.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/fcs/fcs-export",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        }
+    ]
+}
