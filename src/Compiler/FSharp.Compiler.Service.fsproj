@@ -465,6 +465,7 @@
     <Compile Include="Service\ServiceAnalysis.fs" />
     <Compile Include="Interactive\fsi.fsi" />
     <Compile Include="Interactive\fsi.fs" />
+    <Compile Include="../../fcs/service_slim.fs" />
 
     <!-- A legacy resolver used to help with scripting diagnostics in the Visual Studio tools -->
     <Compile Include="Legacy\LegacyMSBuildReferenceResolver.fsi" Condition="'$(MonoPackaging)' != 'true'" />
