@@ -259,8 +259,10 @@ and GetWitnessArgs cenv (env : QuotationTranslationEnv) m tps tyargs =
                 ConvWitnessInfo cenv env m traitInfo
             | Choice2Of2 arg ->
                 ConvExpr cenv env arg
+      try
         ConstraintSolver.CodegenWitnessesForTyparInstWith cenv.tcVal g cenv.amap m tps tyargs convertWitness
         |> CommitOperationResult
+      with _ -> []
     else
         []
 
