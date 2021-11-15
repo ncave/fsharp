@@ -83,7 +83,6 @@ let main argv =
     let fileName = "test_script.fsx"
     let fileNames = [| fileName |]
     let source = File.ReadAllText (fileName, System.Text.Encoding.UTF8)
-    let sources =  [| source |]
 
     let dllName = Path.ChangeExtension(fileName, ".dll")
     let args = mkProjectCommandLineArgsForScript (dllName, fileNames)
@@ -91,16 +90,19 @@ let main argv =
 
     let projectOptions = getProjectOptionsFromCommandLineArgs (projName, args)
     let checker = InteractiveChecker.Create(projectOptions)
+    let sourceReader _fileName = (hash source, lazy source)
 
     // parse and typecheck a project
-    let sourceReader _key = (1, lazy source)
-    let projectResults = checker.ParseAndCheckProject(projName, fileNames, sourceReader)
+    let projectResults =
+        checker.ParseAndCheckProject(projName, fileNames, sourceReader)
+        |> Async.RunSynchronously
     projectResults.Diagnostics |> Array.iter (fun e -> printfn "%A: %A" (e.Severity) e)
     printAst "ParseAndCheckProject" projectResults
 
     // or just parse and typecheck a file in project
-    let parseResults, typeCheckResults, projectResults =
-        checker.ParseAndCheckFileInProject(fileName, projName, fileNames, sources)
+    let (parseResults, typeCheckResults, projectResults) =
+        checker.ParseAndCheckFileInProject(projName, fileNames, sourceReader, fileName)
+        |> Async.RunSynchronously
     projectResults.Diagnostics |> Array.iter (fun e -> printfn "%A: %A" (e.Severity) e)
 
     printAst "ParseAndCheckFileInProject" projectResults

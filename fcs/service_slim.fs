@@ -163,8 +163,9 @@ module internal ParseAndCheck =
                                          compilerState) =
         let assemblyRef = mkSimpleAssemblyRef "stdin"
         let access = tcState.TcEnvFromImpls.AccessRights
+        let symbolUses = Choice2Of2 TcSymbolUses.Empty
         let dependencyFiles = parseResults |> Seq.map (fun x -> x.DependencyFiles) |> Array.concat
-        let details = (compilerState.tcGlobals, compilerState.tcImports, tcState.Ccu, tcState.CcuSig, (Choice2Of2 TcSymbolUses.Empty), topAttrsOpt,
+        let details = (compilerState.tcGlobals, compilerState.tcImports, tcState.Ccu, tcState.CcuSig, symbolUses, topAttrsOpt,
                         assemblyRef, access, tcImplFilesOpt, dependencyFiles, compilerState.projectOptions)
         let keepAssemblyContents = true
         FSharpCheckProjectResults (projectFileName, Some compilerState.tcConfig, keepAssemblyContents, errors, Some details)
@@ -211,6 +212,25 @@ module internal ParseAndCheck =
         let tcErrors = DiagnosticHelpers.CreateDiagnostics (compilerState.tcConfig.errorSeverityOptions, false, fileName, (capturingErrorLogger.GetDiagnostics()), suggestNamesForErrors)
         (tcResult, tcErrors), (tcState, moduleNamesDict)
 
+    let CheckFile (projectFileName: string, parseResults: FSharpParseFileResults, tcState: TcState, moduleNamesDict: ModuleNamesDict, compilerState) =
+        let sink = TcResultsSinkImpl(compilerState.tcGlobals)
+        let tcSink = TcResultsSink.WithSink sink
+        let (tcResult, tcErrors), (tcState, moduleNamesDict) =
+            TypeCheckOneInputEntry (parseResults, tcSink, tcState, moduleNamesDict, compilerState)
+        let fileName = parseResults.FileName
+        compilerState.checkCache.[fileName] <- ((tcResult, tcErrors), (tcState, moduleNamesDict))
+
+        let loadClosure = None
+        let keepAssemblyContents = true
+
+        let tcEnvAtEnd, _topAttrs, implFile, ccuSigForFile = tcResult
+        let errors = Array.append parseResults.Diagnostics tcErrors
+
+        let scope = TypeCheckInfo (compilerState.tcConfig, compilerState.tcGlobals, ccuSigForFile, tcState.Ccu, compilerState.tcImports, tcEnvAtEnd.AccessRights,
+                                projectFileName, fileName, compilerState.projectOptions, sink.GetResolutions(), sink.GetSymbolUses(), tcEnvAtEnd.NameEnv,
+                                loadClosure, implFile, sink.GetOpenDeclarations())
+        FSharpCheckFileResults (fileName, errors, Some scope, parseResults.DependencyFiles, None, keepAssemblyContents)
+
     let TypeCheckClosedInputSet (parseResults: FSharpParseFileResults[], tcState, compilerState) =
         let cachedTypeCheck (tcState, moduleNamesDict) (parseRes: FSharpParseFileResults) =
             let checkCacheKey = parseRes.FileName
@@ -252,7 +272,7 @@ type InteractiveChecker internal (compilerStateCache) =
     /// Parses and checks the whole project, good for compilers (Fable etc.)
     /// Does not retain name resolutions and symbol uses which are quite memory hungry (so no intellisense etc.).
     /// Already parsed files will be cached so subsequent compilations will be faster.
-    member _.ParseAndCheckProject (projectFileName: string, fileNames: string[], sourceReader: string->int*Lazy<string>, ?lastFile: string) = async {
+    member _.ParseAndCheckProject (projectFileName: string, fileNames: string[], sourceReader: string -> int * Lazy<string>, ?lastFile: string) = async {
         let! compilerState = compilerStateCache.Get()
         // parse files
         let parsingOptions = FSharpParsingOptions.FromTcConfig(compilerState.tcConfig, fileNames, false)
@@ -283,4 +303,47 @@ type InteractiveChecker internal (compilerStateCache) =
         let projectResults = MakeProjectResults (projectFileName, parseResults, tcState, errors, Some topAttrs, Some tcImplFiles, compilerState)
 
         return projectResults
+    }
+
+    /// Parses and checks file in project, will compile and cache all the files up to this one
+    /// (if not already done before), or fetch them from cache. Returns partial project results,
+    /// up to and including the file requested. Returns parse and typecheck results containing
+    /// name resolutions and symbol uses for the file requested only, so intellisense etc. works.
+    member _.ParseAndCheckFileInProject (projectFileName: string, fileNames: string[], sourceReader: string -> int * Lazy<string>, fileName: string) = async {
+        let! compilerState = compilerStateCache.Get()
+
+        // get files before file
+        let fileIndex = fileNames |> Array.findIndex ((=) fileName)
+        let fileNamesBeforeFile = fileNames |> Array.take fileIndex
+
+        // parse files before file
+        let parsingOptions = FSharpParsingOptions.FromTcConfig(compilerState.tcConfig, fileNames, false)
+        let parseFile fileName =
+            let sourceHash, source = sourceReader fileName
+            ParseFile (fileName, sourceHash, source, parsingOptions, compilerState)
+        let parseResults = fileNamesBeforeFile |> Array.map parseFile
+
+        // type check files before file
+        let tcState, topAttrs, tcImplFiles, _tcEnvAtEnd, moduleNamesDict, tcErrors =
+            TypeCheckClosedInputSet (parseResults, compilerState.tcInitialState, compilerState)
+
+        // parse and type check file
+        let parseFileResults = parseFile fileName
+        let checkFileResults = CheckFile (projectFileName, parseFileResults, tcState, moduleNamesDict, compilerState)
+        let (tcResult, _tcErrors), (tcState, _moduleNamesDict) = compilerState.checkCache.[fileName]
+        let _tcEnvAtEndFile, topAttrsFile, implFile, _ccuSigForFile = tcResult
+
+        // collect errors
+        let parseErrorsBefore = parseResults |> Array.collect (fun p -> p.Diagnostics)
+        let typedErrorsBefore = tcErrors |> Array.concat
+        let newErrors = checkFileResults.Diagnostics
+        let errors = ErrorsByFile (fileNames, [ parseErrorsBefore; typedErrorsBefore; newErrors ])
+
+        // make partial project results
+        let parseResults = Array.append parseResults [| parseFileResults |]
+        let tcImplFiles = List.append tcImplFiles (Option.toList implFile)
+        let topAttrs = CombineTopAttrs topAttrsFile topAttrs
+        let projectResults = MakeProjectResults (projectFileName, parseResults, tcState, errors, Some topAttrs, Some tcImplFiles, compilerState)
+
+        return (parseFileResults, checkFileResults, projectResults)
     }
