@@ -14,7 +14,9 @@ open FSharp.Compiler.AbstractIL.IL
 open FSharp.Compiler.CompilerConfig
 open FSharp.Compiler.CompilerDiagnostics
 open FSharp.Compiler.CompilerImports
+#if !FABLE_COMPILER
 open FSharp.Compiler.DependencyManager
+#endif
 open FSharp.Compiler.Diagnostics
 open FSharp.Compiler.ErrorLogger
 open FSharp.Compiler.IO
@@ -76,6 +78,8 @@ type CodeContext =
     | CompilationAndEvaluation // in fsi.exe
     | Compilation  // in fsc.exe
     | Editing // in VS
+
+#if !FABLE_COMPILER
 
 module ScriptPreprocessClosure =
 
@@ -494,3 +498,5 @@ type LoadClosure with
 
         use unwindBuildPhase = PushThreadBuildPhaseUntilUnwind BuildPhase.Parse
         ScriptPreprocessClosure.GetFullClosureOfScriptFiles (tcConfig, files, implicitDefines, lexResourceManager, dependencyProvider)
+
+#endif //!FABLE_COMPILER

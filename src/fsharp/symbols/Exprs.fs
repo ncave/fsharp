@@ -506,6 +506,7 @@ module FSharpExprConvert =
                 //    let inline HashChar (x:char) = (# "or" (# "shl" x 16 : int #) x : int #)
                 // in FSharp.Core. 
                 | ErrorResult _  when vref.LogicalName =  "op_LeftShift" && tyargs.Length = 1 -> []
+                | ErrorResult (warns, err) -> ReportWarnings (err::warns); [] // temporary, ignores the error
                 | res -> CommitOperationResult res
             let env = { env with suppressWitnesses = true }
             witnessExprs |> List.map (fun arg -> 
@@ -1227,8 +1228,13 @@ module FSharpExprConvert =
             | Const.UInt32  i ->  E.Const(box i, tyR)
             | Const.Int64   i ->  E.Const(box i, tyR)
             | Const.UInt64  i ->  E.Const(box i, tyR)
+#if FABLE_COMPILER
+            | Const.IntPtr  i ->  E.Const(box i, tyR)
+            | Const.UIntPtr i ->  E.Const(box i, tyR)
+#else
             | Const.IntPtr  i ->  E.Const(box (nativeint i), tyR)
             | Const.UIntPtr i ->  E.Const(box (unativeint i), tyR)
+#endif
             | Const.Decimal i ->  E.Const(box i, tyR)
             | Const.Double  i ->  E.Const(box i, tyR)
             | Const.Single  i ->  E.Const(box i, tyR)

@@ -254,7 +254,11 @@ let CheckFSharpAttributes (g:TcGlobals) attribs m =
         if g.compilingFslib then
             true
         else
+#if FABLE_COMPILER
+            g.langVersion.IsPreviewEnabled && (s.ToLowerInvariant().IndexOf(langVersionPrefix) >= 0)
+#else
             g.langVersion.IsPreviewEnabled && (s.IndexOf(langVersionPrefix, StringComparison.OrdinalIgnoreCase) >= 0)
+#endif
 
     if isNil attribs then CompleteD
     else

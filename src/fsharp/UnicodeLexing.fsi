@@ -15,5 +15,7 @@ val public FunctionAsLexbuf: reportLibraryOnlyFeatures: bool * langVersion: Lang
 
 val public SourceTextAsLexbuf: reportLibraryOnlyFeatures: bool * langVersion: LanguageVersion * ISourceText -> Lexbuf
 
+#if !FABLE_COMPILER
 /// Will not dispose of the stream reader.
 val public StreamReaderAsLexbuf: reportLibraryOnlyFeatures: bool * langVersion: LanguageVersion * StreamReader -> Lexbuf
+#endif

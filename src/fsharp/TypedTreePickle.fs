@@ -213,10 +213,12 @@ let p_bytes (s: byte[]) st =
     p_int32 len st
     st.os.EmitBytes s
 
+#if !FABLE_COMPILER
 let p_memory (s: System.ReadOnlyMemory<byte>) st =
     let len = s.Length
     p_int32 len st
     st.os.EmitMemory s
+#endif
 
 let p_prim_string (s: string) st =
     let bytes = Encoding.UTF8.GetBytes s
@@ -808,7 +810,11 @@ let pickleObjWithDanglingCcus inMem file g scope p x =
       st1.otypars.Size,
       st1.ovals.Size,
       st1.oanoninfos.Size
+#if FABLE_COMPILER
+    st1.occus, sizes, st1.ostrings, st1.opubpaths, st1.onlerefs, st1.osimpletys, st1.os.Close()
+#else
     st1.occus, sizes, st1.ostrings, st1.opubpaths, st1.onlerefs, st1.osimpletys, st1.os.AsMemory()
+#endif
 
   let st2 =
    { os = ByteBuffer.Create(PickleBufferCapacity, useArrayPool = true)
@@ -839,7 +845,11 @@ let pickleObjWithDanglingCcus inMem file g scope p x =
         (p_array p_encoded_pubpath)
         (p_array p_encoded_nleref)
         (p_array p_encoded_simpletyp)
+#if FABLE_COMPILER
+        p_bytes
+#else
         p_memory
+#endif
         (stringTab.AsArray, pubpathTab.AsArray, nlerefTab.AsArray, simpleTyTab.AsArray, phase1bytes)
         st2
     st2.os
@@ -1527,7 +1537,7 @@ let p_trait_sln sln st =
 
 
 let p_trait (TTrait(a, b, c, d, e, f)) st  =
-    p_tup6 p_tys p_string p_MemberFlags p_tys (p_option p_ty) (p_option p_trait_sln) (a, b, c, d, e, !f) st
+    p_tup6 p_tys p_string p_MemberFlags p_tys (p_option p_ty) (p_option p_trait_sln) (a, b, c, d, e, f.Value) st
 
 let u_anonInfo_data st =
     let ccu, info, nms = u_tup3 u_ccuref u_bool (u_array u_ident) st
@@ -2561,7 +2571,7 @@ and u_op st =
 
 and p_expr expr st =
     match expr with
-    | Expr.Link e -> p_expr !e st
+    | Expr.Link e -> p_expr (e.Value) st
     | Expr.Const (x, m, ty)              -> p_byte 0 st; p_tup3 p_const p_dummy_range p_ty (x, m, ty) st
     | Expr.Val (a, b, m)                 -> p_byte 1 st; p_tup3 (p_vref "val") p_vrefFlags p_dummy_range (a, b, m) st
     | Expr.Op (a, b, c, d)                 -> p_byte 2 st; p_tup4 p_op  p_tys p_Exprs p_dummy_range (a, b, c, d) st

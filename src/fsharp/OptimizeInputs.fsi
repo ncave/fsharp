@@ -21,6 +21,8 @@ val AddExternalCcuToOptimizationEnv : TcGlobals -> IncrementalOptimizationEnv ->
 
 val ApplyAllOptimizations : TcConfig * TcGlobals * ConstraintSolver.TcValF * string * ImportMap * bool * IncrementalOptimizationEnv * CcuThunk * TypedImplFile list -> TypedAssemblyAfterOptimization * LazyModuleInfo * IncrementalOptimizationEnv 
 
+#if !FABLE_COMPILER
+
 val CreateIlxAssemblyGenerator : TcConfig * TcImports * TcGlobals * ConstraintSolver.TcValF * CcuThunk -> IlxAssemblyGenerator
 
 val GenerateIlxCode : IlxGenBackend * isInteractiveItExpr:bool * isInteractiveOnMono:bool * TcConfig * TopAttribs * TypedAssemblyAfterOptimization * fragName:string * IlxAssemblyGenerator -> IlxGenResults
@@ -29,3 +31,5 @@ val GenerateIlxCode : IlxGenBackend * isInteractiveItExpr:bool * isInteractiveOn
 val NormalizeAssemblyRefs : CompilationThreadToken * ILGlobals * TcImports -> (ILScopeRef -> ILScopeRef)
 
 val GetGeneratedILModuleName : CompilerTarget -> string -> string
+
+#endif //!FABLE_COMPILER

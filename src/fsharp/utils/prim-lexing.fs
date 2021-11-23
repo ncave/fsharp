@@ -94,7 +94,11 @@ type StringText(str: string) =
             if lastIndex <= startIndex || lastIndex >= str.Length then
                 invalidArg "target" "Too big."
 
+#if FABLE_COMPILER
+            str.IndexOf(target, startIndex) <> -1
+#else
             str.IndexOf(target, startIndex, target.Length) <> -1              
+#endif
 
         member _.Length = str.Length
 
@@ -104,7 +108,11 @@ type StringText(str: string) =
             | _ -> false
 
         member _.CopyTo(sourceIndex, destination, destinationIndex, count) =
+#if FABLE_COMPILER
+            Array.blit (str.ToCharArray()) sourceIndex destination destinationIndex count
+#else
             str.CopyTo(sourceIndex, destination, destinationIndex, count)
+#endif
 
 module SourceText =
 
@@ -230,7 +238,9 @@ namespace Internal.Utilities.Text.Lexing
            with get() = endPos
            and  set b =  endPos <- b
 
+#if !FABLE_COMPILER
         member lexbuf.LexemeView         = System.ReadOnlySpan<'Char>(buffer, bufferScanStart, lexemeLength)
+#endif
         member lexbuf.LexemeChar n   = buffer.[n+bufferScanStart]
         member lexbuf.LexemeContains (c:'Char) =  array.IndexOf(buffer, c, bufferScanStart, lexemeLength) >= 0
         member lexbuf.BufferLocalStore = (context :> IDictionary<_,_>)
@@ -241,7 +251,14 @@ namespace Internal.Utilities.Text.Lexing
         member lexbuf.BufferScanStart     with get() : int = bufferScanStart     and set v = bufferScanStart <- v
         member lexbuf.BufferAcceptAction  with get() = bufferAcceptAction  and set v = bufferAcceptAction <- v
         member lexbuf.RefillBuffer () = filler lexbuf
-        static member LexemeString(lexbuf:LexBuffer<char>) = 
+
+#if FABLE_COMPILER
+        static member LexemeSliceToString (lexbuf: LexBuffer<LexBufferChar>, start, length) =
+            let chars = Array.init length (fun i -> lexbuf.LexemeChar (start + i) |> char)
+            new System.String(chars)
+#endif
+
+        static member LexemeString(lexbuf:LexBuffer<LexBufferChar>) = 
 #if FABLE_COMPILER
             let chars = Array.init lexbuf.LexemeLength (lexbuf.LexemeChar >> char)
             new System.String(chars)
@@ -294,7 +311,7 @@ namespace Internal.Utilities.Text.Lexing
             LexBuffer<'Char>.FromArrayNoCopy(reportLibraryOnlyFeatures, langVersion, buffer)
 
         // Important: This method takes ownership of the array
-        static member FromChars (reportLibraryOnlyFeatures, langVersion,  arr:char[]) =
+        static member FromChars (reportLibraryOnlyFeatures, langVersion,  arr:LexBufferChar[]) =
             LexBuffer.FromArrayNoCopy (reportLibraryOnlyFeatures, langVersion, arr)
 
         static member FromSourceText (reportLibraryOnlyFeatures, langVersion, sourceText: ISourceText) =
@@ -318,12 +335,12 @@ namespace Internal.Utilities.Text.Lexing
             )
 #endif
 
-        static member FromString (supportsFeature: LanguageFeature -> bool, s: string) =
+        static member FromString (reportLibraryOnlyFeatures, langVersion, s: string) =
 #if FABLE_COMPILER
             let arr = Array.init s.Length (fun i -> uint16 s.[i])
-            LexBuffer.FromArrayNoCopy (supportsFeature, arr)
+            LexBuffer.FromArrayNoCopy (reportLibraryOnlyFeatures, langVersion, arr)
 #else
-            LexBuffer.FromArrayNoCopy (supportsFeature, s.ToCharArray())
+            LexBuffer.FromArrayNoCopy (reportLibraryOnlyFeatures, langVersion, s.ToCharArray())
 #endif
 
     module GenericImplFragments = 
@@ -375,11 +392,7 @@ namespace Internal.Utilities.Text.Lexing
                         // ways
                         let baseForUnicodeCategories = numLowUnicodeChars+numSpecificUnicodeChars*2
                         let unicodeCategory = 
-#if FABLE_COMPILER
                             System.Char.GetUnicodeCategory(char inp)
-#else
-                            System.Char.GetUnicodeCategory(inp)
-#endif
                         //System.Console.WriteLine("inp = {0}, unicodeCategory = {1}", [| box inp; box unicodeCategory |]);
                         int trans.[state].[baseForUnicodeCategories + int32 unicodeCategory]
                     else 

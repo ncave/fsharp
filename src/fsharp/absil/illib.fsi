@@ -46,14 +46,21 @@ module internal PervasiveAutoOpens =
 
         member inline EndsWithOrdinal: value:string -> bool
 
+#if !FABLE_COMPILER
     type Async with
         /// Runs the computation synchronously, always starting on the current thread.
         static member RunImmediate: computation: Async<'T> * ?cancellationToken: CancellationToken -> 'T
+#endif
 
     val foldOn: p:('a -> 'b) -> f:('c -> 'b -> 'd) -> z:'c -> x:'a -> 'd
 
     val notFound: unit -> 'a
 
+#if FABLE_COMPILER
+type internal InlineDelayInit<'T when 'T: not struct> =
+    new: f:(unit -> 'T) -> InlineDelayInit<'T>
+    member Value: 'T
+#else
 [<Struct>]
 type internal InlineDelayInit<'T when 'T: not struct> =
 
@@ -61,6 +68,7 @@ type internal InlineDelayInit<'T when 'T: not struct> =
     val mutable store: 'T
     val mutable func: Func<'T>
     member Value: 'T
+#endif
   
 module internal Order =
 
@@ -300,11 +308,13 @@ type internal LockToken =
         inherit ExecutionToken
     end
   
+#if !FABLE_COMPILER
 /// Encapsulates a lock associated with a particular token-type representing the acquisition of that lock.
 type internal Lock<'LockTokenType when 'LockTokenType :> LockToken> =
 
     new: unit -> Lock<'LockTokenType>
     member AcquireLock: f:('LockTokenType -> 'a) -> 'a
+#endif
   
 [<AutoOpen>]
 module internal LockAutoOpens =
@@ -597,7 +607,7 @@ module internal MapAutoOpens =
         
         static member Empty: Map<'Key,'Value> when 'Key: comparison
 
-#if USE_SHIPPED_FSCORE        
+#if USE_SHIPPED_FSCORE || FABLE_COMPILER
         member Values: 'Value list
 #endif
 

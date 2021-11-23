@@ -15,6 +15,8 @@ open FSharp.Compiler.Syntax
 open FSharp.Compiler.Text
 open FSharp.Compiler.Tokenization
 
+#if !FABLE_COMPILER
+
 /// Used to parse and check F# source code.
 [<Sealed; AutoSerializable(false)>]
 type public FSharpChecker =
@@ -451,3 +453,4 @@ type public CompilerEnvironment =
     /// Whether or not this file should be a single-file project
     static member MustBeSingleFileProject: string -> bool
 
+#endif //!FABLE_COMPILER

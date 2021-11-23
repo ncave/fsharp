@@ -17,10 +17,10 @@ val (|TyparsCloseOp|_|) : txt: string -> ((bool -> token)[] * token option) opti
 type LexFilter =
     
     /// Create a lex filter
-    new: lightStatus: LightSyntaxStatus * compilingFsLib: bool * lexer: (LexBuffer<char> -> token) * lexbuf: LexBuffer<char> -> LexFilter
+    new: lightStatus: LightSyntaxStatus * compilingFsLib: bool * lexer: (LexBuffer<LexBufferChar> -> token) * lexbuf: LexBuffer<LexBufferChar> -> LexFilter
 
     /// The LexBuffer associated with the filter
-    member LexBuffer: LexBuffer<char>
+    member LexBuffer: LexBuffer<LexBufferChar>
 
     /// Get the next token
     member GetToken: unit -> token

@@ -1128,7 +1128,7 @@ module Pass4_RewriteAssembly =
 
         // reclink - suppress
         | Expr.Link r ->
-            TransExpr penv z (!r)
+            TransExpr penv z (r.Value)
 
         // ilobj - has implicit lambda exprs and recursive/base references
         | Expr.Obj (_, ty, basev, basecall, overrides, iimpls, m) ->
@@ -1177,7 +1177,7 @@ module Pass4_RewriteAssembly =
                 (typeDefs,argTypes,argExprs,data), z
 
             let data, z =
-                match !dataCell with 
+                match dataCell.Value with 
                 | Some (data1, data2) ->
                    let data1, z = doData data1 z
                    let data2, z = doData data2 z

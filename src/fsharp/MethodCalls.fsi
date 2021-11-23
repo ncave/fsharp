@@ -53,7 +53,7 @@ type CalledArg =
       NameOpt: Ident option
       CalledArgumentType: TType }
 
-val CalledArg: pos:struct (int * int) * isParamArray:bool * optArgInfo:OptionalArgInfo * callerInfo:CallerInfo * isInArg:bool * isOutArg:bool * nameOpt:Ident option * reflArgInfo:ReflectedArgInfo * calledArgTy:TType -> CalledArg
+val GetCalledArg: pos:struct (int * int) * isParamArray:bool * optArgInfo:OptionalArgInfo * callerInfo:CallerInfo * isInArg:bool * isOutArg:bool * nameOpt:Ident option * reflArgInfo:ReflectedArgInfo * calledArgTy:TType -> CalledArg
 
 /// Represents a match between a caller argument and a called argument, arising from either
 /// a named argument or an unnamed argument.

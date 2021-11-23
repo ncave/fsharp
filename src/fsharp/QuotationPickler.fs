@@ -315,10 +315,12 @@ module SimplePickle =
         p_int32 len st
         st.os.EmitBytes s
 
+#if !FABLE_COMPILER
     let p_memory (s:ReadOnlyMemory<byte>) st =
         let len = s.Length
         p_int32 len st
         st.os.EmitMemory s
+#endif
 
     let prim_pstring (s:string) st =
         let bytes = Encoding.UTF8.GetBytes s
@@ -377,7 +379,11 @@ module SimplePickle =
               ostrings=Table<_>.Create() }
         let stringTab, phase1bytes =
             p x st1
+#if FABLE_COMPILER
+            st1.ostrings.AsList, st1.os.Close()
+#else
             st1.ostrings.AsList, st1.os.AsMemory()
+#endif
 
         let phase2data = (stringTab, phase1bytes)
 
@@ -385,6 +391,11 @@ module SimplePickle =
            { os = ByteBuffer.Create(PickleBufferCapacity, useArrayPool = true)
              ostrings=Table<_>.Create() }
         let phase2bytes =
+#if FABLE_COMPILER
+            p_tup2 (p_list prim_pstring) p_bytes phase2data st2
+            st2.os.Close()
+        phase2bytes
+#else
             p_tup2 (p_list prim_pstring) p_memory phase2data st2
             st2.os.AsMemory()
 
@@ -392,6 +403,7 @@ module SimplePickle =
         (st1.os :> IDisposable).Dispose()
         (st2.os :> IDisposable).Dispose()
         finalBytes
+#endif
 
 open SimplePickle
 

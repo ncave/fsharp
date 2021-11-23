@@ -10,7 +10,9 @@ open FSharp.Compiler.CheckDeclarations
 open FSharp.Compiler.CompilerGlobalState
 open FSharp.Compiler.CompilerConfig
 open FSharp.Compiler.CompilerImports
+#if !FABLE_COMPILER
 open FSharp.Compiler.DependencyManager
+#endif
 open FSharp.Compiler.ErrorLogger
 open FSharp.Compiler.Syntax
 open FSharp.Compiler.TcGlobals
@@ -32,6 +34,8 @@ val DeduplicateParsedInputModuleName: ModuleNamesDict -> ParsedInput -> ParsedIn
 
 /// Parse a single input (A signature file or implementation file)
 val ParseInput: (Lexbuf -> Parser.token) * ErrorLogger * Lexbuf * string option * string * isLastCompiland:(bool * bool) -> ParsedInput
+
+#if !FABLE_COMPILER
 
 /// A general routine to process hash directives
 val ProcessMetaCommandsFromInput : 
@@ -58,6 +62,8 @@ val ParseOneInputFile: TcConfig * Lexhelp.LexResourceManager * conditionalCompil
 
 /// Parse multiple input files from disk
 val ParseInputFiles: TcConfig * Lexhelp.LexResourceManager * conditionalCompilationDefines: string list * string list * ErrorLogger * Exiter * createErrorLogger: (Exiter -> CapturingErrorLogger) * retryLocked: bool -> (ParsedInput * string) list
+
+#endif //!FABLE_COMPILER
 
 /// Get the initial type checking environment including the loading of mscorlib/System.Core, FSharp.Core
 /// applying the InternalsVisibleTo in referenced assemblies and opening 'Checked' if requested.

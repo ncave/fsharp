@@ -7,14 +7,18 @@ open System
 open System.Collections.Concurrent
 open System.IO
 open Internal.Utilities
+#if !FABLE_COMPILER
 open Internal.Utilities.FSharpEnvironment
+#endif
 open Internal.Utilities.Library
 open Internal.Utilities.Library.Extras
 open FSharp.Compiler
 open FSharp.Compiler.AbstractIL.IL
 open FSharp.Compiler.AbstractIL.ILBinaryReader
+#if !FABLE_COMPILER
 open FSharp.Compiler.AbstractIL.ILPdbWriter
 open FSharp.Compiler.DependencyManager
+#endif
 open FSharp.Compiler.Diagnostics
 open FSharp.Compiler.ErrorLogger
 open FSharp.Compiler.Features
@@ -55,6 +59,8 @@ let FSharpLightSyntaxFileSuffixes: string list = [ ".fs";".fsscript";".fsx";".fs
 exception FileNameNotResolved of (*filename*) string * (*description of searched locations*) string * range
 exception LoadedSourceNotFoundIgnoring of (*filename*) string * range
 
+#if !FABLE_COMPILER
+
 /// Will return None if the filename is not found.
 let TryResolveFileUsingPaths(paths, m, name) =
     let () =
@@ -76,6 +82,8 @@ let ResolveFileUsingPaths(paths, m, name) =
     | None ->
         let searchMessage = String.concat "\n " paths
         raise (FileNameNotResolved(name, searchMessage, m))
+
+#endif //!FABLE_COMPILER
 
 let GetWarningNumber(m, warningNumber: string) =
     try
@@ -129,7 +137,11 @@ type VersionFlag =
             parseILVersion vstr
         with _ -> errorR(Error(FSComp.SR.buildInvalidVersionString vstr, rangeStartup)); parseILVersion "0.0.0.0"
 
-    member x.GetVersionString implicitIncludeDir =
+    member x.GetVersionString (implicitIncludeDir: string) =
+#if FABLE_COMPILER
+        ignore implicitIncludeDir
+        "0.0.0.0"
+#else
          match x with
          | VersionString s -> s
          | VersionFile s ->
@@ -141,6 +153,7 @@ type VersionFlag =
                  use is = new StreamReader(fs)
                  is.ReadLine()
          | VersionNone -> "0.0.0.0"
+#endif //!FABLE_COMPILER
 
 
 /// Represents a reference to an assembly. May be backed by a real assembly on disk, or a cross-project
@@ -184,10 +197,12 @@ type TimeStampCache(defaultTimeStamp: DateTime) =
         let ok, v = files.TryGetValue fileName
         if ok then v else
         let v =
+#if !FABLE_COMPILER
             try
                 FileSystem.GetLastWriteTimeShim fileName
             with
             | :? FileNotFoundException ->
+#endif
                 defaultTimeStamp
         files.[fileName] <- v
         v
@@ -423,7 +438,9 @@ type TcConfigBuilder =
       mutable maxErrors: int
       mutable abortOnError: bool (* intended for fsi scripts that should exit on first error *)
       mutable baseAddress: int32 option
+#if !FABLE_COMPILER
       mutable checksumAlgorithm: HashAlgorithm
+#endif
 #if DEBUG
       mutable showOptimizationData: bool
 #endif
@@ -596,7 +613,9 @@ type TcConfigBuilder =
           maxErrors = 100
           abortOnError = false
           baseAddress = None
+#if !FABLE_COMPILER
           checksumAlgorithm = HashAlgorithm.Sha256
+#endif
 
           delaysign = false
           publicsign = false
@@ -644,7 +663,11 @@ type TcConfigBuilder =
           concurrentBuild = true
           preferredUiLang = None
           lcid = None
+#if FABLE_COMPILER
+          productNameForBannerText = "Microsoft (R) F# Compiler"
+#else
           productNameForBannerText = FSharpProductName
+#endif
           showBanner = true
           showTimes = false
           showLoadedAssemblies = false
@@ -683,10 +706,14 @@ type TcConfigBuilder =
         // which may be later adjusted.
         match tcConfigB.fxResolver with
         | None ->
+#if FABLE_COMPILER
+            FxResolver()
+#else
             let useDotNetFramework = (tcConfigB.primaryAssembly = PrimaryAssembly.Mscorlib)
             let fxResolver = FxResolver(useDotNetFramework, tcConfigB.implicitIncludeDir, rangeForErrors=tcConfigB.rangeForErrors, useSdkRefs=tcConfigB.useSdkRefs, isInteractive=tcConfigB.isInteractive, sdkDirOverride=tcConfigB.sdkDirOverride)
             tcConfigB.fxResolver <- Some fxResolver
             fxResolver
+#endif
         | Some fxResolver -> fxResolver
 
     member tcConfigB.SetPrimaryAssembly primaryAssembly =
@@ -696,6 +723,8 @@ type TcConfigBuilder =
     member tcConfigB.SetUseSdkRefs useSdkRefs =
         tcConfigB.useSdkRefs <- useSdkRefs
         tcConfigB.fxResolver <- None // this needs to be recreated when the primary assembly changes
+
+#if !FABLE_COMPILER
 
     member tcConfigB.ResolveSourceFile(m, nm, pathLoadedFrom) =
         use unwindBuildPhase = PushThreadBuildPhaseUntilUnwind BuildPhase.Parameter
@@ -737,6 +766,8 @@ type TcConfigBuilder =
         tcConfigB.outputFile <- Some outfile
         outfile, pdbfile, assemblyName
 
+#endif //!FABLE_COMPILER
+
     member tcConfigB.TurnWarningOff(m, s: string) =
         use unwindBuildPhase = PushThreadBuildPhaseUntilUnwind BuildPhase.Parameter
         match GetWarningNumber(m, s) with
@@ -757,7 +788,11 @@ type TcConfigBuilder =
             tcConfigB.errorSeverityOptions <-
                 { tcConfigB.errorSeverityOptions with WarnOn = ListSet.insert (=) n tcConfigB.errorSeverityOptions.WarnOn }
 
-    member tcConfigB.AddIncludePath (m, path, pathIncludedFrom) =
+    member tcConfigB.AddIncludePath (m: range, path: string, pathIncludedFrom: string) =
+#if FABLE_COMPILER
+        ignore (m, path, pathIncludedFrom)
+        ()
+#else //!FABLE_COMPILER
         let absolutePath = ComputeMakePathAbsolute pathIncludedFrom path
         let ok =
             let existsOpt =
@@ -770,8 +805,13 @@ type TcConfigBuilder =
             | None -> false
         if ok && not (List.contains absolutePath tcConfigB.includes) then
            tcConfigB.includes <- tcConfigB.includes ++ absolutePath
+#endif //!FABLE_COMPILER
 
-    member tcConfigB.AddLoadedSource(m, originalPath, pathLoadedFrom) =
+    member tcConfigB.AddLoadedSource(m: range, originalPath: string, pathLoadedFrom: string) =
+#if FABLE_COMPILER
+        ignore (m, originalPath, pathLoadedFrom)
+        ()
+#else //!FABLE_COMPILER
         if FileSystem.IsInvalidPathShim originalPath then
             warning(Error(FSComp.SR.buildInvalidFilename originalPath, m))
         else
@@ -783,6 +823,7 @@ type TcConfigBuilder =
                         ComputeMakePathAbsolute pathLoadedFrom originalPath
             if not (List.contains path (List.map (fun (_, _, path) -> path) tcConfigB.loadedSources)) then
                 tcConfigB.loadedSources <- tcConfigB.loadedSources ++ (m, originalPath, path)
+#endif //!FABLE_COMPILER
 
     member tcConfigB.AddEmbeddedSourceFile file =
         tcConfigB.embedSourceList <- tcConfigB.embedSourceList ++ file
@@ -803,6 +844,7 @@ type TcConfigBuilder =
              let projectReference = tcConfigB.projectReferences |> List.tryPick (fun pr -> if pr.FileName = path then Some pr else None)
              tcConfigB.referencedDLLs <- tcConfigB.referencedDLLs ++ AssemblyReference(m, path, projectReference)
 
+#if !FABLE_COMPILER
     member tcConfigB.AddDependencyManagerText (packageManager: IDependencyManagerProvider, lt, m, path: string) =
         tcConfigB.packageManagerLines <- PackageManagerLine.AddLineWithKey packageManager.Key lt path m tcConfigB.packageManagerLines
 
@@ -831,6 +873,7 @@ type TcConfigBuilder =
         // #r "Assembly"
         | path, _ ->
             tcConfigB.AddReferencedAssemblyByPath (m, path)
+#endif //!FABLE_COMPILER
 
     member tcConfigB.RemoveReferencedAssemblyByPath (m, path) =
         tcConfigB.referencedDLLs <- tcConfigB.referencedDLLs |> List.filter (fun ar -> not (equals ar.Range m) || ar.Text <> path)
@@ -863,6 +906,12 @@ type TcConfigBuilder =
 /// This type is immutable and must be kept as such. Do not extract or mutate the underlying data except by cloning it.
 [<Sealed>]
 type TcConfig private (data: TcConfigBuilder, validate: bool) =
+
+#if FABLE_COMPILER
+    let _ = validate
+    let clrRootValue, targetFrameworkVersionValue = "", ""
+
+#else //!FABLE_COMPILER
 
     // Validate the inputs - this helps ensure errors in options are shown in visual studio rather than only when built
     // However we only validate a minimal number of options at the moment
@@ -920,6 +969,8 @@ type TcConfig private (data: TcConfigBuilder, validate: bool) =
             else
 #endif
                 None, data.legacyReferenceResolver.Impl.HighestInstalledNetFrameworkVersion()
+
+#endif //!FABLE_COMPILER
 
     member x.FxResolver = data.FxResolver
     member x.primaryAssembly = data.primaryAssembly
@@ -1009,8 +1060,10 @@ type TcConfig private (data: TcConfigBuilder, validate: bool) =
     member x.flatErrors = data.flatErrors
     member x.maxErrors = data.maxErrors
     member x.baseAddress = data.baseAddress
+#if !FABLE_COMPILER
     member x.checksumAlgorithm = data.checksumAlgorithm
- #if DEBUG
+#endif
+#if DEBUG
     member x.showOptimizationData = data.showOptimizationData
 #endif
     member x.showTerms = data.showTerms
@@ -1058,6 +1111,8 @@ type TcConfig private (data: TcConfigBuilder, validate: bool) =
 
     member tcConfig.CloneToBuilder() =
         { data with conditionalCompilationDefines=data.conditionalCompilationDefines }
+
+#if !FABLE_COMPILER
 
     member tcConfig.ComputeCanContainEntryPoint(sourceFiles: string list) =
         let n = sourceFiles.Length in
@@ -1141,11 +1196,15 @@ type TcConfig private (data: TcConfigBuilder, validate: bool) =
         with e ->
             errorRecovery e range0; []
 
+#endif //!FABLE_COMPILER
+
     member tcConfig.ComputeLightSyntaxInitialStatus filename =
         use unwindBuildPhase = PushThreadBuildPhaseUntilUnwind BuildPhase.Parameter
         let lower = String.lowercase filename
         let lightOnByDefault = List.exists (FileSystemUtils.checkSuffix lower) FSharpLightSyntaxFileSuffixes
         if lightOnByDefault then (tcConfig.light <> Some false) else (tcConfig.light = Some true )
+
+#if !FABLE_COMPILER
 
     member tcConfig.GetAvailableLoadedSources() =
         use unwindBuildPhase = PushThreadBuildPhaseUntilUnwind BuildPhase.Parameter
@@ -1231,4 +1290,10 @@ type TcConfigProvider =
     /// TcConfigBuilder rather than delivering snapshots.
     static member BasedOnMutableBuilder tcConfigB = TcConfigProvider(fun _ctok -> TcConfig.Create(tcConfigB, validate=false))
 
+#endif //!FABLE_COMPILER
+
+#if FABLE_COMPILER
+let GetFSharpCoreLibraryName () = "FSharp.Core"
+#else
 let GetFSharpCoreLibraryName () = getFSharpCoreLibraryName
+#endif //!FABLE_COMPILER

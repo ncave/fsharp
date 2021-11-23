@@ -567,10 +567,14 @@ namespace Internal.Utilities.Collections.Tagged
         member s.ToArray () = SetTree.toArray tree
 
         override this.Equals(that) = 
+#if FABLE_COMPILER
+            ((this :> System.IComparable).CompareTo(that) = 0)
+#else
             match that with
             // Cast to the exact same type as this, otherwise not equal.
             | :? Set<'T,'ComparerTag> as that -> ((this :> System.IComparable).CompareTo(that) = 0)
             | _ -> false
+#endif
 
         interface System.IComparable with
             // Cast s2 to the exact same type as s1, see 4884.
@@ -701,28 +705,28 @@ namespace Internal.Utilities.Collections.Tagged
 
         let indexNotFound() = raise (KeyNotFoundException("An index satisfying the predicate was not found in the collection"))
 
-        let rec tryGetValue (comparer: IComparer<'Key>) k (v: byref<'Value>) (m: MapTree<'Key, 'Value>) =                     
+        let rec tryGetValue (comparer: IComparer<'Key>) k (v: ref<'Value>) (m: MapTree<'Key, 'Value>) =                     
             if isEmpty m then false
             else
                 let c = comparer.Compare(k, m.Key)
-                if c = 0 then v <- m.Value; true
+                if c = 0 then v.Value <- m.Value; true
                 else
                     match m with
                     | :? MapTreeNode<'Key, 'Value> as mn ->
-                        tryGetValue comparer k &v (if c < 0 then mn.Left else mn.Right)
+                        tryGetValue comparer k v (if c < 0 then mn.Left else mn.Right)
                     | _ -> false
 
         let find (comparer: IComparer<'Key>) k (m: MapTree<'Key, 'Value>) =
-            let mutable v = Unchecked.defaultof<'Value>
-            if tryGetValue comparer k &v m then
-                v
+            let mutable v = ref Unchecked.defaultof<'Value>
+            if tryGetValue comparer k v m then
+                v.Value
             else
                 indexNotFound()
 
         let tryFind (comparer: IComparer<'Key>) k (m: MapTree<'Key, 'Value>) = 
-            let mutable v = Unchecked.defaultof<'Value>
-            if tryGetValue comparer k &v m then
-                Some v
+            let mutable v = ref Unchecked.defaultof<'Value>
+            if tryGetValue comparer k v m then
+                Some v.Value
             else
                 None
 
@@ -1051,10 +1055,14 @@ namespace Internal.Utilities.Collections.Tagged
             override s.GetEnumerator() = (MapTree.toSeq tree :> System.Collections.IEnumerator)
 
         override this.Equals(that) = 
+#if FABLE_COMPILER
+            ((this :> System.IComparable).CompareTo(that) = 0)
+#else
             match that with
             // Cast to the exact same type as this, otherwise not equal.
             | :? Map<'Key,'T,'ComparerTag> as that -> ((this :> System.IComparable).CompareTo(that) = 0)
             | _ -> false
+#endif
 
         interface System.IComparable with 
              member m1.CompareTo(m2: obj) = 

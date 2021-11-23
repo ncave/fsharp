@@ -29,6 +29,8 @@ type CompilationGlobalsScope(errorLogger: ErrorLogger, phase: BuildPhase) =
 [<NoEquality;NoComparison>]
 type NodeCode<'T> = Node of Async<'T>
 
+#if !FABLE_COMPILER
+
 let wrapThreadStaticInfo computation =
     async {
         let errorLogger = CompileThreadStatic.ErrorLogger
@@ -391,3 +393,5 @@ type GraphNode<'T> (retryCompute: bool, computation: NodeCode<'T>) =
 
     new(computation) =
         GraphNode(retryCompute=true, computation=computation)
+
+#endif //!FABLE_COMPILER

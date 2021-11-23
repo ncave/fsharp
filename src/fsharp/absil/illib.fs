@@ -70,14 +70,18 @@ module internal PervasiveAutoOpens =
             x.EndsWith(value, StringComparison.Ordinal)
 
     /// Get an initialization hole 
-    let getHole r = match !r with None -> failwith "getHole" | Some x -> x
+    let getHole (r: _ ref) = match r.Value with None -> failwith "getHole" | Some x -> x
 
     let reportTime =
         let mutable tFirst =None
         let mutable tPrev = None
         fun showTimes descr ->
             if showTimes then 
+#if FABLE_COMPILER
+                let t = 0.0
+#else
                 let t = Process.GetCurrentProcess().UserProcessorTime.TotalSeconds
+#endif
                 let prev = match tPrev with None -> 0.0 | Some t -> t
                 let first = match tFirst with None -> (tFirst <- Some t; t) | Some t -> t
                 printf "ilwrite: TIME %10.3f (total)   %10.3f (delta) - %s\n" (t - first) (t - prev) descr
@@ -87,6 +91,7 @@ module internal PervasiveAutoOpens =
 
     let notFound() = raise (KeyNotFoundException())
 
+#if !FABLE_COMPILER
     type Async with
         static member RunImmediate (computation: Async<'T>, ?cancellationToken ) =
             let cancellationToken = defaultArg cancellationToken Async.DefaultCancellationToken
@@ -99,8 +104,14 @@ module internal PervasiveAutoOpens =
                 (fun _ -> ts.SetCanceled()),
                 cancellationToken)
             task.Result
+#endif
 
 /// An efficient lazy for inline storage in a class type. Results in fewer thunks.
+#if FABLE_COMPILER
+type InlineDelayInit<'T when 'T : not struct>(f: unit -> 'T) = 
+    let store = lazy(f())
+    member x.Value = store.Force()
+#else
 [<Struct>]
 type InlineDelayInit<'T when 'T : not struct> = 
     new (f: unit -> 'T) = {store = Unchecked.defaultof<'T>; func = Func<_>(f) } 
@@ -114,6 +125,7 @@ type InlineDelayInit<'T when 'T : not struct> =
         let res = LazyInitializer.EnsureInitialized(&x.store, x.func) 
         x.func <- Unchecked.defaultof<_>
         res
+#endif
 
 //-------------------------------------------------------------------------
 // Library: projections
@@ -325,7 +337,9 @@ module List =
         | _ -> true
 
     let mapq (f: 'T -> 'T) inp =
+#if !FABLE_COMPILER
         assert not typeof<'T>.IsValueType 
+#endif
         match inp with
         | [] -> inp
         | [h1a] -> 
@@ -500,7 +514,11 @@ module ResizeArray =
     /// This is done to help prevent a stop-the-world collection of the single large array, instead allowing for a greater
     /// probability of smaller collections. Stop-the-world is still possible, just less likely.
     let mapToSmallArrayChunks f (inp: ResizeArray<'t>) =
+#if FABLE_COMPILER
+        let itemSizeBytes = 8
+#else
         let itemSizeBytes = sizeof<'t>
+#endif
         // rounding down here is good because it ensures we don't go over
         let maxArrayItemCount = LOH_SIZE_THRESHOLD_BYTES / itemSizeBytes
 
@@ -561,7 +579,7 @@ module String =
 
     let lowerCaseFirstChar (str: string) =
         if String.IsNullOrEmpty str 
-         || Char.IsLower(str, 0) then str else 
+         || Char.IsLower(str.[0]) then str else 
         let strArr = toCharArray str
         match Array.tryHead strArr with
         | None -> str
@@ -590,14 +608,14 @@ module String =
     let split options (separator: string []) (value: string) = 
         if isNull value then null else value.Split(separator, options)
 
-    let (|StartsWith|_|) pattern value =
+    let (|StartsWith|_|) (pattern: string) value =
         if String.IsNullOrWhiteSpace value then
             None
         elif value.StartsWithOrdinal pattern then
             Some()
         else None
 
-    let (|Contains|_|) pattern value =
+    let (|Contains|_|) (pattern: string) value =
         if String.IsNullOrWhiteSpace value then
             None
         elif value.Contains pattern then
@@ -689,10 +707,12 @@ module internal LockAutoOpens =
 
     let AssumeLockWithoutEvidence<'LockTokenType when 'LockTokenType :> LockToken> () = Unchecked.defaultof<'LockTokenType>
 
+#if !FABLE_COMPILER
 /// Encapsulates a lock associated with a particular token-type representing the acquisition of that lock.
 type Lock<'LockTokenType when 'LockTokenType :> LockToken>() = 
     let lockObj = obj()
     member _.AcquireLock f = lock lockObj (fun () -> f (AssumeLockWithoutEvidence<'LockTokenType>()))
+#endif
 
 //---------------------------------------------------
 // Misc
@@ -872,7 +892,7 @@ type UniqueStampGenerator<'T when 'T : equality>() =
 
     member this.Encode str = encode str
 
-    member this.Table = encodeTab.Keys
+    member this.Table = encodeTab.Keys :> ICollection<'T>
 
 /// memoize tables (all entries cached, never collected)
 type MemoizationTable<'T, 'U>(compute: 'T -> 'U, keyComparer: IEqualityComparer<'T>, ?canMemoize) = 
@@ -937,12 +957,16 @@ type LazyWithContext<'T, 'ctxt> =
         match x.funcOrException with 
         | null -> x.value 
         | _ -> 
+#if FABLE_COMPILER
+            x.UnsynchronizedForce(ctxt)
+#else
             // Enter the lock in case another thread is in the process of evaluating the result
             Monitor.Enter x;
             try 
                 x.UnsynchronizedForce ctxt
             finally
                 Monitor.Exit x
+#endif
 
     member x.UnsynchronizedForce ctxt = 
         match x.funcOrException with 
@@ -1134,7 +1158,7 @@ module MapAutoOpens =
         
         static member Empty : Map<'Key, 'Value> = Map.empty
     
-#if USE_SHIPPED_FSCORE        
+#if USE_SHIPPED_FSCORE || FABLE_COMPILER
         member x.Values = [ for KeyValue(_, v) in x -> v ]
 #endif
 

@@ -3,11 +3,13 @@
 namespace FSharp.Compiler.IO
 
 open System
+#if !FABLE_COMPILER
 open System.IO
 open System.IO.MemoryMappedFiles
 open System.Reflection
 open System.Text
 open System.Runtime.CompilerServices
+#endif
 
 exception IllegalFileNameChar of string * char
 
@@ -44,12 +46,15 @@ type public ByteMemory =
 
     abstract Slice: pos: int * count: int -> ByteMemory
 
+#if !FABLE_COMPILER
     abstract CopyTo: Stream -> unit
+#endif
 
     abstract Copy: srcOffset: int * dest: byte[] * destOffset: int * count: int -> unit
 
     abstract ToArray: unit -> byte[]
 
+#if !FABLE_COMPILER
     /// Get a stream representation of the backing memory.
     /// Disposing this will not free up any of the backing memory.
     abstract AsStream: unit -> Stream
@@ -58,6 +63,7 @@ type public ByteMemory =
     /// Disposing this will not free up any of the backing memory.
     /// Stream cannot be written to.
     abstract AsReadOnlyStream: unit -> Stream
+#endif
 
 [<Struct;NoEquality;NoComparison>]
 type internal ReadOnlyByteMemory =
@@ -80,12 +86,15 @@ type internal ReadOnlyByteMemory =
 
     member Slice: pos: int * count: int -> ReadOnlyByteMemory
 
+#if !FABLE_COMPILER
     member CopyTo: Stream -> unit
+#endif
 
     member Copy: srcOffset: int * dest: byte[] * destOffset: int * count: int -> unit
 
     member ToArray: unit -> byte[]
 
+#if !FABLE_COMPILER
     member AsStream: unit -> Stream
 
 /// MemoryMapped extensions
@@ -93,6 +102,7 @@ module internal MemoryMappedFileExtensions =
     type MemoryMappedFile with
         static member TryFromByteMemory : bytes: ReadOnlyByteMemory -> MemoryMappedFile option
         static member TryFromMemory : bytes: ReadOnlyMemory<byte> -> MemoryMappedFile option
+#endif
     
 /// Filesystem helpers
 module internal FileSystemUtils =
@@ -124,6 +134,39 @@ module internal FileSystemUtils =
 
     /// Checks whether file is dll (ends in .dll)
     val isDll: string -> bool
+
+#if FABLE_COMPILER
+
+/// Represents a shim for the file system
+[<AbstractClass; Sealed>]
+type FileSystem =
+
+    /// Take in a filename with an absolute path, and return the same filename
+    /// but canonicalized with respect to extra path separators (e.g. C:\\\\foo.txt)
+    /// and '..' portions
+    static member GetFullPathShim: fileName:string -> string
+
+    /// Take in a directory, filename, and return canonicalized path to the filename in directory.
+    /// If filename path is rooted, ignores directory and returns filename path.
+    /// Otherwise, combines directory with filename and gets full path via GetFullPathShim(string).
+    static member GetFullFilePathInDirectoryShim: dir: string -> fileName: string -> string
+
+    /// A shim over Path.IsPathRooted
+    static member IsPathRootedShim: path:string -> bool
+
+    /// Removes relative parts from any full paths
+    static member NormalizePathShim: path: string -> string
+
+    /// A shim over Path.IsInvalidPath
+    static member IsInvalidPathShim: path:string -> bool
+
+    /// A shim over Path.GetTempPath
+    static member GetTempPathShim: unit -> string
+
+    /// A shim for getting directory name from path
+    static member GetDirectoryNameShim: path: string -> string
+
+#else //!FABLE_COMPILER
 
 /// Type which we use to load assemblies.
 type public IAssemblyLoader =
@@ -300,6 +343,8 @@ module public FileSystemAutoOpens =
     /// The global hook into the file system
     val mutable FileSystem: IFileSystem
 
+#endif //!FABLE_COMPILER
+
 type internal ByteMemory with
 
     member AsReadOnly: unit -> ReadOnlyByteMemory
@@ -307,12 +352,14 @@ type internal ByteMemory with
     /// Empty byte memory.
     static member Empty: ByteMemory
 
+#if !FABLE_COMPILER
     /// Create a ByteMemory object that has a backing memory mapped file.
     static member FromMemoryMappedFile: MemoryMappedFile -> ByteMemory
 
     /// Creates a ByteMemory object that is backed by a raw pointer.
     /// Use with care.
     static member FromUnsafePointer: addr: nativeint * length: int * holder: obj -> ByteMemory
+#endif //!FABLE_COMPILER
 
     /// Creates a ByteMemory object that is backed by a byte array with the specified offset and length.
     static member FromArray: bytes: byte[] * offset: int * length: int -> ByteMemory
@@ -332,6 +379,32 @@ type internal ByteStream =
     member CloneAndSeek : int -> ByteStream
     member Skip : int -> unit
 #endif
+
+#if FABLE_COMPILER
+
+/// Imperative buffers and streams of byte[]
+/// Not thread safe.
+[<Sealed>]
+type internal ByteBuffer =
+    interface IDisposable
+    member Close : unit -> byte[]
+    // member AsMemory : unit -> ReadOnlyMemory<byte>
+    member EmitIntAsByte : int -> unit
+    member EmitIntsAsBytes : int[] -> unit
+    member EmitByte : byte -> unit
+    member EmitBytes : byte[] -> unit
+    // member EmitMemory : ReadOnlyMemory<byte> -> unit
+    // member EmitByteMemory : ReadOnlyByteMemory -> unit
+    member EmitInt32 : int32 -> unit
+    member EmitInt64 : int64 -> unit
+    member FixupInt32 : pos: int -> value: int32 -> unit
+    member EmitInt32AsUInt16 : int32 -> unit
+    member EmitBoolAsByte : bool -> unit
+    member EmitUInt16 : uint16 -> unit
+    member Position : int
+    static member Create : capacity: int * ?useArrayPool: bool -> ByteBuffer
+
+#else //!FABLE_COMPILER
 
 /// Imperative buffers and streams of byte[]
 /// Not thread safe.
@@ -400,3 +473,5 @@ type internal ByteStorage =
 
     /// Creates a ByteStorage that has a copy of the given byte array.
     static member FromByteArrayAndCopy : byte [] * useBackingMemoryMappedFile: bool -> ByteStorage
+
+#endif //!FABLE_COMPILER

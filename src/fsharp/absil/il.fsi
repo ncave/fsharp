@@ -69,7 +69,9 @@ type ILVersionInfo =
 type ILAssemblyRef =
     static member Create: name: string * hash: byte[] option * publicKey: PublicKey option * retargetable: bool * version: ILVersionInfo option * locale: string option -> ILAssemblyRef
 
+#if !FABLE_COMPILER
     static member FromAssemblyName: AssemblyName -> ILAssemblyRef
+#endif
 
     member Name: string
 
@@ -997,17 +999,17 @@ type ILGenericParameterDef =
 type ILGenericParameterDefs = ILGenericParameterDef list
 
 /// IL Method definitions.
-[<NoComparison; NoEquality>]
+[<NoComparison; NoEquality; Sealed>]
 type ILMethodDef =
 
     /// Functional creation of a value, with delayed reading of some elements via a metadata index
-    internal new:
+    static member internal CreateStored:
          name: string * attributes: MethodAttributes * implAttributes: MethodImplAttributes * callingConv: ILCallingConv *
          parameters: ILParameters * ret: ILReturn * body: Lazy<MethodBody> * isEntryPoint:bool * genericParams: ILGenericParameterDefs *
          securityDeclsStored: ILSecurityDeclsStored * customAttrsStored: ILAttributesStored * metadataIndex: int32 -> ILMethodDef
 
     /// Functional creation of a value, immediate
-    new: name: string * attributes: MethodAttributes * implAttributes: MethodImplAttributes * callingConv: ILCallingConv *
+    static member Create: name: string * attributes: MethodAttributes * implAttributes: MethodImplAttributes * callingConv: ILCallingConv *
          parameters: ILParameters * ret: ILReturn * body: Lazy<MethodBody> * isEntryPoint:bool * genericParams: ILGenericParameterDefs *
          securityDecls: ILSecurityDecls * customAttrs: ILAttributes -> ILMethodDef
 
@@ -1103,17 +1105,17 @@ type ILMethodDefs =
     member TryFindInstanceByNameAndCallingSignature: string * ILCallingSignature -> ILMethodDef option
 
 /// Field definitions.
-[<NoComparison; NoEquality>]
+[<NoComparison; NoEquality; Sealed>]
 type ILFieldDef =
 
     /// Functional creation of a value using delayed reading via a metadata index
-    internal new:
+    static member internal CreateStored:
          name: string * fieldType: ILType * attributes: FieldAttributes * data: byte[] option *
          literalValue: ILFieldInit option * offset:  int32 option * marshal: ILNativeType option *
          customAttrsStored: ILAttributesStored * metadataIndex: int32 -> ILFieldDef
 
     /// Functional creation of a value, immediate
-    new: name: string * fieldType: ILType * attributes: FieldAttributes * data: byte[] option *
+    static member Create: name: string * fieldType: ILType * attributes: FieldAttributes * data: byte[] option *
          literalValue: ILFieldInit option * offset:  int32 option * marshal: ILNativeType option *
          customAttrs: ILAttributes -> ILFieldDef
 
@@ -1154,17 +1156,17 @@ type ILFieldDefs =
     member internal LookupByName: string -> ILFieldDef list
 
 /// Event definitions.
-[<NoComparison; NoEquality>]
+[<NoComparison; NoEquality; Sealed>]
 type ILEventDef =
 
     /// Functional creation of a value, using delayed reading via a metadata index, for ilread.fs
-    internal new:
+    static member internal CreateStored:
          eventType: ILType option * name: string * attributes: EventAttributes * addMethod: ILMethodRef *
          removeMethod: ILMethodRef * fireMethod: ILMethodRef option * otherMethods: ILMethodRef list *
          customAttrsStored: ILAttributesStored * metadataIndex: int32 -> ILEventDef
 
     /// Functional creation of a value, immediate
-    new: eventType: ILType option * name: string * attributes: EventAttributes * addMethod: ILMethodRef *
+    static member Create: eventType: ILType option * name: string * attributes: EventAttributes * addMethod: ILMethodRef *
          removeMethod: ILMethodRef * fireMethod: ILMethodRef option * otherMethods: ILMethodRef list *
          customAttrs: ILAttributes -> ILEventDef
 
@@ -1192,17 +1194,17 @@ type ILEventDefs =
     member internal LookupByName: string -> ILEventDef list
 
 /// Property definitions
-[<NoComparison; NoEquality>]
+[<NoComparison; NoEquality; Sealed>]
 type ILPropertyDef =
 
     /// Functional creation of a value, using delayed reading via a metadata index, for ilread.fs
-    internal new:
+    static member internal CreateStored:
          name: string * attributes: PropertyAttributes * setMethod: ILMethodRef option * getMethod: ILMethodRef option *
          callingConv: ILThisConvention * propertyType: ILType * init: ILFieldInit option * args: ILTypes *
          customAttrsStored: ILAttributesStored * metadataIndex: int32 -> ILPropertyDef
 
     /// Functional creation of a value, immediate
-    new: name: string * attributes: PropertyAttributes * setMethod: ILMethodRef option * getMethod: ILMethodRef option *
+    static member Create: name: string * attributes: PropertyAttributes * setMethod: ILMethodRef option * getMethod: ILMethodRef option *
          callingConv: ILThisConvention * propertyType: ILType * init: ILFieldInit option * args: ILTypes *
          customAttrs: ILAttributes -> ILPropertyDef
 
@@ -1299,17 +1301,17 @@ type ILTypeDefs =
     member internal FindByName: string -> ILTypeDef
 
 /// Represents IL Type Definitions.
-[<NoComparison; NoEquality>]
+[<NoComparison; NoEquality; Sealed>]
 type ILTypeDef =
 
     /// Functional creation of a value, using delayed reading via a metadata index, for ilread.fs
-    internal new:
+    static member internal CreateStored:
         name: string * attributes: TypeAttributes * layout: ILTypeDefLayout * implements: ILTypes * genericParams: ILGenericParameterDefs *
         extends: ILType option * methods: ILMethodDefs * nestedTypes: ILTypeDefs * fields: ILFieldDefs * methodImpls: ILMethodImplDefs *
         events: ILEventDefs * properties: ILPropertyDefs * securityDeclsStored: ILSecurityDeclsStored * customAttrsStored: ILAttributesStored * metadataIndex: int32 -> ILTypeDef
 
     /// Functional creation of a value, immediate
-    new: name: string * attributes: TypeAttributes * layout: ILTypeDefLayout * implements: ILTypes * genericParams: ILGenericParameterDefs *
+    static member Create: name: string * attributes: TypeAttributes * layout: ILTypeDefLayout * implements: ILTypes * genericParams: ILGenericParameterDefs *
           extends: ILType option * methods: ILMethodDefs * nestedTypes: ILTypeDefs * fields: ILFieldDefs * methodImpls: ILMethodImplDefs *
           events: ILEventDefs * properties: ILPropertyDefs * securityDecls: ILSecurityDecls * customAttrs: ILAttributes -> ILTypeDef
 
@@ -1461,7 +1463,12 @@ type internal ILResourceAccess =
 type internal ILResourceLocation =
 
     /// Represents a manifest resource that can be read or written to a PE file
+
+#if FABLE_COMPILER
+    | Local of ByteMemory
+#else
     | Local of ByteStorage
+#endif
 
     /// Represents a manifest resource in an associated file
     | File of ILModuleRef * int32

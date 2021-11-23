@@ -23,6 +23,8 @@ type CompilationGlobalsScope =
 [<NoEquality;NoComparison;Sealed>]
 type NodeCode<'T>
 
+#if !FABLE_COMPILER
+
 type Async<'T> with
 
     /// Asynchronously await code in the build graph
@@ -118,3 +120,5 @@ type internal GraphNode<'T> =
 
     /// Return 'true' if the computation is in-progress.
     member IsComputing: bool
+
+#endif //!FABLE_COMPILER

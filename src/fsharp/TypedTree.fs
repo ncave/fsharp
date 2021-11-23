@@ -1877,21 +1877,21 @@ type ModuleOrNamespaceType(kind: ModuleOrNamespaceKind, vals: QueueList<Val>, en
     // We do not need to lock this mutable state this it is only ever accessed from the compiler thread.
     let activePatternElemRefCache: NameMap<ActivePatternElemRef> option ref = ref None
 
-    let mutable modulesByDemangledNameCache: NameMap<ModuleOrNamespace> option = None
+    let modulesByDemangledNameCache: NameMap<ModuleOrNamespace> option ref = ref None
 
-    let mutable exconsByDemangledNameCache: NameMap<Tycon> option = None
+    let exconsByDemangledNameCache: NameMap<Tycon> option ref = ref None
 
-    let mutable tyconsByDemangledNameAndArityCache: LayeredMap<NameArityPair, Tycon> option = None
+    let tyconsByDemangledNameAndArityCache: LayeredMap<NameArityPair, Tycon> option ref = ref None
 
-    let mutable tyconsByAccessNamesCache: LayeredMultiMap<string, Tycon> option = None
+    let tyconsByAccessNamesCache: LayeredMultiMap<string, Tycon> option ref = ref None
 
-    let mutable tyconsByMangledNameCache: NameMap<Tycon> option = None
+    let tyconsByMangledNameCache: NameMap<Tycon> option ref = ref None
 
-    let mutable allEntitiesByMangledNameCache: NameMap<Entity> option = None
+    let allEntitiesByMangledNameCache: NameMap<Entity> option ref = ref None
 
-    let mutable allValsAndMembersByPartialLinkageKeyCache: MultiMap<ValLinkagePartialKey, Val> option = None
+    let allValsAndMembersByPartialLinkageKeyCache: MultiMap<ValLinkagePartialKey, Val> option ref = ref None
 
-    let mutable allValsByLogicalNameCache: NameMap<Val> option = None
+    let allValsByLogicalNameCache: NameMap<Val> option ref = ref None
   
     /// Namespace or module-compiled-as-type? 
     member _.ModuleOrNamespaceKind = kind 
@@ -1908,17 +1908,17 @@ type ModuleOrNamespaceType(kind: ModuleOrNamespaceKind, vals: QueueList<Val>, en
     /// Mutation used during compilation of FSharp.Core.dll
     member _.AddModuleOrNamespaceByMutation(modul: ModuleOrNamespace) =
         entities <- QueueList.appendOne entities modul
-        modulesByDemangledNameCache <- None          
-        allEntitiesByMangledNameCache <- None       
+        modulesByDemangledNameCache.Value <- None          
+        allEntitiesByMangledNameCache.Value <- None       
 
 #if !NO_EXTENSIONTYPING
     /// Mutation used in hosting scenarios to hold the hosted types in this module or namespace
     member mtyp.AddProvidedTypeEntity(entity: Entity) = 
         entities <- QueueList.appendOne entities entity
-        tyconsByMangledNameCache <- None          
-        tyconsByDemangledNameAndArityCache <- None
-        tyconsByAccessNamesCache <- None
-        allEntitiesByMangledNameCache <- None             
+        tyconsByMangledNameCache := None          
+        tyconsByDemangledNameAndArityCache := None
+        tyconsByAccessNamesCache := None
+        allEntitiesByMangledNameCache := None             
 #endif 
           
     /// Return a new module or namespace type with an entity added.
@@ -1948,19 +1948,19 @@ type ModuleOrNamespaceType(kind: ModuleOrNamespaceKind, vals: QueueList<Val>, en
     /// table is indexed by both name and generic arity. This means that for generic 
     /// types "List`1", the entry (List, 1) will be present.
     member mtyp.TypesByDemangledNameAndArity = 
-        cacheOptByref &tyconsByDemangledNameAndArityCache (fun () -> 
+        cacheOptRef tyconsByDemangledNameAndArityCache (fun () -> 
            LayeredMap.Empty.AddAndMarkAsCollapsible( mtyp.TypeAndExceptionDefinitions |> List.map (fun (tc: Tycon) -> Construct.KeyTyconByDecodedName tc.LogicalName tc) |> List.toArray))
 
     /// Get a table of types defined within this module, namespace or type. The 
     /// table is indexed by both name and, for generic types, also by mangled name.
     member mtyp.TypesByAccessNames = 
-        cacheOptByref &tyconsByAccessNamesCache (fun () -> 
+        cacheOptRef tyconsByAccessNamesCache (fun () -> 
              LayeredMultiMap.Empty.AddAndMarkAsCollapsible (mtyp.TypeAndExceptionDefinitions |> List.toArray |> Array.collect (fun (tc: Tycon) -> Construct.KeyTyconByAccessNames tc.LogicalName tc)))
 
     // REVIEW: we can remove this lookup and use AllEntitiesByMangledName instead?
     member mtyp.TypesByMangledName = 
         let addTyconByMangledName (x: Tycon) tab = NameMap.add x.LogicalName x tab 
-        cacheOptByref &tyconsByMangledNameCache (fun () -> 
+        cacheOptRef tyconsByMangledNameCache (fun () -> 
              List.foldBack addTyconByMangledName mtyp.TypeAndExceptionDefinitions Map.empty)
 
     /// Get a table of entities indexed by both logical and compiled names
@@ -1972,7 +1972,7 @@ type ModuleOrNamespaceType(kind: ModuleOrNamespaceKind, vals: QueueList<Val>, en
             if name1 = name2 then tab
             else NameMap.add name2 x tab 
           
-        cacheOptByref &allEntitiesByMangledNameCache (fun () -> 
+        cacheOptRef allEntitiesByMangledNameCache (fun () -> 
              QueueList.foldBack addEntityByMangledName entities Map.empty)
 
     /// Get a table of entities indexed by both logical name
@@ -1989,7 +1989,7 @@ type ModuleOrNamespaceType(kind: ModuleOrNamespaceKind, vals: QueueList<Val>, en
                MultiMap.add key x tab 
            else
                tab
-        cacheOptByref &allValsAndMembersByPartialLinkageKeyCache (fun () -> 
+        cacheOptRef allValsAndMembersByPartialLinkageKeyCache (fun () -> 
              QueueList.foldBack addValByMangledName vals MultiMap.empty)
 
     /// Try to find the member with the given linkage key in the given module.
@@ -2010,7 +2010,7 @@ type ModuleOrNamespaceType(kind: ModuleOrNamespaceKind, vals: QueueList<Val>, en
                NameMap.add x.LogicalName x tab 
            else
                tab
-        cacheOptByref &allValsByLogicalNameCache (fun () -> 
+        cacheOptRef allValsByLogicalNameCache (fun () -> 
            QueueList.foldBack addValByName vals Map.empty)
 
     /// Compute a table of values and members indexed by logical name.
@@ -2025,7 +2025,7 @@ type ModuleOrNamespaceType(kind: ModuleOrNamespaceKind, vals: QueueList<Val>, en
     /// Get a table of F# exception definitions indexed by demangled name, so 'FailureException' is indexed by 'Failure'
     member mtyp.ExceptionDefinitionsByDemangledName = 
         let add (tycon: Tycon) acc = NameMap.add tycon.LogicalName tycon acc
-        cacheOptByref &exconsByDemangledNameCache (fun () -> 
+        cacheOptRef exconsByDemangledNameCache (fun () -> 
             List.foldBack add mtyp.ExceptionDefinitions Map.empty)
 
     /// Get a table of nested module and namespace fragments indexed by demangled name (so 'ListModule' becomes 'List')
@@ -2034,7 +2034,7 @@ type ModuleOrNamespaceType(kind: ModuleOrNamespaceKind, vals: QueueList<Val>, en
             if entity.IsModuleOrNamespace then 
                 NameMap.add entity.DemangledModuleOrNamespaceName entity acc
             else acc
-        cacheOptByref &modulesByDemangledNameCache (fun () -> 
+        cacheOptRef modulesByDemangledNameCache (fun () -> 
             QueueList.foldBack add entities Map.empty)
 
     [<DebuggerBrowsable(DebuggerBrowsableState.Never)>]
@@ -2331,7 +2331,11 @@ type TyparConstraint =
     
     override x.ToString() = sprintf "%+A" x 
     
+#if FABLE_COMPILER
+[<CustomEquality; CustomComparison; StructuredFormatDisplay("{DebugText}")>]
+#else
 [<NoEquality; NoComparison; StructuredFormatDisplay("{DebugText}")>]
+#endif
 type TraitWitnessInfo = 
     | TraitWitnessInfo of TTypes * string * SynMemberFlags * TTypes * TType option
     
@@ -2346,6 +2350,13 @@ type TraitWitnessInfo =
 
     override x.ToString() = "TTrait(" + x.MemberName + ")"
     
+#if FABLE_COMPILER
+    override x.GetHashCode() = hash x.MemberName
+    override x.Equals(_y: obj) = false // not used
+    interface System.IComparable with
+        member x.CompareTo(_y: obj) = -1 // not used
+#endif
+
 /// The specification of a member constraint that must be solved 
 [<NoEquality; NoComparison; StructuredFormatDisplay("{DebugText}")>]
 type TraitConstraintInfo = 

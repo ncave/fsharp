@@ -11,7 +11,9 @@ open System.IO
 
 open Internal.Utilities
 open Internal.Utilities.Collections
+#if !FABLE_COMPILER
 open Internal.Utilities.FSharpEnvironment
+#endif
 open Internal.Utilities.Library
 open Internal.Utilities.Library.Extras
 
@@ -22,7 +24,9 @@ open FSharp.Compiler.AbstractIL.Diagnostics
 open FSharp.Compiler.CheckDeclarations
 open FSharp.Compiler.CompilerGlobalState
 open FSharp.Compiler.CompilerConfig
+#if !FABLE_COMPILER
 open FSharp.Compiler.DependencyManager
+#endif
 open FSharp.Compiler.ErrorLogger
 open FSharp.Compiler.Import
 open FSharp.Compiler.IO
@@ -74,6 +78,8 @@ let GetOptimizationDataResourceName (r: ILResource) =
 
 let IsReflectedDefinitionsResource (r: ILResource) =
     r.Name.StartsWithOrdinal(QuotationPickler.SerializedReflectedDefinitionsResourceNameBase)
+
+#if !FABLE_COMPILER
 
 let MakeILResource rName bytes =
     { Name = rName
@@ -172,11 +178,15 @@ let EncodeOptimizationData(tcGlobals, tcConfig: TcConfig, outfile, exportRemappi
     else
         [ ]
 
+#endif //!FABLE_COMPILER
+
 exception AssemblyNotResolved of (*originalName*) string * range
 
 exception MSBuildReferenceResolutionWarning of (*MSBuild warning code*)string * (*Message*)string * range
 
 exception MSBuildReferenceResolutionError of (*MSBuild warning code*)string * (*Message*)string * range
+
+#if !FABLE_COMPILER
 
 let OpenILBinary(filename, reduceMemoryUsage, pdbDirPath, shadowCopyReferences, tryGetMetadataSnapshot) =
     let opts: ILReaderOptions =
@@ -199,6 +209,8 @@ let OpenILBinary(filename, reduceMemoryUsage, pdbDirPath, shadowCopyReferences, 
 #endif
           filename
     AssemblyReader.GetILModuleReader(location, opts)
+
+#endif //!FABLE_COMPILER
 
 [<RequireQualifiedAccess>]
 type ResolveAssemblyReferenceMode = Speculative | ReportErrors
@@ -228,6 +240,8 @@ type AssemblyResolution =
      }
     override this.ToString() = sprintf "%s%s" (if this.sysdir then "[sys]" else "") this.resolvedPath
 
+#if !FABLE_COMPILER
+
     member this.ProjectReference = this.originalReference.ProjectReference
 
     /// Compute the ILAssemblyRef for a resolved assembly. This is done by reading the binary if necessary. The result
@@ -252,6 +266,8 @@ type AssemblyResolution =
                 mkRefToILAssembly reader.ILModuleDef.ManifestOfAssembly
             this.ilAssemblyRef <- Some assemblyRef
             assemblyRef
+
+#endif //!FABLE_COMPILER
 
 type ImportedBinary =
     { FileName: string
@@ -285,6 +301,8 @@ type CcuLoadFailureAction =
 
 type TcImportsLockToken() =
    interface LockToken
+
+#if !FABLE_COMPILER
 
 type TcImportsLock = Lock<TcImportsLockToken>   
 
@@ -762,9 +780,56 @@ type RawFSharpAssemblyData (ilModule: ILModuleDef, ilAssemblyRefs) =
             let attrs = GetCustomAttributesOfILModule ilModule
             List.exists (IsMatchingSignatureDataVersionAttr (parseILVersion FSharpBinaryMetadataFormatRevision)) attrs
 
+#endif //!FABLE_COMPILER
+
 //----------------------------------------------------------------------------
 // TcImports
 //--------------------------------------------------------------------------
+
+#if FABLE_COMPILER
+
+// trimmed-down version of TcImports
+[<Sealed>]
+type TcImports() =
+    let mutable tcGlobalsOpt = None
+    let mutable ccuMap = Map<string, ImportedAssembly>([])
+
+    // This is the main "assembly reference --> assembly" resolution routine.
+    let FindCcuInfo (_m, assemblyName) =
+        match ccuMap |> Map.tryFind assemblyName with
+        | Some ccuInfo -> ResolvedCcu(ccuInfo.FSharpViewOfMetadata)
+        | None -> UnresolvedCcu(assemblyName)
+
+    member x.FindCcu (_m: range, assemblyName) =
+        match ccuMap |> Map.tryFind assemblyName with
+        | Some ccuInfo -> Some ccuInfo.FSharpViewOfMetadata
+        | None -> None
+
+    member x.SetTcGlobals g =
+        tcGlobalsOpt <- Some g
+    member x.GetTcGlobals() =
+        tcGlobalsOpt.Value
+    member x.SetCcuMap m =
+        ccuMap <- m
+    member x.GetImportedAssemblies() =
+        ccuMap.Values |> Seq.toList
+
+    member x.GetImportMap() =
+        let loaderInterface =
+            { new Import.AssemblyLoader with
+                 member _.FindCcuFromAssemblyRef (_ctok, m, ilAssemblyRef) = 
+                    FindCcuInfo(m, ilAssemblyRef.Name)
+                 member _.TryFindXmlDocumentationInfo (_assemblyName) =
+                    None
+            }
+        new Import.ImportMap (tcGlobalsOpt.Value, loaderInterface)
+
+    member x.GetCcusExcludingBase() =
+        //TODO: excludes any framework imports (which may be shared between multiple builds)
+        x.GetImportedAssemblies()
+        |> List.map (fun x -> x.FSharpViewOfMetadata)
+
+#else //!FABLE_COMPILER
 
 [<Sealed>]
 type TcImportsSafeDisposal(tciLock: TcImportsLock, disposeActions: ResizeArray<unit -> unit>,disposeTypeProviderActions: ResizeArray<unit -> unit>) =
@@ -1979,3 +2044,5 @@ let RequireDLL (ctok, tcImports: TcImports, tcEnv, thisAssemblyName, referenceRa
     let amap = tcImports.GetImportMap()
     let _openDecls, tcEnv = (tcEnv, asms) ||> List.collectFold (fun tcEnv asm -> AddCcuToTcEnv(g, amap, referenceRange, tcEnv, thisAssemblyName, asm.FSharpViewOfMetadata, asm.AssemblyAutoOpenAttributes, asm.AssemblyInternalsVisibleToAttributes))
     tcEnv, (dllinfos, asms)
+
+#endif //!FABLE_COMPILER

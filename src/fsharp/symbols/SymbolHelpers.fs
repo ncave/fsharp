@@ -373,9 +373,13 @@ module internal SymbolHelpers =
         | _ -> None
 
     /// Work out the source file for an item and fix it up relative to the CCU if it is relative.
-    let fileNameOfItem (g: TcGlobals) qualProjectDir (m: range) h =
+    let fileNameOfItem (g: TcGlobals) (qualProjectDir: string option) (m:range) (h:Item) =
         let file = m.FileName 
         if verbose then dprintf "file stored in metadata is '%s'\n" file
+#if FABLE_COMPILER
+        ignore g; ignore qualProjectDir; ignore h
+        file
+#else
         if not (FileSystem.IsPathRootedShim file) then 
             match ccuOfItem g h with 
             | Some ccu -> 
@@ -384,7 +388,8 @@ module internal SymbolHelpers =
                 match qualProjectDir with 
                 | None     -> file
                 | Some dir -> Path.Combine(dir, file)
-         else file
+        else file
+#endif
 
     /// Cut long filenames to make them visually appealing 
     let cutFileName s = if String.length s > 40 then String.sub s 0 10 + "..."+String.sub s (String.length s - 27) 27 else s
@@ -574,7 +579,11 @@ module internal SymbolHelpers =
                   | ValueSome tcref -> hash tcref.LogicalName
                   | _ -> 1010
               | Item.ILField(ILFieldInfo(_, fld)) -> 
+#if FABLE_COMPILER
+                  (box fld).GetHashCode() // hash on the object identity of the AbstractIL metadata blob for the field
+#else
                   System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode fld // hash on the object identity of the AbstractIL metadata blob for the field
+#endif
               | Item.TypeVar (nm, _tp) -> hash nm
               | Item.CustomOperation (_, _, Some minfo) -> minfo.ComputeHashCode()
               | Item.CustomOperation (_, _, None) -> 1

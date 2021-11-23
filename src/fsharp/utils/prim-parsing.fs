@@ -7,7 +7,9 @@ namespace  Internal.Utilities.Text.Parsing
 open Internal.Utilities.Text.Lexing
 
 open System
+#if !FABLE_COMPILER
 open System.Buffers
+#endif
 
 exception RecoverableParseError
 exception Accept of obj
@@ -97,7 +99,7 @@ type Stack<'a>(n)  =
             Array.blit old 0 contents 0 count
     
     member buf.Count = count
-    member buf.Pop() = count <- count - 1
+    member buf.Pop() = count <- count - 1; contents.[count]
     member buf.Peep() = contents.[count - 1]
     member buf.Top(n) = [ for x in contents.[max 0 (count-n)..count - 1] -> x ] |> List.rev
     member buf.Push(x) =
@@ -106,9 +108,11 @@ type Stack<'a>(n)  =
         count <- count + 1
         
     member buf.IsEmpty = (count = 0)
+#if DEBUG
     member buf.PrintStack() = 
         for i = 0 to (count - 1) do 
             Console.Write("{0}{1}",contents.[i],if i=count-1 then ":" else "-") 
+#endif
           
 
 #if DEBUG
@@ -234,6 +238,10 @@ module internal Implementation =
         let cacheSize = 7919 // the 1000'th prime
         // Use a simpler hash table with faster lookup, but only one
         // hash bucket per key.
+#if FABLE_COMPILER
+        let actionTableCache = Array.zeroCreate<int> (cacheSize * 2)
+        let gotoTableCache = Array.zeroCreate<int> (cacheSize * 2)
+#else
         let actionTableCache = ArrayPool<int>.Shared.Rent(cacheSize * 2)
         let gotoTableCache = ArrayPool<int>.Shared.Rent(cacheSize * 2)
         // Clear the arrays since ArrayPool does not
@@ -244,6 +252,7 @@ module internal Implementation =
                 member _.Dispose() = 
                     ArrayPool<int>.Shared.Return actionTableCache
                     ArrayPool<int>.Shared.Return gotoTableCache }
+#endif
         let actionTable = AssocTable(tables.actionTableElements, tables.actionTableRowOffsets, actionTableCache, cacheSize)
         let gotoTable = AssocTable(tables.gotos, tables.sparseGotoTableRowOffsets, gotoTableCache, cacheSize)
         let stateToProdIdxsTable = IdxToIdxListTable(tables.stateToProdIdxsTableElements, tables.stateToProdIdxsTableRowOffsets)
@@ -302,8 +311,8 @@ module internal Implementation =
                 if Flags.debug then 
                     Console.WriteLine("popping stack during error recovery")
 #endif
-                valueStack.Pop()
-                stateStack.Pop()
+                valueStack.Pop() |> ignore
+                stateStack.Pop() |> ignore
                 popStackUntilErrorShifted(tokenOpt)
 
         while not finished do                                                                                    
@@ -373,8 +382,8 @@ module internal Implementation =
                     for i = 0 to n - 1 do
                         if valueStack.IsEmpty then failwith "empty symbol stack"
                         let topVal = valueStack.Peep()                                  // Grab topVal
-                        valueStack.Pop()
-                        stateStack.Pop()
+                        valueStack.Pop() |> ignore
+                        stateStack.Pop() |> ignore
 
                         let ruleIndex = (n-i)-1
                         ruleValues.[ruleIndex] <- topVal.value

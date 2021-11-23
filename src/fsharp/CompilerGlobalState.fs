@@ -92,12 +92,16 @@ type internal CompilerGlobalState () =
 type Unique = int64
 
 //++GLOBAL MUTABLE STATE (concurrency-safe)
-let newUnique =
-    let i = ref 0L
-    fun () -> System.Threading.Interlocked.Increment i
+#if FABLE_COMPILER
+let newUnique = let i = ref 0L in fun () -> i.Value <- i.Value + 1L; i.Value
+#else
+let newUnique = let i = ref 0L in fun () -> System.Threading.Interlocked.Increment i
+#endif
 
 /// Unique name generator for stamps attached to to val_specs, tycon_specs etc.
 //++GLOBAL MUTABLE STATE (concurrency-safe)
-let newStamp =
-    let i = ref 0L
-    fun () -> System.Threading.Interlocked.Increment i
+#if FABLE_COMPILER
+let newStamp = let i = ref 0L in fun () -> i.Value <- i.Value + 1L; i.Value
+#else
+let newStamp = let i = ref 0L in fun () -> System.Threading.Interlocked.Increment i
+#endif

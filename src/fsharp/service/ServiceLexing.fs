@@ -625,7 +625,11 @@ type FSharpLineTokenizer(lexbuf: UnicodeLexing.Lexbuf,
 
     // Process: anywhite* #<directive>
     let processDirective (str: string) directiveLength delay cont =
+#if FABLE_COMPILER
+        let hashIdx = str.IndexOf("#")
+#else
         let hashIdx = str.IndexOf("#", StringComparison.Ordinal)
+#endif
         if (hashIdx <> 0) then delay(WHITESPACE cont, 0, hashIdx - 1)
         delay(HASH_IF(range0, "", cont), hashIdx, hashIdx + directiveLength)
         hashIdx + directiveLength + 1

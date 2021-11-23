@@ -64,7 +64,10 @@ type internal DelayedILModuleReader =
 
     new (name, getStream) = { name = name; gate = obj(); getStream = getStream; result = Unchecked.defaultof<_> }
 
-    member this.TryGetILModuleReader() =
+    member this.TryGetILModuleReader(): Cancellable<ILModuleReader option> =
+#if FABLE_COMPILER
+        Cancellable.ret None
+#else
         // fast path
         match box this.result with
         | null ->
@@ -102,7 +105,7 @@ type internal DelayedILModuleReader =
             }
         | _ ->
             Cancellable.ret (Some this.result)
-
+#endif //!FABLE_COMPILER
 
 [<RequireQualifiedAccess;NoComparison;CustomEquality>]
 type FSharpReferencedProject =
@@ -199,7 +202,11 @@ module internal FSharpCheckerResultsSettings =
     let maxTypeCheckErrorsOutOfProjectContext = GetEnvInteger "FCS_MaxErrorsOutOfProjectContext" 3
 
     // Look for DLLs in the location of the service DLL first.
+#if FABLE_COMPILER
+    let defaultFSharpBinariesDir = "."
+#else
     let defaultFSharpBinariesDir = FSharpEnvironment.BinFolderOfDefaultFSharpCompiler(Some(Path.GetDirectoryName(typeof<IncrementalBuilder>.Assembly.Location))).Value
+#endif
 
 [<Sealed>]
 type FSharpSymbolUse(denv: DisplayEnv, symbol:FSharpSymbol, inst: TyparInst, itemOcc, range: range) =
@@ -1761,6 +1768,7 @@ module internal ParseAndCheckFile =
         errHandler.CollectedDiagnostics, parseResult, errHandler.AnyErrors
 
 
+#if !FABLE_COMPILER
     let ApplyLoadClosure(tcConfig, parsedMainInput, mainInputFileName, loadClosure: LoadClosure option, tcImports: TcImports, backgroundDiagnostics) =
 
         // If additional references were brought in by the preprocessor then we need to process them
@@ -1825,6 +1833,7 @@ module internal ParseAndCheckFile =
         | None ->
             // For non-scripts, check for disallow #r and #load.
             ApplyMetaCommandsFromInputToTcConfig (tcConfig, parsedMainInput, Path.GetDirectoryName mainInputFileName, tcImports.DependencyProvider) |> ignore
+#endif
 
     // Type check a single file against an initial context, gleaning both errors and intellisense information.
     let CheckOneFile
@@ -1854,8 +1863,10 @@ module internal ParseAndCheckFile =
         use _unwindEL = PushErrorLoggerPhaseUntilUnwind (fun _oldLogger -> errHandler.ErrorLogger)
         use _unwindBP = PushThreadBuildPhaseUntilUnwind BuildPhase.TypeCheck
 
+#if !FABLE_COMPILER
         // Apply nowarns to tcConfig (may generate errors, so ensure errorLogger is installed)
         let tcConfig = ApplyNoWarnsToTcConfig (tcConfig, parsedMainInput,Path.GetDirectoryName mainInputFileName)
+#endif
 
         // update the error handler with the modified tcConfig
         errHandler.ErrorSeverityOptions <- tcConfig.errorSeverityOptions
@@ -1864,8 +1875,10 @@ module internal ParseAndCheckFile =
         do for err, severity in backgroundDiagnostics do
             diagnosticSink (err, severity)
 
+#if !FABLE_COMPILER
         // If additional references were brought in by the preprocessor then we need to process them
         ApplyLoadClosure(tcConfig, parsedMainInput, mainInputFileName, loadClosure, tcImports, backgroundDiagnostics)
+#endif
 
         // A problem arises with nice name generation, which really should only
         // be done in the backend, but is also done in the typechecker for better or worse.
@@ -2167,6 +2180,7 @@ type FSharpCheckFileResults
         let errors = FSharpCheckFileResults.JoinErrors(isIncompleteTypeCheckEnvironment, creationErrors, parseErrors, tcErrors)
         FSharpCheckFileResults (mainInputFileName, errors, Some tcFileInfo, dependencyFiles, Some builder, keepAssemblyContents)
 
+#if !FABLE_COMPILER
     static member CheckOneFile
         (parseResults: FSharpParseFileResults,
          sourceText: ISourceText,
@@ -2197,6 +2211,7 @@ type FSharpCheckFileResults
             let results = FSharpCheckFileResults (mainInputFileName, errors, Some tcFileInfo, dependencyFiles, Some builder, keepAssemblyContents)
             return results
         }
+#endif
 
 [<Sealed>]
 // 'details' is an option because the creation of the tcGlobals etc. for the project may have failed.
@@ -2271,6 +2286,10 @@ type FSharpCheckProjectResults
         let results =
             match builderOrSymbolUses with
             | Choice1Of2 builder ->
+#if FABLE_COMPILER
+                ignore builder
+                [||]
+#else
                 builder.SourceFiles
                 |> Array.ofList
                 |> Array.collect (fun x ->
@@ -2284,6 +2303,7 @@ type FSharpCheckProjectResults
                     | _ ->
                         [||]
                 )
+#endif
             | Choice2Of2 tcSymbolUses ->
                 tcSymbolUses.GetUsesOfSymbol symbol.Item
 
@@ -2303,6 +2323,10 @@ type FSharpCheckProjectResults
         let tcSymbolUses =
             match builderOrSymbolUses with
             | Choice1Of2 builder ->
+#if FABLE_COMPILER
+                ignore builder
+                [||]
+#else
                 builder.SourceFiles
                 |> Array.ofList
                 |> Array.map (fun x ->
@@ -2316,6 +2340,7 @@ type FSharpCheckProjectResults
                     | _ ->
                         TcSymbolUses.Empty
                 )
+#endif
             | Choice2Of2 tcSymbolUses ->
                 [|tcSymbolUses|]
 
@@ -2343,6 +2368,8 @@ type FSharpCheckProjectResults
         ilAssemRef.QualifiedName
 
     override _.ToString() = "FSharpCheckProjectResults(" + projectFileName + ")"
+
+#if !FABLE_COMPILER
 
 type FsiInteractiveChecker(legacyReferenceResolver,
                            tcConfig: TcConfig,
@@ -2415,6 +2442,8 @@ type FsiInteractiveChecker(legacyReferenceResolver,
 
             return parseResults, typeCheckResults, projectResults
         }
+
+#endif //!FABLE_COMPILER
 
 /// The result of calling TypeCheckResult including the possibility of abort and background compiler not caught up.
 type [<RequireQualifiedAccess>] public FSharpCheckFileAnswer =

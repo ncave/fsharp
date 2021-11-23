@@ -875,7 +875,7 @@ module internal DescriptionListsImpl =
     /// Get rid of groups of overloads an replace them with single items.
     /// (This looks like it is doing the a similar thing as FlattenItems, this code 
     /// duplication could potentially be removed)
-    let AnotherFlattenItems g m item =
+    let AnotherFlattenItems g _m item =
         match item with 
         | Item.CtorGroup(nm, cinfos) -> List.map (fun minfo -> Item.CtorGroup(nm, [minfo])) cinfos 
         | Item.FakeInterfaceCtor _
@@ -895,7 +895,7 @@ module internal DescriptionListsImpl =
             let pinfo = List.head pinfos 
             if pinfo.IsIndexer then [item] else []
 #if !NO_EXTENSIONTYPING
-        | ItemIsWithStaticArguments m g _ -> 
+        | ItemIsWithStaticArguments _m g _ -> 
             // we pretend that provided-types-with-static-args are method-like in order to get ParamInfo for them
             [item] 
 #endif
