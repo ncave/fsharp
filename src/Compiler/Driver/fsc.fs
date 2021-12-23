@@ -1438,3 +1438,20 @@ let CompileFromSyntaxTrees
     |> main4 (tcImportsCapture, dynamicAssemblyCreator)
     |> main5
     |> main6 dynamicAssemblyCreator
+
+let compileOfTypedAst
+        (ctok, tcGlobals, tcImports: TcImports, generatedCcu: CcuThunk, typedImplFiles,
+         topAttrs, tcConfig: TcConfig, outfile, errorLogger, exiter: Exiter) =
+
+     let tcImportsCapture = None
+     let dynamicAssemblyCreator = None
+     let assemblyName = Path.GetFileNameWithoutExtension(outfile)
+     // Doubling here tcImports as frameworkTcImports, seems to work...
+     let frameworkTcImports = tcImports
+
+     Args (ctok, tcGlobals, tcImports, frameworkTcImports, generatedCcu, typedImplFiles, topAttrs, tcConfig, outfile, None, assemblyName, errorLogger, exiter)
+     |> main2
+     |> main3
+     |> main4 (tcImportsCapture, dynamicAssemblyCreator)
+     |> main5
+     |> main6 dynamicAssemblyCreator
