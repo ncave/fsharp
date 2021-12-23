@@ -15,6 +15,12 @@ open FSharp.Compiler.Symbols
 open FSharp.Compiler.Syntax
 open FSharp.Compiler.Text
 open FSharp.Compiler.Tokenization
+open FSharp.Compiler.ErrorLogger
+open FSharp.Compiler.Driver
+
+module internal CompileHelpers =
+    val mkCompilationErrorHandlers: unit -> ResizeArray<FSharpDiagnostic> * ErrorLogger * ErrorLoggerProvider
+    val tryCompile: ErrorLogger -> (Exiter -> unit) -> int 
 
 /// Used to parse and check F# source code.
 [<Sealed; AutoSerializable(false)>]
