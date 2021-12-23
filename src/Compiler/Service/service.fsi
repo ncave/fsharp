@@ -15,6 +15,12 @@ open FSharp.Compiler.Symbols
 open FSharp.Compiler.Syntax
 open FSharp.Compiler.Text
 open FSharp.Compiler.Tokenization
+open FSharp.Compiler.ErrorLogger
+open FSharp.Compiler.Driver
+
+module internal CompileHelpers =
+    val mkCompilationErrorHandlers: unit -> ResizeArray<FSharpDiagnostic> * ErrorLogger * ErrorLoggerProvider
+    val tryCompile: ErrorLogger -> (Exiter -> unit) -> int 
 
 [<Experimental "This type is experimental and likely to be removed in the future.">]
 [<RequireQualifiedAccess>]
