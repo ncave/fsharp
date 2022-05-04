@@ -55,6 +55,20 @@ val compileOfAst:
     dynamicAssemblyCreator: (TcConfig * TcGlobals * string * ILModuleDef -> unit) option
       -> unit
 
+
+ val compileOfTypedAst: 
+     ctok: CompilationThreadToken *
+     tcGlobals: TcGlobals *
+     tcImports: TcImports *
+     generatedCcu: TypedTree.CcuThunk *
+     typedImplFiles: TypedTree.TypedImplFile list *
+     topAttrs: CheckDeclarations.TopAttribs *
+     tcConfig: TcConfig *
+     outfile: string *
+     errorLogger: ErrorLogger *
+     exiter: Exiter
+       -> unit
+
 /// Part of LegacyHostedCompilerForTesting
 type InProcErrorLoggerProvider = 
     new : unit -> InProcErrorLoggerProvider
