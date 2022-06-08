@@ -484,10 +484,18 @@ let rec IsPartialExprVal x =
     | ValValue (_, a) 
     | SizeValue(_, a) -> IsPartialExprVal a
 
+#if FABLE_CLI
+// Many Fable packages inline functions that access internal values to resolve generics, this is not an issue
+// in "normal" Fable compilations but it raises errors when generating an assembly por precompilation. Disable
+// for Fable as it's not an actual error (and if is, we assume it's already been raised during type chedking).
+let CheckInlineValueIsComplete (_v: Val) _res =
+    ()
+#else
 let CheckInlineValueIsComplete (v: Val) res =
     if v.MustInline && IsPartialExprVal res then
         errorR(Error(FSComp.SR.optValueMarkedInlineButIncomplete(v.DisplayName), v.Range))
         //System.Diagnostics.Debug.Assert(false, sprintf "Break for incomplete inline value %s" v.DisplayName)
+#endif
 
 let check (vref: ValRef) (res: ValInfo) =
     CheckInlineValueIsComplete vref.Deref res.ValExprInfo
