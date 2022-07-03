@@ -1,4 +1,4 @@
-﻿open System.IO
+open System.IO
 open FSharp.Compiler
 open FSharp.Compiler.CodeAnalysis
 open FSharp.Compiler.SourceCodeServices
@@ -80,7 +80,7 @@ let printAst title (projectResults: FSharpCheckProjectResults) =
 [<EntryPoint>]
 let main argv = 
     let projName = "Project.fsproj"
-    let fileName = "test_script.fsx"
+    let fileName = __SOURCE_DIRECTORY__ + "/test_script.fsx"
     let fileNames = [| fileName |]
     let source = File.ReadAllText (fileName, System.Text.Encoding.UTF8)
 
@@ -123,4 +123,5 @@ let main argv =
     let decls = typeCheckResults.GetDeclarationListInfo(Some parseResults, 8, inputLines.[7], partialName, (fun _ -> []))
     [ for item in decls.Items -> item.Name ] |> printfn "\n---> canvas AutoComplete = %A"
 
+    printfn "Done."
     0
