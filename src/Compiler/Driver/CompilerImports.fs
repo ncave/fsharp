@@ -2429,6 +2429,42 @@ and [<Sealed>] TcImports
             global_g <- Some tcGlobals
 #endif
             frameworkTcImports.SetTcGlobals tcGlobals
+
+#if EXPORT_METADATA
+            let metadataPath = __SOURCE_DIRECTORY__ + "/../../../temp/metadata/"
+            let writeMetadata (dllInfo: ImportedBinary) =
+                let outfile = Path.GetFullPath(metadataPath + Path.GetFileName(dllInfo.FileName))
+                let ilModule = dllInfo.RawMetadata.TryGetILModuleDef().Value
+                try
+                    let args: AbstractIL.ILBinaryWriter.options = {
+                        ilg = ilGlobals
+                        outfile = outfile
+                        pdbfile = None
+                        portablePDB = false
+                        embeddedPDB = false
+                        embedAllSource = false
+                        embedSourceList = []
+                        allGivenSources = []
+                        sourceLink = ""
+                        checksumAlgorithm = tcConfig.checksumAlgorithm
+                        signer = None
+                        emitTailcalls = false
+                        deterministic = false
+                        showTimes = false
+                        dumpDebugInfo = false
+                        referenceAssemblyOnly = false
+                        referenceAssemblyAttribOpt = None
+                        pathMap = tcConfig.pathMap }
+                    AbstractIL.ILBinaryWriter.WriteILBinaryFile (args, ilModule, id)
+                with Failure msg ->
+                    printfn "Export error: %s" msg
+
+            let! dllinfos, _ccuinfos = frameworkTcImports.RegisterAndImportReferencedAssemblies (ctok, tcResolutions.GetAssemblyResolutions())
+            dllinfos |> List.iter writeMetadata
+            let! dllinfos, _ccuinfos = frameworkTcImports.RegisterAndImportReferencedAssemblies (ctok, tcAltResolutions.GetAssemblyResolutions())
+            dllinfos |> List.iter writeMetadata
+#endif
+
             return tcGlobals, frameworkTcImports
         }
 
