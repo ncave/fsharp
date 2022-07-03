@@ -60,6 +60,8 @@ val SplitRelatedDiagnostics: diagnostic: PhasedDiagnostic -> PhasedDiagnostic * 
 val OutputPhasedDiagnostic:
     os: StringBuilder -> diagnostic: PhasedDiagnostic -> flattenErrors: bool -> suggestNames: bool -> unit
 
+#if !FABLE_COMPILER
+
 /// Output an error or warning to a buffer
 val OutputDiagnostic:
     implicitIncludeDir: string *
@@ -75,6 +77,8 @@ val OutputDiagnostic:
 val OutputDiagnosticContext:
     prefix: string -> fileLineFunction: (string -> int -> string) -> StringBuilder -> PhasedDiagnostic -> unit
 
+#endif //!FABLE_COMPILER
+
 /// Get an error logger that filters the reporting of warnings based on scoped pragma information
 val GetDiagnosticsLoggerFilteringByScopedPragmas:
     checkFile: bool * ScopedPragma list * FSharpDiagnosticOptions * DiagnosticsLogger -> DiagnosticsLogger
@@ -89,6 +93,8 @@ val ReportDiagnosticAsWarning: FSharpDiagnosticOptions -> (PhasedDiagnostic * FS
 
 /// Indicates if we should report a warning as an error
 val ReportDiagnosticAsError: FSharpDiagnosticOptions -> (PhasedDiagnostic * FSharpDiagnosticSeverity) -> bool
+
+#if !FABLE_COMPILER
 
 /// Used internally and in LegacyHostedCompilerForTesting
 [<RequireQualifiedAccess>]
@@ -128,3 +134,5 @@ val CollectFormattedDiagnostics:
     PhasedDiagnostic *
     suggestNames: bool ->
         FormattedDiagnostic[]
+
+#endif //!FABLE_COMPILER

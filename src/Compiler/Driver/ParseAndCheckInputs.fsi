@@ -11,7 +11,9 @@ open FSharp.Compiler.CompilerGlobalState
 open FSharp.Compiler.CompilerConfig
 open FSharp.Compiler.CompilerImports
 open FSharp.Compiler.Diagnostics
+#if !FABLE_COMPILER
 open FSharp.Compiler.DependencyManager
+#endif
 open FSharp.Compiler.DiagnosticsLogger
 open FSharp.Compiler.Syntax
 open FSharp.Compiler.TcGlobals
@@ -42,6 +44,8 @@ val ParseInput:
     isLastCompiland: (bool * bool) ->
         ParsedInput
 
+#if !FABLE_COMPILER
+
 /// A general routine to process hash directives
 val ProcessMetaCommandsFromInput:
     ('T -> range * string -> 'T) * ('T -> range * string * Directive -> 'T) * ('T -> range * string -> unit) ->
@@ -54,7 +58,11 @@ val ApplyMetaCommandsFromInputToTcConfig: TcConfig * ParsedInput * string * Depe
 /// Process the #nowarn in an input and integrate them into the TcConfig
 val ApplyNoWarnsToTcConfig: TcConfig * ParsedInput * string -> TcConfig
 
+#endif //!FABLE_COMPILER
+
 val GetScopedPragmasForInput: input: ParsedInput -> ScopedPragma list
+
+#if !FABLE_COMPILER
 
 /// Parse one input stream
 val ParseOneInputStream:
@@ -96,7 +104,11 @@ val ParseOneInputLexbuf:
     diagnosticsLogger: DiagnosticsLogger ->
         ParsedInput
 
+#endif //!FABLE_COMPILER
+
 val EmptyParsedInput: fileName: string * isLastCompiland: (bool * bool) -> ParsedInput
+
+#if !FABLE_COMPILER
 
 /// Parse multiple input files from disk
 val ParseInputFiles:
@@ -108,6 +120,8 @@ val ParseInputFiles:
     createDiagnosticsLogger: (Exiter -> CapturingDiagnosticsLogger) *
     retryLocked: bool ->
         (ParsedInput * string) list
+
+#endif //!FABLE_COMPILER
 
 /// Get the initial type checking environment including the loading of mscorlib/System.Core, FSharp.Core
 /// applying the InternalsVisibleTo in referenced assemblies and opening 'Checked' if requested.

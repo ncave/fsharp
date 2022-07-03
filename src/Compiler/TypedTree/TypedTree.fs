@@ -2339,7 +2339,11 @@ type TyparConstraint =
     
     override x.ToString() = sprintf "%+A" x 
     
+#if FABLE_COMPILER
+[<CustomEquality; CustomComparison; StructuredFormatDisplay("{DebugText}")>]
+#else
 [<NoEquality; NoComparison; StructuredFormatDisplay("{DebugText}")>]
+#endif
 type TraitWitnessInfo = 
     | TraitWitnessInfo of TTypes * string * SynMemberFlags * TTypes * TType option
     
@@ -2354,6 +2358,13 @@ type TraitWitnessInfo =
 
     override x.ToString() = "TTrait(" + x.MemberName + ")"
     
+#if FABLE_COMPILER
+    override x.GetHashCode() = hash x.MemberName
+    override x.Equals(_y: obj) = false // not used
+    interface System.IComparable with
+        member x.CompareTo(_y: obj) = -1 // not used
+#endif
+
 /// The specification of a member constraint that must be solved 
 [<NoEquality; NoComparison; StructuredFormatDisplay("{DebugText}")>]
 type TraitConstraintInfo = 

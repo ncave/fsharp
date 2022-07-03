@@ -4,9 +4,11 @@ namespace FSharp.Compiler.Xml
 
 open System
 open System.Collections.Generic
+#if !FABLE_COMPILER
 open System.IO
 open System.Xml
 open System.Xml.Linq
+#endif
 open Internal.Utilities.Library
 open Internal.Utilities.Collections
 open FSharp.Compiler.DiagnosticsLogger
@@ -65,6 +67,7 @@ type XmlDoc(unprocessedLines: string[], range: range) =
         else
             doc.GetElaboratedXmlLines() |> String.concat Environment.NewLine
 
+#if !FABLE_COMPILER
     member doc.Check(paramNamesOpt: string list option) =
         try
             // We must wrap with <doc> in order to have only one root element
@@ -115,6 +118,7 @@ type XmlDoc(unprocessedLines: string[], range: range) =
 
         with e ->
             warning (Error(FSComp.SR.xmlDocBadlyFormed (e.Message), doc.Range))
+#endif //!FABLE_COMPILER
 
 #if CREF_ELABORATION
     member doc.Elaborate(crefResolver) =
@@ -262,7 +266,9 @@ type PreXmlDoc =
                 let lines = Array.map fst preLines
                 let m = Array.reduce unionRanges (Array.map snd preLines)
                 let doc = XmlDoc(lines, m)
+#if !FABLE_COMPILER
                 if check then doc.Check(paramNamesOpt)
+#endif
                 doc
 
     member internal x.Range =
@@ -296,6 +302,19 @@ type PreXmlDoc =
     static member Create(unprocessedLines, range) = PreXmlDirect(unprocessedLines, range)
 
     static member Merge a b = PreXmlMerge(a, b)
+
+#if FABLE_COMPILER
+
+[<Sealed>]
+type XmlDocumentationInfo () =
+    member _.TryGetXmlDocBySig(xmlDocSig: string): XmlDoc option =
+        ignore xmlDocSig
+        None
+    static member TryCreateFromFile(xmlFileName: string): XmlDocumentationInfo option =
+        ignore xmlFileName
+        None
+
+#else //!FABLE_COMPILER
 
 [<Sealed>]
 type XmlDocumentationInfo private (tryGetXmlDocument: unit -> XmlDocument option) =
@@ -361,6 +380,8 @@ type XmlDocumentationInfo private (tryGetXmlDocument: unit -> XmlDocument option
                     None
 
             Some(XmlDocumentationInfo(tryGetXmlDocument))
+
+#endif //!FABLE_COMPILER
 
 type IXmlDocumentationInfoLoader =
 

@@ -9,7 +9,9 @@ open FSharp.Compiler.CheckDeclarations
 open FSharp.Compiler.CodeAnalysis
 open FSharp.Compiler.CompilerConfig
 open FSharp.Compiler.CompilerImports
+#if !FABLE_COMPILER
 open FSharp.Compiler.DependencyManager
+#endif
 open FSharp.Compiler.Diagnostics
 open FSharp.Compiler.EditorServices
 open FSharp.Compiler.DiagnosticsLogger
@@ -21,6 +23,16 @@ open FSharp.Compiler.TcGlobals
 open FSharp.Compiler.Text
 open FSharp.Compiler.TypedTree
 open FSharp.Compiler.BuildGraph
+
+#if FABLE_COMPILER
+// stub
+[<Class>]
+type internal IncrementalBuilder = 
+      member IncrementUsageCount : unit -> IDisposable
+      member IsAlive : bool
+      static member KeepBuilderAlive : IncrementalBuilder option -> IDisposable
+
+#else //!FABLE_COMPILER
 
 /// Lookup the global static cache for building the FrameworkTcImports
 type internal FrameworkImportsCache =
@@ -269,3 +281,5 @@ module internal IncrementalBuild =
 
     /// Used for unit testing. Causes all steps of underlying incremental graph evaluation to cancel
     val LocallyInjectCancellationFault: unit -> IDisposable
+
+#endif //!FABLE_COMPILER

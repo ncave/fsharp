@@ -658,10 +658,14 @@ type internal Set<'T, 'ComparerTag> when 'ComparerTag :> IComparer<'T>(comparer:
     member s.ToArray() = SetTree.toArray tree
 
     override this.Equals(that) =
+#if FABLE_COMPILER
+            ((this :> System.IComparable).CompareTo(that) = 0)
+#else
         match that with
         // Cast to the exact same type as this, otherwise not equal.
         | :? Set<'T, 'ComparerTag> as that -> ((this :> System.IComparable).CompareTo(that) = 0)
         | _ -> false
+#endif
 
     interface System.IComparable with
         // Cast s2 to the exact same type as s1, see 4884.
@@ -1232,10 +1236,14 @@ type internal Map<'Key, 'T, 'ComparerTag> when 'ComparerTag :> IComparer<'Key>(c
             (MapTree.toSeq tree :> System.Collections.IEnumerator)
 
     override this.Equals(that) =
+#if FABLE_COMPILER
+            ((this :> System.IComparable).CompareTo(that) = 0)
+#else
         match that with
         // Cast to the exact same type as this, otherwise not equal.
         | :? Map<'Key, 'T, 'ComparerTag> as that -> ((this :> System.IComparable).CompareTo(that) = 0)
         | _ -> false
+#endif
 
     interface System.IComparable with
         member m1.CompareTo(m2: obj) =

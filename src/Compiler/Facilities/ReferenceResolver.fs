@@ -59,3 +59,24 @@ type internal ILegacyReferenceResolver =
 [<AllowNullLiteral>]
 type LegacyReferenceResolver(impl: ILegacyReferenceResolver) =
     member internal _.Impl = impl
+
+#if FABLE_COMPILER
+    static member getResolver () =
+        { new ILegacyReferenceResolver with
+           member _.HighestInstalledNetFrameworkVersion() = "v4.8"
+           member _.DotNetFrameworkReferenceAssembliesRootDirectory = ""
+           member _.Resolve(resolutionEnvironment, references, targetFrameworkVersion,
+                        targetFrameworkDirectories, targetProcessorArchitecture, fsharpCoreDir,
+                        explicitIncludeDirs, implicitIncludeDir, logMessage, logDiagnostic) =
+                Array.empty
+        }
+        |> LegacyReferenceResolver
+
+type FxResolver() =
+    class end
+
+namespace Internal.Utilities
+
+module internal FSharpEnvironment =
+    let isRunningOnCoreClr = true
+#endif //FABLE_COMPILER

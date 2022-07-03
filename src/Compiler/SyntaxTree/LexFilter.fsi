@@ -20,12 +20,12 @@ type LexFilter =
     new:
         indentationSyntaxStatus: IndentationAwareSyntaxStatus *
         compilingFSharpCore: bool *
-        lexer: (LexBuffer<char> -> token) *
-        lexbuf: LexBuffer<char> ->
+        lexer: (LexBuffer<LexBufferChar> -> token) *
+        lexbuf: LexBuffer<LexBufferChar> ->
             LexFilter
 
     /// The LexBuffer associated with the filter
-    member LexBuffer: LexBuffer<char>
+    member LexBuffer: LexBuffer<LexBufferChar>
 
     /// Get the next token
     member GetToken: unit -> token

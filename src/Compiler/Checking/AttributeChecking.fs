@@ -256,7 +256,11 @@ let CheckFSharpAttributes (g:TcGlobals) attribs m =
         if g.compilingFSharpCore then
             true
         else
+#if FABLE_COMPILER
+            g.langVersion.IsPreviewEnabled && (s.ToLowerInvariant().IndexOf(langVersionPrefix) >= 0)
+#else
             g.langVersion.IsPreviewEnabled && (s.IndexOf(langVersionPrefix, StringComparison.OrdinalIgnoreCase) >= 0)
+#endif
 
     if isNil attribs then CompleteD
     else
@@ -413,7 +417,7 @@ let CheckMethInfoAttributes g m tyargsOpt (minfo: MethInfo) =
                                 CompleteD)
                     Some res) 
 #if !NO_TYPEPROVIDERS
-                (fun provAttribs -> Some (CheckProvidedAttributes g m provAttribs)) 
+                (fun provAttribs -> Some (CheckProvidedAttributes g m provAttribs))
 #else
                 (fun _provAttribs -> None)
 #endif 

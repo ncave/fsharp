@@ -6,7 +6,9 @@ module internal FSharp.Compiler.CompilerDiagnostics
 open System
 open System.Diagnostics
 open System.IO
+#if !FABLE_COMPILER
 open System.Reflection
+#endif
 open System.Text
 
 open Internal.Utilities.Library.Extras
@@ -200,8 +202,10 @@ let GetRangeOfDiagnostic (diagnostic: PhasedDiagnostic) =
         | AssemblyNotResolved (_, m)
         | HashLoadedSourceHasIssues (_, _, _, m)
         | HashLoadedScriptConsideredSource m -> Some m
+#if !FABLE_COMPILER
         // Strip TargetInvocationException wrappers
         | :? System.Reflection.TargetInvocationException as e -> RangeFromException e.InnerException
+#endif
 #if !NO_TYPEPROVIDERS
         | :? TypeProviderError as e -> e.Range |> Some
 #endif
@@ -327,8 +331,10 @@ let GetDiagnosticNumber (diagnostic: PhasedDiagnostic) =
         | PatternMatchCompilation.EnumMatchIncomplete _ -> 104
         // DO NOT CHANGE THE NUMBERS
 
+#if !FABLE_COMPILER
         // Strip TargetInvocationException wrappers
         | :? System.Reflection.TargetInvocationException as e -> GetFromException e.InnerException
+#endif
 
         | WrappedError (e, _) -> GetFromException e
 
@@ -411,15 +417,19 @@ let SplitRelatedDiagnostics (diagnostic: PhasedDiagnostic) : PhasedDiagnostic * 
         | WrappedError (exn2, m) ->
             let diag2, related = SplitRelatedException exn2
             WrappedError(diag2.Exception, m) |> ToPhased, related
+#if !FABLE_COMPILER
         // Strip TargetInvocationException wrappers
         | :? TargetInvocationException as exn -> SplitRelatedException exn.InnerException
+#endif
         | _ -> ToPhased exn, []
 
     SplitRelatedException diagnostic.Exception
 
 let Message (name, format) = DeclareResourceString(name, format)
 
+#if !FABLE_COMPILER
 do FSComp.SR.RunStartupValidation()
+#endif
 let SeeAlsoE () = Message("SeeAlso", "%s")
 let ConstraintSolverTupleDiffLengthsE () = Message("ConstraintSolverTupleDiffLengths", "%d%d")
 let ConstraintSolverInfiniteTypesE () = Message("ConstraintSolverInfiniteTypes", "%s%s")
@@ -589,6 +599,20 @@ let (|InvalidArgument|_|) (exn: exn) =
     match exn with
     | :? ArgumentException as e -> Some e.Message
     | _ -> None
+
+#if FABLE_COMPILER
+// type StringBuilder() =
+//     let buf = System.Text.StringBuilder()
+//     member x.Append(s: string) = buf.Append(s) |> ignore; x
+//     member x.AppendString(s: string) = buf.Append(s) |> ignore
+//     member x.AppendLine() = x.Append("\n")
+//     override x.ToString() = buf.ToString()
+
+module Printf =
+    let bprintf (sb: StringBuilder) =
+        let f (s: string) = sb.AppendString(s)
+        Printf.kprintf f
+#endif
 
 let OutputPhasedErrorR (os: StringBuilder) (diagnostic: PhasedDiagnostic) (canSuggestNames: bool) =
 
@@ -1838,6 +1862,7 @@ let OutputPhasedErrorR (os: StringBuilder) (diagnostic: PhasedDiagnostic) (canSu
 
         | MSBuildReferenceResolutionError (code, message, _) -> os.AppendString(MSBuildReferenceResolutionErrorE().Format message code)
 
+#if !FABLE_COMPILER
         // Strip TargetInvocationException wrappers
         | :? System.Reflection.TargetInvocationException as exn -> OutputExceptionR os exn.InnerException
 
@@ -1852,6 +1877,7 @@ let OutputPhasedErrorR (os: StringBuilder) (diagnostic: PhasedDiagnostic) (canSu
         | :? IOException as exn -> Printf.bprintf os "%s" exn.Message
 
         | :? UnauthorizedAccessException as exn -> Printf.bprintf os "%s" exn.Message
+#endif //!FABLE_COMPILER
 
         | exn ->
             os.AppendString(TargetInvocationExceptionWrapperE().Format exn.Message)
@@ -1896,6 +1922,8 @@ let SanitizeFileName fileName implicitIncludeDir =
             fullPath.Replace(currentDir + "\\", "")
     with _ ->
         fileName
+
+#if !FABLE_COMPILER
 
 [<RequireQualifiedAccess>]
 type FormattedDiagnosticLocation =
@@ -2143,6 +2171,8 @@ let OutputDiagnosticContext prefix fileLineFunction os diagnostic =
             let iLen = if lineA = lineB then max (iB - iA) 1 else 1
             Printf.bprintf os "%s%s\n" prefix line
             Printf.bprintf os "%s%s%s\n" prefix (String.make iA '-') (String.make iLen '^')
+
+#endif //!FABLE_COMPILER
 
 let ReportDiagnosticAsInfo options (diagnostic, severity) =
     match severity with

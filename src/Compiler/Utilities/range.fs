@@ -198,23 +198,36 @@ type FileIndexTable() =
         | _ ->
 
             // Try again looking for a normalized entry.
+#if FABLE_COMPILER
+            ignore normalize
+            let normalizedFilePath = filePath
+#else
             let normalizedFilePath =
                 if normalize then
                     FileSystem.NormalizePathShim filePath
                 else
                     filePath
+#endif
 
             match fileToIndexTable.TryGetValue normalizedFilePath with
             | true, idx ->
                 // Record the non-normalized entry if necessary
                 if filePath <> normalizedFilePath then
+#if FABLE_COMPILER
+                    fileToIndexTable[filePath] <- idx
+#else
                     lock fileToIndexTable (fun () -> fileToIndexTable[filePath] <- idx)
+#endif
 
                 // Return the index
                 idx
 
             | _ ->
+#if FABLE_COMPILER
+                (
+#else
                 lock fileToIndexTable (fun () ->
+#endif
                     // Get the new index
                     let idx = indexToFileTable.Count
 
@@ -341,6 +354,9 @@ type Range(code1: int64, code2: int64) =
     member _.Code2 = code2
 
     member m.DebugCode =
+#if FABLE_COMPILER
+        ""
+#else
         let name = m.FileName
 
         if name = unknownFileName
@@ -365,6 +381,7 @@ type Range(code1: int64, code2: int64) =
                     |> fun s -> s.Substring(startCol + 1, s.LastIndexOf("\n", StringComparison.Ordinal) + 1 - startCol + endCol)
             with e ->
                 e.ToString()
+#endif //!FABLE_COMPILER
 
     member m.ToShortString() =
         sprintf "(%d,%d--%d,%d)" m.StartLine m.StartColumn m.EndLine m.EndColumn
@@ -527,6 +544,7 @@ module Range =
         }
 
     let mkFirstLineOfFile (file: string) =
+#if !FABLE_COMPILER
         try
             let lines = FileSystem.OpenFileForReadShim(file).ReadLines() |> Seq.indexed
 
@@ -543,4 +561,5 @@ module Range =
                 | Some (i, s) -> mkRange file (mkPos (i + 1) 0) (mkPos (i + 1) s.Length)
                 | None -> mkRange file (mkPos 1 0) (mkPos 1 80)
         with _ ->
+#endif //!FABLE_COMPILER
             mkRange file (mkPos 1 0) (mkPos 1 80)

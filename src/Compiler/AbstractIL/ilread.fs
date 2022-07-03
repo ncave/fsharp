@@ -21,13 +21,17 @@ open FSharp.Compiler.AbstractIL.Diagnostics
 open FSharp.Compiler.AbstractIL.IL
 open FSharp.Compiler.AbstractIL.BinaryConstants
 open Internal.Utilities.Library
+#if !FABLE_COMPILER
 open FSharp.Compiler.AbstractIL.Support
+#endif
 open FSharp.Compiler.DiagnosticsLogger
 open FSharp.Compiler.IO
 open FSharp.Compiler.Text.Range
 open System.Reflection
+#if !FABLE_COMPILER
 open System.Reflection.PortableExecutable
 open FSharp.NativeInterop
+#endif
 
 #nowarn "9"
 
@@ -38,6 +42,12 @@ let _ =
     if checking then
         dprintn "warning: ILBinaryReader.checking is on"
 
+#if FABLE_COMPILER
+let noStableFileHeuristic = false
+let alwaysMemoryMapFSC = false
+let stronglyHeldReaderCacheSizeDefault = 30
+let stronglyHeldReaderCacheSize = stronglyHeldReaderCacheSizeDefault
+#else //!FABLE_COMPILER
 let noStableFileHeuristic =
     try
         (Environment.GetEnvironmentVariable("FSharp_NoStableFileHeuristic") <> null)
@@ -60,6 +70,7 @@ let stronglyHeldReaderCacheSize =
          | s -> int32 s)
     with _ ->
         stronglyHeldReaderCacheSizeDefault
+#endif //!FABLE_COMPILER
 
 let singleOfBits (x: int32) =
     BitConverter.ToSingle(BitConverter.GetBytes x, 0)
@@ -148,6 +159,8 @@ type private BinaryView = ReadOnlyByteMemory
 type BinaryFile =
     abstract GetView: unit -> BinaryView
 
+#if !FABLE_COMPILER
+
 /// Gives views over a raw chunk of memory, for example those returned to us by the memory manager in Roslyn's
 /// Visual Studio integration. 'obj' must keep the memory alive. The object will capture it and thus also keep the memory alive for
 /// the lifetime of this object.
@@ -185,6 +198,8 @@ type ByteMemoryFile(fileName: string, view: ByteMemory) =
     interface BinaryFile with
         override _.GetView() = view.AsReadOnly()
 
+#endif //!FABLE_COMPILER
+
 /// A BinaryFile backed by an array of bytes held strongly as managed memory
 [<DebuggerDisplay("{FileName}")>]
 type ByteFile(fileName: string, bytes: byte[]) =
@@ -194,6 +209,8 @@ type ByteFile(fileName: string, bytes: byte[]) =
 
     interface BinaryFile with
         override bf.GetView() = view
+
+#if !FABLE_COMPILER
 
 type PEFile(fileName: string, peReader: PEReader) as this =
 
@@ -259,6 +276,8 @@ type WeakByteFile(fileName: string, chunk: (int * int) option) =
                 tg
 
             ByteMemory.FromArray(strongBytes).AsReadOnly()
+
+#endif //!FABLE_COMPILER
 
 let seekReadByte (mdv: BinaryView) addr = mdv[addr]
 let seekReadBytes (mdv: BinaryView) addr len = mdv.ReadBytes(addr, len)
@@ -1770,6 +1789,7 @@ let readNativeResources (pectxt: PEReader) =
             let start =
                 pectxt.anyV2P (pectxt.fileName + ": native resources", pectxt.nativeResourcesAddr)
 
+#if !FABLE_COMPILER
             if pectxt.noFileOnDisk then
                 let unlinkedResource =
                     let linkedResource =
@@ -1779,7 +1799,8 @@ let readNativeResources (pectxt: PEReader) =
 
                 yield ILNativeResource.Out unlinkedResource
             else
-                yield ILNativeResource.In(pectxt.fileName, pectxt.nativeResourcesAddr, start, pectxt.nativeResourcesSize)
+#endif //!FABLE_COMPILER
+            yield ILNativeResource.In(pectxt.fileName, pectxt.nativeResourcesAddr, start, pectxt.nativeResourcesSize)
     ]
 
 let getDataEndPointsDelayed (pectxt: PEReader) ctxtH =
@@ -4067,7 +4088,12 @@ and seekReadManifestResources (ctxt: ILMetadataReader) canReduceMemory (mdv: Bin
 
                         let byteStorage =
                             let bytes = pevEager.Slice(offsetOfBytesFromStartOfPhysicalPEFile, resourceLength)
+#if FABLE_COMPILER
+                            ignore canReduceMemory
+                            ByteMemory.FromArray(bytes.ToArray())
+#else
                             ByteStorage.FromByteMemoryAndCopy(bytes, useBackingMemoryMappedFile = canReduceMemory)
+#endif
 
                         ILResourceLocation.Local(byteStorage)
 
@@ -5043,6 +5069,8 @@ type ILModuleReaderImpl(ilModule: ILModuleDef, ilAssemblyRefs: Lazy<ILAssemblyRe
         member x.ILAssemblyRefs = ilAssemblyRefs.Force()
         member x.Dispose() = dispose ()
 
+#if !FABLE_COMPILER
+
 // ++GLOBAL MUTABLE STATE (concurrency safe via locking)
 type ILModuleReaderCacheKey = ILModuleReaderCacheKey of string * DateTime * bool * ReduceMemoryFlag * MetadataOnlyFlag
 
@@ -5106,6 +5134,8 @@ let getBinaryFile fileName useMemoryMappedFile =
 
     safeHolder, RawMemoryFile(fileName, safeHolder, byteMem) :> BinaryFile
 
+#endif //!FABLE_COMPILER
+
 let OpenILModuleReaderFromBytes fileName assemblyContents options =
     let pefile = ByteFile(fileName, assemblyContents) :> BinaryFile
 
@@ -5113,6 +5143,8 @@ let OpenILModuleReaderFromBytes fileName assemblyContents options =
         openPE (fileName, pefile, options.pdbDirPath, (options.reduceMemoryUsage = ReduceMemoryFlag.Yes), true)
 
     new ILModuleReaderImpl(ilModule, ilAssemblyRefs, (fun () -> ClosePdbReader pdb)) :> ILModuleReader
+
+#if !FABLE_COMPILER
 
 let OpenILModuleReaderFromStream fileName (peStream: Stream) options =
     let peReader =
@@ -5278,3 +5310,5 @@ module Shim =
                 OpenILModuleReader fileName readerOptions
 
     let mutable AssemblyReader = DefaultAssemblyReader() :> IAssemblyReader
+
+#endif //!FABLE_COMPILER

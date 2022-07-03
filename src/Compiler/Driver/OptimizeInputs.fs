@@ -18,6 +18,8 @@ open FSharp.Compiler.IO
 open FSharp.Compiler.TypedTree
 open FSharp.Compiler.TypedTreeOps
 
+#if !FABLE_COMPILER
+
 let mutable showTermFileCount = 0
 
 let PrintWholeAssemblyImplementation (tcConfig: TcConfig) outfile header expr =
@@ -36,6 +38,8 @@ let PrintWholeAssemblyImplementation (tcConfig: TcConfig) outfile header expr =
             dprintf "\n------------------\nshowTerm: %s:\n" header
             LayoutRender.outL stderr (Display.squashTo 192 (DebugPrint.implFilesL expr))
             dprintf "\n------------------\n"
+
+#endif //!FABLE_COMPILER
 
 let AddExternalCcuToOptimizationEnv tcGlobals optEnv (ccuinfo: ImportedAssembly) =
     match ccuinfo.FSharpOptimizationData.Force() with
@@ -65,6 +69,9 @@ let ApplyAllOptimizations
     // Always optimize once - the results of this step give the x-module optimization
     // info.  Subsequent optimization steps choose representations etc. which we don't
     // want to save in the x-module info (i.e. x-module info is currently "high level").
+#if FABLE_COMPILER
+    ignore<string> outfile
+#else //!FABLE_COMPILER
     PrintWholeAssemblyImplementation tcConfig outfile "pass-start" implFiles
 #if DEBUG
     if tcConfig.showOptimizationData then
@@ -73,9 +80,12 @@ let ApplyAllOptimizations
     if tcConfig.showOptimizationData then
         dprintf "CCU prior to optimization:\n%s\n" (LayoutRender.showL (Display.squashTo 192 (DebugPrint.entityL ccu.Contents)))
 #endif
+#endif //!FABLE_COMPILER
 
     let optEnv0 = optEnv
+#if !FABLE_COMPILER
     ReportTime tcConfig "Optimizations"
+#endif
 
     // Only do abstract_big_targets on the first pass!  Only do it when TLR is on!
     let optSettings = tcConfig.optSettings
@@ -119,7 +129,7 @@ let ApplyAllOptimizations
                     abstractBigTargets = false
                     reportingPhase = false
                 }
-#if DEBUG
+#if DEBUG && !FABLE_COMPILER
             if tcConfig.showOptimizationData then
                 dprintf
                     "Optimization implFileOptData:\n%s\n"
@@ -203,9 +213,13 @@ let ApplyAllOptimizations
     let implFiles, implFileOptDatas = List.unzip results
     let assemblyOptData = Optimizer.UnionOptimizationInfos implFileOptDatas
     let tassembly = CheckedAssemblyAfterOptimization implFiles
+#if !FABLE_COMPILER
     PrintWholeAssemblyImplementation tcConfig outfile "pass-end" (implFiles |> List.map (fun implFile -> implFile.ImplFile))
     ReportTime tcConfig "Ending Optimizations"
+#endif
     tassembly, assemblyOptData, optEnvFirstLoop
+
+#if !FABLE_COMPILER
 
 //----------------------------------------------------------------------------
 // ILX generation
@@ -273,6 +287,8 @@ let NormalizeAssemblyRefs (ctok, ilGlobals: ILGlobals, tcImports: TcImports) sco
     | ILScopeRef.Module _ -> scoref
     | ILScopeRef.PrimaryAssembly -> normalizeAssemblyRefByName ilGlobals.primaryAssemblyName
     | ILScopeRef.Assembly aref -> normalizeAssemblyRefByName aref.Name
+
+#endif //!FABLE_COMPILER
 
 let GetGeneratedILModuleName (t: CompilerTarget) (s: string) =
     // return the name of the file as a module name

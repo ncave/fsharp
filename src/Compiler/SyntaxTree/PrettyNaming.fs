@@ -793,7 +793,11 @@ let CompilerGeneratedName nm =
         nm + compilerGeneratedMarker
 
 let GetBasicNameOfPossibleCompilerGeneratedName (name: string) =
+#if FABLE_COMPILER
+    match name.IndexOf(compilerGeneratedMarker) with
+#else
     match name.IndexOf(compilerGeneratedMarker, StringComparison.Ordinal) with
+#endif
     | -1
     | 0 -> name
     | n -> name[0 .. n - 1]

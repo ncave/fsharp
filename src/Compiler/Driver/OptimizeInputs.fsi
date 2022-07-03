@@ -32,6 +32,8 @@ val ApplyAllOptimizations:
     implFiles: CheckedImplFile list ->
         CheckedAssemblyAfterOptimization * LazyModuleInfo * IncrementalOptimizationEnv
 
+#if !FABLE_COMPILER
+
 val CreateIlxAssemblyGenerator:
     TcConfig * TcImports * TcGlobals * ConstraintSolver.TcValF * CcuThunk -> IlxAssemblyGenerator
 
@@ -50,3 +52,5 @@ val GenerateIlxCode:
 val NormalizeAssemblyRefs: CompilationThreadToken * ILGlobals * TcImports -> (ILScopeRef -> ILScopeRef)
 
 val GetGeneratedILModuleName: CompilerTarget -> string -> string
+
+#endif //!FABLE_COMPILER
