@@ -118,7 +118,11 @@ let usingLexbufForParsing (lexbuf: Lexbuf, fileName) f =
 //-----------------------------------------------------------------------
 
 let stringBufferAsString (buf: ByteBuffer) =
+#if FABLE_COMPILER
+    let buf = buf.Close()
+#else
     let buf = buf.AsMemory()
+#endif
 
     if buf.Length % 2 <> 0 then
         failwith "Expected even number of bytes"
@@ -126,8 +130,13 @@ let stringBufferAsString (buf: ByteBuffer) =
     let chars: char[] = Array.zeroCreate (buf.Length / 2)
 
     for i = 0 to (buf.Length / 2) - 1 do
+#if FABLE_COMPILER
+        let hi = buf[i*2+1]
+        let lo = buf[i*2]
+#else
         let hi = buf.Span[i * 2 + 1]
         let lo = buf.Span[i * 2]
+#endif
         let c = char (((int hi) * 256) + (int lo))
         chars[i] <- c
 
@@ -139,8 +148,13 @@ let stringBufferAsString (buf: ByteBuffer) =
 /// we just take every second byte we stored.  Note all bytes > 127 should have been
 /// stored using addIntChar
 let stringBufferAsBytes (buf: ByteBuffer) =
+#if FABLE_COMPILER
+    let bytes = buf.Close()
+    Array.init (bytes.Length / 2) (fun i -> bytes[i*2])
+#else
     let bytes = buf.AsMemory()
     Array.init (bytes.Length / 2) (fun i -> bytes.Span[i * 2])
+#endif
 
 [<Flags>]
 type LexerStringFinisherContext =
@@ -207,11 +221,19 @@ let addByteChar buf (c: char) = addIntChar buf (int32 c % 256)
 
 /// Sanity check that high bytes are zeros. Further check each low byte <= 127
 let stringBufferIsBytes (buf: ByteBuffer) =
+#if FABLE_COMPILER
+    let bytes = buf.Close()
+#else
     let bytes = buf.AsMemory()
+#endif
     let mutable ok = true
 
     for i = 0 to bytes.Length / 2 - 1 do
+#if FABLE_COMPILER
+        if bytes[i*2+1] <> 0uy then ok <- false
+#else
         if bytes.Span[i * 2 + 1] <> 0uy then ok <- false
+#endif
 
     ok
 

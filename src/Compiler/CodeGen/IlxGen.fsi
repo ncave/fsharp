@@ -101,6 +101,7 @@ type public IlxAssemblyGenerator =
     /// Generate ILX code for an assembly fragment
     member GenerateCode: IlxGenOptions * CheckedAssemblyAfterOptimization * Attribs * Attribs -> IlxGenResults
 
+#if !FABLE_COMPILER
     /// Invert the compilation of the given value and clear the storage of the value
     member ClearGeneratedValue: ExecutionContext * Val -> unit
 
@@ -109,6 +110,7 @@ type public IlxAssemblyGenerator =
 
     /// Invert the compilation of the given value and return its current dynamic value and its compiled System.Type
     member LookupGeneratedValue: ExecutionContext * Val -> (obj * Type) option
+#endif //!FABLE_COMPILER
 
 val ReportStatistics: TextWriter -> unit
 

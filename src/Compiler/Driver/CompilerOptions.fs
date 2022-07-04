@@ -9,7 +9,9 @@ open System.IO
 open Internal.Utilities.Library
 open Internal.Utilities.Library.Extras
 open FSharp.Compiler.AbstractIL.IL
+#if !FABLE_COMPILER
 open FSharp.Compiler.AbstractIL.ILPdbWriter
+#endif
 open FSharp.Compiler.AbstractIL.Diagnostics
 open FSharp.Compiler.CompilerConfig
 open FSharp.Compiler.CompilerDiagnostics
@@ -116,10 +118,14 @@ let PrintCompilerOption (CompilerOption (_s, _tag, _spec, _, help) as compilerOp
     let defaultLineWidth = 80 // the fallback width
 
     let lineWidth =
+#if FABLE_COMPILER
+        defaultLineWidth
+#else
         try
             Console.BufferWidth
         with e ->
             defaultLineWidth
+#endif
 
     let lineWidth =
         if lineWidth = 0 then
@@ -219,6 +225,7 @@ module ResponseFile =
         | CompilerOptionSpec of string
         | Comment of string
 
+#if !FABLE_COMPILER
     let parseFile path : Choice<ResponseFileData, Exception> =
         let parseLine (l: string) =
             match l with
@@ -241,6 +248,7 @@ module ResponseFile =
             Choice1Of2 data
         with e ->
             Choice2Of2 e
+#endif //!FABLE_COMPILER
 
 let ParseCompilerOptions (collectOtherArgument: string -> unit, blocks: CompilerOptionBlock list, args) =
     use unwindBuildPhase = PushThreadBuildPhaseUntilUnwind BuildPhase.Parameter
@@ -307,6 +315,10 @@ let ParseCompilerOptions (collectOtherArgument: string -> unit, blocks: Compiler
         match args with
         | [] -> ()
         | rsp: string :: t when rsp.StartsWithOrdinal("@") ->
+#if FABLE_COMPILER
+            ignore t
+            ()
+#else
             let responseFileOptions =
                 let fullpath =
                     try
@@ -335,6 +347,7 @@ let ParseCompilerOptions (collectOtherArgument: string -> unit, blocks: Compiler
                         rspData |> List.choose onlyOptions
 
             processArg (responseFileOptions @ t)
+#endif //!FABLE_COMPILER
         | opt :: t ->
             let optToken, argString = parseOption opt
 
@@ -1108,7 +1121,11 @@ let setLanguageVersion specifiedVersion =
         for v in languageVersion.ValidVersions do
             printfn "%s" v
 
+#if FABLE_COMPILER
+        ()
+#else
         exit 0
+#endif
 
     if specifiedVersion = "?" then
         dumpAllowedValues ()
@@ -1163,10 +1180,12 @@ let codePageFlag (tcConfigB: TcConfigBuilder) =
         "codepage",
         tagInt,
         OptionInt(fun n ->
+#if !FABLE_COMPILER
             try
                 System.Text.Encoding.GetEncoding n |> ignore
             with :? ArgumentException as err ->
                 error (Error(FSComp.SR.optsProblemWithCodepage (n, err.Message), rangeCmdArgs))
+#endif
 
             tcConfigB.inputCodePage <- Some n),
         None,
@@ -1364,7 +1383,9 @@ let testFlag tcConfigB =
                     { tcConfigB.optSettings with
                         reportHasEffect = true
                     }
+#if !FABLE_COMPILER
             | "NoErrorText" -> FSComp.SR.SwallowResourceText <- true
+#endif
             | "EmitFeeFeeAs100001" -> tcConfigB.testFlagEmitFeeFeeAs100001 <- true
             | "DumpDebugInfo" -> tcConfigB.dumpDebugInfo <- true
             | "ShowLoadedAssemblies" -> tcConfigB.showLoadedAssemblies <- true
@@ -1995,11 +2016,19 @@ let DisplayBannerText tcConfigB =
 let displayHelpFsc tcConfigB (blocks: CompilerOptionBlock list) =
     DisplayBannerText tcConfigB
     PrintCompilerOptionBlocks blocks
+#if FABLE_COMPILER
+    ()
+#else
     exit 0
+#endif
 
 let displayVersion tcConfigB =
     printfn "%s" tcConfigB.productNameForBannerText
+#if FABLE_COMPILER
+    ()
+#else
     exit 0
+#endif
 
 let miscFlagsBoth tcConfigB =
     [
@@ -2228,6 +2257,8 @@ let ApplyCommandLineArgs (tcConfigB: TcConfigBuilder, sourceFiles: string list, 
         errorRecovery e range0
         sourceFiles
 
+#if !FABLE_COMPILER
+
 //----------------------------------------------------------------------------
 // PrintWholeAssemblyImplementation
 //----------------------------------------------------------------------------
@@ -2370,3 +2401,5 @@ let DoWithDiagnosticColor severity f =
             | _ -> infoColor
 
         DoWithColor color f
+
+#endif //!FABLE_COMPILER

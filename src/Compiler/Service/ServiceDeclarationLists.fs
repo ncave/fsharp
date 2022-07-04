@@ -883,6 +883,9 @@ module internal DescriptionListsImpl =
     /// (This looks like it is doing the a similar thing as FlattenItems, this code 
     /// duplication could potentially be removed)
     let AnotherFlattenItems g m item =
+#if FABLE_COMPILER
+        ignore m
+#endif
         match item with 
         | Item.CtorGroup(nm, cinfos) -> List.map (fun minfo -> Item.CtorGroup(nm, [minfo])) cinfos 
         | Item.FakeInterfaceCtor _

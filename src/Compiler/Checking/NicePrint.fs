@@ -2058,8 +2058,10 @@ module TastDefinitionPrinting =
             | _ when isNil allDecls ->
                 lhsL
 
+#if !NO_TYPEPROVIDERS
             | TProvidedNamespaceRepr _
             | TProvidedTypeRepr _
+#endif
             | TNoRepr -> 
                 allDecls
                 |> applyMaxMembers denv.maxMembers

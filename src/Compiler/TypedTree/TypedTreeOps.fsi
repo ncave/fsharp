@@ -2535,7 +2535,11 @@ val GetTraitWitnessInfosOfTypars: TcGlobals -> numParentTypars: int -> typars: T
 /// An immutable mappping from witnesses to some data.
 ///
 /// Note: this uses an immutable HashMap/Dictionary with an IEqualityComparer that captures TcGlobals, see EmptyTraitWitnessInfoHashMap
+#if FABLE_COMPILER
+type TraitWitnessInfoHashMap<'T> = Internal.Utilities.Collections.Tagged.Map<TraitWitnessInfo, 'T>
+#else
 type TraitWitnessInfoHashMap<'T> = ImmutableDictionary<TraitWitnessInfo, 'T>
+#endif
 
 /// Create an empty immutable mapping from witnesses to some data
 val EmptyTraitWitnessInfoHashMap: TcGlobals -> TraitWitnessInfoHashMap<'T>

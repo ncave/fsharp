@@ -75,6 +75,16 @@
             },
             "justMyCode": false,
             "enableStepFiltering": false,
+        },
+        {
+            "name": "FCS-Fable Test",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/artifacts/bin/fcs-fable-test/Debug/net6.0/fcs-fable-test.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/fcs/fcs-fable/test",
+            "console": "internalConsole",
+            "stopAtEntry": false
         }
     ]
 }

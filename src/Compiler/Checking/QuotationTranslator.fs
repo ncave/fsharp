@@ -22,7 +22,11 @@ open System.Collections.Generic
 
 module QP = QuotationPickler
 
+#if FABLE_COMPILER
+let verboseCReflect = false
+#else
 let verboseCReflect = condition "VERBOSE_CREFLECT"
+#endif
 
 [<RequireQualifiedAccess>]
 type IsReflectedDefinition =
@@ -712,9 +716,13 @@ and private ConvExprCore cenv (env : QuotationTranslationEnv) (expr: Expr) : QP.
             let inWitnessPassingScope = not env.witnessesInScope.IsEmpty
             let witnessArgInfo = 
                 if g.generateWitnesses && inWitnessPassingScope then 
+#if FABLE_COMPILER
+                    env.witnessesInScope.TryFind traitInfo.TraitKey
+#else
                     match env.witnessesInScope.TryGetValue traitInfo.TraitKey with 
                     | true, storage -> Some storage
                     | _ -> None
+#endif
                 else
                     None
 

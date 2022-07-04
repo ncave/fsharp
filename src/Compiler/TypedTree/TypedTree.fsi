@@ -13,7 +13,9 @@ open FSharp.Compiler.AbstractIL.IL
 open FSharp.Compiler.DiagnosticsLogger
 open FSharp.Compiler.Syntax
 open FSharp.Compiler.Text
+#if !FABLE_COMPILER
 open FSharp.Compiler.TypeProviders
+#endif
 open FSharp.Compiler.Xml
 open FSharp.Core.CompilerServices
 
@@ -1626,11 +1628,21 @@ type TyparConstraint =
 
     override ToString: unit -> string
 
+#if FABLE_COMPILER
+[<CustomEquality; CustomComparison; StructuredFormatDisplay("{DebugText}")>]
+#else
 [<NoEquality; NoComparison; StructuredFormatDisplay("{DebugText}")>]
+#endif
 type TraitWitnessInfo =
     | TraitWitnessInfo of TTypes * string * Syntax.SynMemberFlags * TTypes * TType option
 
     override ToString: unit -> string
+
+#if FABLE_COMPILER
+    override Equals: System.Object -> bool
+    override GetHashCode: unit -> int
+    interface System.IComparable
+#endif
 
     [<DebuggerBrowsable(DebuggerBrowsableState.Never)>]
     member DebugText: string
