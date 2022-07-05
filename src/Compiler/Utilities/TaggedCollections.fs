@@ -824,7 +824,16 @@ module MapTree =
                 true
             else
                 match m with
+#if FABLE_COMPILER
+                | :? MapTreeNode<'Key, 'Value> as mn ->
+                    // Temporary workaround for Fable issue with passing byref
+                    let mutable t = v
+                    let res = tryGetValue comparer k &t (if c < 0 then mn.Left else mn.Right)
+                    v <- t
+                    res
+#else
                 | :? MapTreeNode<'Key, 'Value> as mn -> tryGetValue comparer k &v (if c < 0 then mn.Left else mn.Right)
+#endif
                 | _ -> false
 
     let find (comparer: IComparer<'Key>) k (m: MapTree<'Key, 'Value>) =
