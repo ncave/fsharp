@@ -10,12 +10,13 @@ open System.Threading
 open Internal.Utilities.Collections
 open Internal.Utilities.Library
 open Internal.Utilities.Library.Extras
+
 open FSharp.Compiler
 open FSharp.Compiler.AbstractIL
 open FSharp.Compiler.AbstractIL.IL
 open FSharp.Compiler.AbstractIL.ILBinaryReader
 open FSharp.Compiler.CodeAnalysis
-open FSharp.Compiler.CheckExpressions
+open FSharp.Compiler.CheckBasics
 open FSharp.Compiler.CheckDeclarations
 open FSharp.Compiler.CompilerConfig
 open FSharp.Compiler.CompilerDiagnostics
@@ -24,8 +25,8 @@ open FSharp.Compiler.CompilerImports
 open FSharp.Compiler.CompilerOptions
 open FSharp.Compiler.DependencyManager
 open FSharp.Compiler.Diagnostics
+open FSharp.Compiler.DiagnosticsLogger
 open FSharp.Compiler.Driver
-open FSharp.Compiler.ErrorLogger
 open FSharp.Compiler.NameResolution
 open FSharp.Compiler.ParseAndCheckInputs
 open FSharp.Compiler.ScriptClosure
@@ -44,7 +45,7 @@ open FSharp.Compiler.BuildGraph
 // InteractiveChecker
 //-------------------------------------------------------------------------
 
-type internal TcResult = TcEnv * TopAttribs * TypedImplFile option * ModuleOrNamespaceType
+type internal TcResult = TcEnv * TopAttribs * CheckedImplFile option * ModuleOrNamespaceType
 type internal TcErrors = FSharpDiagnostic[]
 
 type internal CompilerState = {
@@ -109,19 +110,18 @@ module internal ParseAndCheck =
     let initializeCompilerState projectOptions reset = async {
         let tcConfig =
             let tcConfigB =
-                TcConfigBuilder.CreateNew(SimulatedMSBuildReferenceResolver.getResolver(),
-                    includewin32manifest=false,
-                    framework=false,
-                    portablePDB=false,
-                    defaultFSharpBinariesDir=FSharpCheckerResultsSettings.defaultFSharpBinariesDir,
-                    reduceMemoryUsage=ReduceMemoryFlag.Yes,
-                    implicitIncludeDir=Path.GetDirectoryName(projectOptions.ProjectFileName),
-                    isInteractive=false,
-                    isInvalidationSupported=true,
-                    defaultCopyFSharpCore=CopyFSharpCoreFlag.No,
-                    tryGetMetadataSnapshot=(fun _ -> None),
-                    sdkDirOverride=None,
-                    rangeForErrors=range0)
+                TcConfigBuilder.CreateNew(
+                    SimulatedMSBuildReferenceResolver.getResolver(),
+                    defaultFSharpBinariesDir = FSharpCheckerResultsSettings.defaultFSharpBinariesDir,
+                    reduceMemoryUsage = ReduceMemoryFlag.Yes,
+                    implicitIncludeDir = Path.GetDirectoryName(projectOptions.ProjectFileName),
+                    isInteractive = false,
+                    isInvalidationSupported = true,
+                    defaultCopyFSharpCore = CopyFSharpCoreFlag.No,
+                    tryGetMetadataSnapshot = (fun _ -> None),
+                    sdkDirOverride = None,
+                    rangeForErrors = range0
+                )
             let sourceFiles = projectOptions.SourceFiles |> Array.toList
             let argv = projectOptions.OtherOptions |> Array.toList
             let _sourceFiles = ApplyCommandLineArgs(tcConfigB, sourceFiles, argv)
@@ -140,10 +140,9 @@ module internal ParseAndCheck =
             ccu.Deref.InvalidateEvent.Add(fun _ -> reset())
         )
 
-        let niceNameGen = NiceNameGenerator()
         let assemblyName = projectOptions.ProjectFileName |> Path.GetFileNameWithoutExtension
         let tcInitial, openDecls0 = GetInitialTcEnv (assemblyName, rangeStartup, tcConfig, tcImports, tcGlobals)
-        let tcInitialState = GetInitialTcState (rangeStartup, assemblyName, tcConfig, tcGlobals, tcImports, niceNameGen, tcInitial, openDecls0)
+        let tcInitialState = GetInitialTcState (rangeStartup, assemblyName, tcConfig, tcGlobals, tcImports, tcInitial, openDecls0)
 
         // parse cache, keyed on file name and source hash
         let parseCache = ConcurrentDictionary<string * int, FSharpParseFileResults>(HashIdentity.Structural)
@@ -162,14 +161,14 @@ module internal ParseAndCheck =
     }
 
     let MakeProjectResults (projectFileName: string, parseResults: FSharpParseFileResults[], tcState: TcState, errors: FSharpDiagnostic[],
-                                         topAttrsOpt: TopAttribs option, tcImplFilesOpt: TypedImplFile list option,
-                                         compilerState) =
+                            topAttrsOpt: TopAttribs option, tcImplFilesOpt: CheckedImplFile list option, compilerState) =
         let assemblyRef = mkSimpleAssemblyRef "stdin"
         let access = tcState.TcEnvFromImpls.AccessRights
         let symbolUses = Choice2Of2 TcSymbolUses.Empty
         let dependencyFiles = parseResults |> Seq.map (fun x -> x.DependencyFiles) |> Array.concat
+        let getAssemblyData () = None
         let details = (compilerState.tcGlobals, compilerState.tcImports, tcState.Ccu, tcState.CcuSig, symbolUses, topAttrsOpt,
-                        assemblyRef, access, tcImplFilesOpt, dependencyFiles, compilerState.projectOptions)
+                        getAssemblyData, assemblyRef, access, tcImplFilesOpt, dependencyFiles, compilerState.projectOptions)
         let keepAssemblyContents = true
         FSharpCheckProjectResults (projectFileName, Some compilerState.tcConfig, keepAssemblyContents, errors, Some details)
 
@@ -199,20 +198,21 @@ module internal ParseAndCheck =
 
     let TypeCheckOneInputEntry (parseResults: FSharpParseFileResults, tcSink: TcResultsSink, tcState: TcState, moduleNamesDict: ModuleNamesDict, compilerState) =
         let input = parseResults.ParseTree
-        let capturingErrorLogger = CompilationErrorLogger("TypeCheckFile", compilerState.tcConfig.errorSeverityOptions)
-        let errorLogger = GetErrorLoggerFilteringByScopedPragmas(false, GetScopedPragmasForInput(input), capturingErrorLogger)
-        use _errorScope = new CompilationGlobalsScope (errorLogger, BuildPhase.TypeCheck)
+        let diagnosticsOptions = compilerState.tcConfig.diagnosticsOptions
+        let capturingLogger = CompilationDiagnosticLogger("TypeCheckFile", diagnosticsOptions)
+        let diagnosticsLogger = GetDiagnosticsLoggerFilteringByScopedPragmas(false, input.ScopedPragmas, diagnosticsOptions, capturingLogger)
+        use _scope = new CompilationGlobalsScope (diagnosticsLogger, BuildPhase.TypeCheck)
 
-        let checkForErrors () = parseResults.ParseHadErrors || errorLogger.ErrorCount > 0
+        let checkForErrors () = parseResults.ParseHadErrors || diagnosticsLogger.ErrorCount > 0
         let prefixPathOpt = None
 
         let input, moduleNamesDict = input |> DeduplicateParsedInputModuleName moduleNamesDict
         let tcResult, tcState =
-            TypeCheckOneInput (checkForErrors, compilerState.tcConfig, compilerState.tcImports, compilerState.tcGlobals, prefixPathOpt, tcSink, tcState, input, false)
-                |> Cancellable.runWithoutCancellation
+            CheckOneInput (checkForErrors, compilerState.tcConfig, compilerState.tcImports, compilerState.tcGlobals, prefixPathOpt, tcSink, tcState, input, false)
+            |> Cancellable.runWithoutCancellation
 
         let fileName = parseResults.FileName
-        let tcErrors = DiagnosticHelpers.CreateDiagnostics (compilerState.tcConfig.errorSeverityOptions, false, fileName, (capturingErrorLogger.GetDiagnostics()), suggestNamesForErrors)
+        let tcErrors = DiagnosticHelpers.CreateDiagnostics (diagnosticsOptions, false, fileName, (capturingLogger.GetDiagnostics()), suggestNamesForErrors)
         (tcResult, tcErrors), (tcState, moduleNamesDict)
 
     let CheckFile (projectFileName: string, parseResults: FSharpParseFileResults, tcState: TcState, moduleNamesDict: ModuleNamesDict, compilerState) =
@@ -239,7 +239,7 @@ module internal ParseAndCheck =
             let checkCacheKey = parseRes.FileName
 
             let typeCheckOneInput _fileName =
-                TypeCheckOneInputEntry  (parseRes, TcResultsSink.NoSink, tcState, moduleNamesDict, compilerState)
+                TypeCheckOneInputEntry (parseRes, TcResultsSink.NoSink, tcState, moduleNamesDict, compilerState)
 
             let (result, errors), (tcState, moduleNamesDict) = compilerState.checkCache.GetOrAdd(checkCacheKey, typeCheckOneInput)
 
@@ -257,9 +257,9 @@ module internal ParseAndCheck =
 
         let tcResults, tcErrors = Array.unzip results
         let (tcEnvAtEndOfLastFile, topAttrs, implFiles, _ccuSigsForFiles), tcState =
-            TypeCheckMultipleInputsFinish(tcResults |> Array.toList, tcState)
+            CheckMultipleInputsFinish(tcResults |> Array.toList, tcState)
 
-        let tcState, declaredImpls, ccuContents = TypeCheckClosedInputSetFinish (implFiles, tcState)
+        let tcState, declaredImpls, ccuContents = CheckClosedInputSetFinish (implFiles, tcState)
         tcState.Ccu.Deref.Contents <- ccuContents
         tcState, topAttrs, declaredImpls, tcEnvAtEndOfLastFile, moduleNamesDict, tcErrors
 
@@ -304,11 +304,11 @@ type InteractiveChecker internal (compilerStateCache) =
             TypeCheckClosedInputSet (parseResults, compilerState.tcInitialState, compilerState, None)
 
         let ctok = CompilationThreadToken()
-        let errors, errorLogger, _loggerProvider = CompileHelpers.mkCompilationErrorHandlers()
+        let errors, diagnosticsLogger, _loggerProvider = CompileHelpers.mkCompilationDiagnosticsHandlers()
         let exitCode =
-            CompileHelpers.tryCompile errorLogger (fun exiter ->
-                compileOfTypedAst (ctok, compilerState.tcGlobals, compilerState.tcImports, tcState.Ccu,
-                    tcImplFiles, topAttrs, compilerState.tcConfig, outFile, errorLogger, exiter))
+            CompileHelpers.tryCompile diagnosticsLogger (fun exiter ->
+                CompileFromTypedAst (ctok, compilerState.tcGlobals, compilerState.tcImports, tcState.Ccu,
+                    tcImplFiles, topAttrs, compilerState.tcConfig, outFile, diagnosticsLogger, exiter))
 
         return errors.ToArray(), exitCode
     }
@@ -340,7 +340,7 @@ type InteractiveChecker internal (compilerStateCache) =
                 fileNames |> Array.map parseFile
 
         // type check files
-        let (tcState, topAttrs, tcImplFiles, _tcEnvAtEnd, _moduleNamesDict, tcErrors) = // measureTime <| fun _ ->
+        let (tcState, topAttrs, tcImplFiles, _tcEnvAtEnd, _moduleNamesDict, tcErrors) =
             TypeCheckClosedInputSet (parseResults, compilerState.tcInitialState, compilerState, subscriber)
 
         // make project results
