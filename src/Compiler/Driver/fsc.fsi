@@ -58,3 +58,16 @@ val CompileFromCommandLineArguments:
 
 /// Read the parallelReferenceResolution flag from environment variables
 val internal getParallelReferenceResolutionFromEnvironment: unit -> ParallelReferenceResolution option
+
+val CompileFromTypedAst:
+    ctok: CompilationThreadToken *
+    tcGlobals: TcGlobals *
+    tcImports: TcImports *
+    generatedCcu: TypedTree.CcuThunk *
+    typedImplFiles: TypedTree.CheckedImplFile list *
+    topAttrs: CheckDeclarations.TopAttribs *
+    tcConfig: TcConfig *
+    outfile: string *
+    diagnosticsLogger: DiagnosticsLogger *
+    exiter: Exiter
+        -> unit
