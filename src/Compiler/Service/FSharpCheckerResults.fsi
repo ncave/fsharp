@@ -256,7 +256,7 @@ type internal TypeCheckInfo =
         sSymbolUses: TcSymbolUses *
         sFallback: NameResolutionEnv *
         loadClosure: LoadClosure option *
-        implFileOpt: TypedImplFile option *
+        implFileOpt: CheckedImplFile option *
         openDeclarations: OpenDeclaration[]
             -> TypeCheckInfo
     member ScopeResolutions: TcResolutions
@@ -265,13 +265,13 @@ type internal TypeCheckInfo =
     member TcImports: TcImports
     member CcuSigForFile: ModuleOrNamespaceType
     member ThisCcu: CcuThunk
-    member ImplementationFile: TypedImplFile option
+    member ImplementationFile: CheckedImplFile option
 
 /// A handle to the results of CheckFileInProject.
 [<Sealed>]
 type public FSharpCheckFileResults =
     internal new :
-        filename: string *
+        fileName: string *
         errors: FSharpDiagnostic[] *
         scopeOptX: TypeCheckInfo option *
         dependencyFiles: string[] *
