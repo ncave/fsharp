@@ -74,3 +74,16 @@ val CompileFromSyntaxTrees:
     tcImportsCapture: (TcImports -> unit) option *
     dynamicAssemblyCreator: (TcConfig * TcGlobals * string * ILModuleDef -> unit) option ->
         unit
+
+val CompileFromTypedAst:
+    ctok: CompilationThreadToken *
+    tcGlobals: TcGlobals *
+    tcImports: TcImports *
+    generatedCcu: TypedTree.CcuThunk *
+    typedImplFiles: TypedTree.CheckedImplFile list *
+    topAttrs: CheckDeclarations.TopAttribs *
+    tcConfig: TcConfig *
+    outfile: string *
+    diagnosticsLogger: DiagnosticsLogger *
+    exiter: Exiter
+        -> unit
