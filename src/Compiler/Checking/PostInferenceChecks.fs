@@ -2390,7 +2390,7 @@ let CheckEntityDefn cenv env (tycon: Entity) =
 
             if numCurriedArgSets > 1 &&
                (minfo.GetParamDatas(cenv.amap, m, minfo.FormalMethodInst)
-                |> List.existsSquared (fun (ParamData(isParamArrayArg, _isInArg, isOutArg, optArgInfo, callerInfo, _, reflArgInfo, ty)) ->
+                |> List.existsSquared (fun (ParamData(isParamArrayArg, _isInArg, isOutArg, optArgInfo, callerInfo, _, reflArgInfo, ty), _) ->
                     isParamArrayArg || isOutArg || reflArgInfo.AutoQuote || optArgInfo.IsOptional || callerInfo <> NoCallerInfo || isByrefLikeTy g m ty)) then
                 errorR(Error(FSComp.SR.chkCurriedMethodsCantHaveOutParams(), m))
 
@@ -2416,7 +2416,7 @@ let CheckEntityDefn cenv env (tycon: Entity) =
                     | ValueNone -> errorR(Error(FSComp.SR.tcCallerInfoWrongType(callerInfo |> string, desiredTyName, NicePrint.minimalStringOfType cenv.denv ty), m))                   
 
                 minfo.GetParamDatas(cenv.amap, m, minfo.FormalMethodInst)
-                |> List.iterSquared (fun (ParamData(_, isInArg, _, optArgInfo, callerInfo, nameOpt, _, ty)) ->
+                |> List.iterSquared (fun (ParamData(_, isInArg, _, optArgInfo, callerInfo, nameOpt, _, ty), _) ->
                     ignore isInArg
 
                     let m =
