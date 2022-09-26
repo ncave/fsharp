@@ -1230,6 +1230,8 @@ type TcConfig private (data: TcConfigBuilder, validate: bool) =
             errorRecovery e range0
             []
 
+#endif //!FABLE_COMPILER
+
     member _.bufferWidth = data.bufferWidth
     member _.fsiMultiAssemblyEmit = data.fsiMultiAssemblyEmit
     member _.FxResolver = data.FxResolver

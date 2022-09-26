@@ -587,24 +587,6 @@ module internal ParseAndCheckFile =
         suggestNamesForErrors: bool ->
             (range * range)[]
 
-// #if FABLE_COMPILER
-//     val CheckOneFile:
-//         parseResults: FSharpParseFileResults *
-//         sourceText: ISourceText *
-//         mainInputFileName: string *
-//         projectOptions: FSharpProjectOptions *
-//         projectFileName: string *
-//         tcConfig: TcConfig *
-//         tcGlobals: TcGlobals *
-//         tcImports: TcImports *
-//         tcState: TcState *
-//         moduleNamesDict: ModuleNamesDict *
-//         loadClosure: LoadClosure option *
-//         backgroundDiagnostics: (PhasedDiagnostic * FSharpDiagnosticSeverity)[] *
-//         suggestNamesForErrors: bool
-//             -> Cancellable<FSharpDiagnostic[] * TypeCheckInfo>
-// #endif
-
 #if !FABLE_COMPILER
 
 // An object to typecheck source in a given typechecking environment.

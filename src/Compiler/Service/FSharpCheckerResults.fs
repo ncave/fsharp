@@ -2845,7 +2845,11 @@ type FSharpCheckFileResults
 
                 match pageWidth with
                 | None -> layout
+#if FABLE_COMPILER
+                | Some _pageWidth -> layout
+#else
                 | Some pageWidth -> Display.squashTo pageWidth layout
+#endif
                 |> LayoutRender.showL
                 |> SourceText.ofString)
 
