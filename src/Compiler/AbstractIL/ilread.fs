@@ -1333,14 +1333,14 @@ let seekReadIndexedRowsRange numRows binaryChop (reader: ISeekReadIndexedRowRead
 
     startRid, endRid
 
-let seekReadIndexedRowsByInterface numRows binaryChop (reader: ISeekReadIndexedRowReader<'RowT, _, _>) =
+let seekReadIndexedRowsByInterface numRows binaryChop (reader: ISeekReadIndexedRowReader<CustomAttributeRow, 'KeyT, 'T>) =
     let startRid, endRid = seekReadIndexedRowsRange numRows binaryChop reader
 
     if startRid <= 0 || endRid < startRid then
         [||]
     else
         Array.init (endRid - startRid + 1) (fun i ->
-            let mutable row = Unchecked.defaultof<'RowT>
+            let mutable row = ref Unchecked.defaultof<CustomAttributeRow>
             reader.GetRow(startRid + i, row)
             reader.ConvertRow(row))
 

@@ -867,9 +867,11 @@ type TcConfig =
 
     /// Check if the primary assembly is mscorlib
     member assumeDotNetFramework: bool
+#endif //!FABLE_COMPILER
 
     member exiter: Exiter
 
+#if !FABLE_COMPILER
     member parallelReferenceResolution: ParallelReferenceResolution
 
 /// Represents a computation to return a TcConfig. Normally this is just a constant immutable TcConfig,

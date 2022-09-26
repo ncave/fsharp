@@ -162,6 +162,7 @@ let rec AttachRange m (exn: exn) =
         | Failure msg -> InternalError(msg + " (Failure)", m)
 #if !FABLE_COMPILER
         | :? ArgumentException as exn -> InternalError(exn.Message + " (ArgumentException)", m)
+#endif
         | _ -> exn
 
 type Exiter =
@@ -859,6 +860,7 @@ type StackGuard(maxDepth: int, name: string) =
 #if FABLE_COMPILER
         ignore depth
         ignore maxDepth
+        ignore name
         f ()
 #else //!FABLE_COMPILER
         depth <- depth + 1

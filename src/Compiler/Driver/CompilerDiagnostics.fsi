@@ -70,6 +70,7 @@ type PhasedDiagnostic with
     /// Indicates if a diagnostic should be reported as an error
     member ReportAsError: FSharpDiagnosticOptions * FSharpDiagnosticSeverity -> bool
 
+#if !FABLE_COMPILER
     /// Output all of a diagnostic to a buffer, including range
     member Output: buf: StringBuilder * tcConfig: TcConfig * severity: FSharpDiagnosticSeverity -> unit
 
@@ -81,6 +82,7 @@ type PhasedDiagnostic with
         tcConfig: TcConfig *
         severity: FSharpDiagnosticSeverity ->
             unit
+#endif //!FABLE_COMPILER
 
 /// Get a diagnostics logger that filters the reporting of warnings based on scoped pragma information
 val GetDiagnosticsLoggerFilteringByScopedPragmas:

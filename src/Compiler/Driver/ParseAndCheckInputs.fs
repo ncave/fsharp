@@ -1431,6 +1431,8 @@ let CheckMultipleInputsSequential (ctok, checkForErrors, tcConfig, tcImports, tc
     (tcState, inputs)
     ||> List.mapFold (CheckOneInputEntry(ctok, checkForErrors, tcConfig, tcImports, tcGlobals, prefixPathOpt, false))
 
+#if !FABLE_COMPILER
+
 /// Use parallel checking of implementation files that have signature files
 let CheckMultipleInputsInParallel
     (
@@ -1544,12 +1546,19 @@ let CheckMultipleInputsInParallel
 
         results, tcState)
 
-let CheckClosedInputSet (ctok, checkForErrors, tcConfig: TcConfig, tcImports, tcGlobals, prefixPathOpt, tcState, eagerFormat, inputs) =
+#endif //!FABLE_COMPILER
+
+let CheckClosedInputSet (ctok, checkForErrors, tcConfig: TcConfig, tcImports, tcGlobals, prefixPathOpt, tcState, eagerFormat: (PhasedDiagnostic -> PhasedDiagnostic), inputs) =
     // tcEnvAtEndOfLastFile is the environment required by fsi.exe when incrementally adding definitions
+#if FABLE_COMPILER
+    ignore eagerFormat
+#endif
     let results, tcState =
+#if !FABLE_COMPILER
         if tcConfig.parallelCheckingWithSignatureFiles then
             CheckMultipleInputsInParallel(ctok, checkForErrors, tcConfig, tcImports, tcGlobals, prefixPathOpt, tcState, eagerFormat, inputs)
         else
+#endif //!FABLE_COMPILER
             CheckMultipleInputsSequential(ctok, checkForErrors, tcConfig, tcImports, tcGlobals, prefixPathOpt, tcState, inputs)
 
     let (tcEnvAtEndOfLastFile, topAttrs, implFiles, _), tcState =
