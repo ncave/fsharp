@@ -2621,7 +2621,7 @@ and CanMemberSigsMatchUpToCheck
                             match calledMeth.ParamArrayCallerArgs with
                             | Some args ->
                                 args |> MapCombineTDCD (fun callerArg -> 
-                                    subsumeOrConvertArg (CalledArg((0, 0), false, NotOptional, NoCallerInfo, false, false, None, reflArgInfo, paramArrayElemTy)) callerArg
+                                    subsumeOrConvertArg (GetCalledArg((0, 0), false, NotOptional, NoCallerInfo, false, false, None, reflArgInfo, paramArrayElemTy)) callerArg
                                 )
 
 
@@ -2653,7 +2653,7 @@ and CanMemberSigsMatchUpToCheck
                             let calledArgTy = rfinfo.FieldType
                             rfinfo.LogicalName, calledArgTy
             
-                    subsumeOrConvertArg (CalledArg((-1, 0), false, NotOptional, NoCallerInfo, false, false, Some (mkSynId m name), ReflectedArgInfo.None, calledArgTy)) caller
+                    subsumeOrConvertArg (GetCalledArg((-1, 0), false, NotOptional, NoCallerInfo, false, false, Some (mkSynId m name), ReflectedArgInfo.None, calledArgTy)) caller
                   )
                 // - Always take the return type into account for resolving overloading of
                 //      -- op_Explicit, op_Implicit

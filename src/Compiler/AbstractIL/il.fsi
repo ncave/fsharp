@@ -87,7 +87,9 @@ type ILAssemblyRef =
         locale: string option ->
             ILAssemblyRef
 
+#if !FABLE_COMPILER
     static member FromAssemblyName: AssemblyName -> ILAssemblyRef
+#endif
 
     member Name: string
 
@@ -1623,7 +1625,11 @@ type internal ILResourceAccess =
 type internal ILResourceLocation =
 
     /// Represents a manifest resource that can be read or written to a PE file
+#if FABLE_COMPILER
+    | Local of ByteMemory
+#else
     | Local of ByteStorage
+#endif
 
     /// Represents a manifest resource in an associated file
     | File of ILModuleRef * int32

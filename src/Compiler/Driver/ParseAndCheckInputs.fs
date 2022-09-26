@@ -464,7 +464,7 @@ let ParseInput
 type Tokenizer = unit -> Parser.token
 
 // Show all tokens in the stream, for testing purposes
-let ShowAllTokensAndExit (shortFilename, tokenizer: Tokenizer, lexbuf: LexBuffer<char>, exiter: Exiter) =
+let ShowAllTokensAndExit (shortFilename, tokenizer: Tokenizer, lexbuf: LexBuffer<LexBufferChar>, exiter: Exiter) =
     while true do
         printf "tokenize - getting one token from %s\n" shortFilename
         let t = tokenizer ()
@@ -478,7 +478,7 @@ let ShowAllTokensAndExit (shortFilename, tokenizer: Tokenizer, lexbuf: LexBuffer
             printf "!!! at end of stream\n"
 
 // Test one of the parser entry points, just for testing purposes
-let TestInteractionParserAndExit (tokenizer: Tokenizer, lexbuf: LexBuffer<char>, exiter: Exiter) =
+let TestInteractionParserAndExit (tokenizer: Tokenizer, lexbuf: LexBuffer<LexBufferChar>, exiter: Exiter) =
     while true do
         match (Parser.interaction (fun _ -> tokenizer ()) lexbuf) with
         | ParsedScriptInteraction.Definitions (l, m) -> printfn "Parsed OK, got %d defs @ %a" l.Length outputRange m
@@ -627,6 +627,8 @@ let ParseOneInputLexbuf (tcConfig: TcConfig, lexResourceManager, lexbuf, fileNam
         EmptyParsedInput(fileName, isLastCompiland)
 
 let ValidSuffixes = FSharpSigFileSuffixes @ FSharpImplFileSuffixes
+
+#if !FABLE_COMPILER
 
 let checkInputFile (tcConfig: TcConfig) fileName =
     if List.exists (FileSystemUtils.checkSuffix fileName) ValidSuffixes then
@@ -953,6 +955,8 @@ let ApplyMetaCommandsFromInputToTcConfig (tcConfig: TcConfig, inp: ParsedInput, 
     ProcessMetaCommandsFromInput (getWarningNumber, addReferenceDirective, addLoadedSource) (tcConfigB, inp, pathOfMetaCommandSource, ())
     TcConfig.Create(tcConfigB, validate = false)
 
+#endif //!FABLE_COMPILER
+
 /// Build the initial type checking environment
 let GetInitialTcEnv (assemblyName: string, initm: range, tcConfig: TcConfig, tcImports: TcImports, tcGlobals) =
     let initm = initm.StartRange
@@ -981,6 +985,8 @@ let GetInitialTcEnv (assemblyName: string, initm: range, tcConfig: TcConfig, tcI
     else
         tcEnv, openDecls0
 
+#if !FABLE_COMPILER
+
 /// Inject faults into checking
 let CheckSimulateException (tcConfig: TcConfig) =
     match tcConfig.simulateException with
@@ -1004,6 +1010,8 @@ let CheckSimulateException (tcConfig: TcConfig) =
     | Some ("tc-oc") -> raise (OperationCanceledException())
     | Some ("tc-fail") -> failwith "simulated"
     | _ -> ()
+
+#endif //!FABLE_COMPILER
 
 //----------------------------------------------------------------------------
 // Type-check sets of files
@@ -1175,7 +1183,9 @@ let CheckOneInputAux
 
     cancellable {
         try
+#if !FABLE_COMPILER
             CheckSimulateException tcConfig
+#endif
 
             let m = inp.Range
             let amap = tcImports.GetImportMap()

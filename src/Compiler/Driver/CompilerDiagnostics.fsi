@@ -93,6 +93,8 @@ val GetDiagnosticsLoggerFilteringByScopedPragmas:
 /// Remove 'implicitIncludeDir' from a file name before output
 val SanitizeFileName: fileName: string -> implicitIncludeDir: string -> string
 
+#if !FABLE_COMPILER
+
 /// Used internally and in LegacyHostedCompilerForTesting
 [<RequireQualifiedAccess>]
 type FormattedDiagnosticLocation =
@@ -125,3 +127,5 @@ type FormattedDiagnostic =
 val CollectFormattedDiagnostics:
     tcConfig: TcConfig * severity: FSharpDiagnosticSeverity * PhasedDiagnostic * suggestNames: bool ->
         FormattedDiagnostic[]
+
+#endif //!FABLE_COMPILER

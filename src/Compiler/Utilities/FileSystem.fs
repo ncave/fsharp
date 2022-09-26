@@ -3,12 +3,14 @@ namespace FSharp.Compiler.IO
 
 open System
 open System.IO
+#if !FABLE_COMPILER
 open System.IO.MemoryMappedFiles
 open System.Buffers
 open System.Reflection
 open System.Threading
 open System.Runtime.InteropServices
 open FSharp.NativeInterop
+#endif
 open Internal.Utilities.Library
 
 open System.Text
@@ -59,11 +61,15 @@ type ByteMemory() =
     abstract ReadUInt16: pos: int -> uint16
     abstract ReadUtf8String: pos: int * count: int -> string
     abstract Slice: pos: int * count: int -> ByteMemory
+#if !FABLE_COMPILER
     abstract CopyTo: Stream -> unit
+#endif
     abstract Copy: srcOffset: int * dest: byte[] * destOffset: int * count: int -> unit
     abstract ToArray: unit -> byte[]
+#if !FABLE_COMPILER
     abstract AsStream: unit -> Stream
     abstract AsReadOnlyStream: unit -> Stream
+#endif
 
 [<Experimental("This FCS API/Type is experimental and subject to change.")>]
 [<Sealed>]
@@ -126,9 +132,11 @@ type ByteArrayMemory(bytes: byte[], offset, length) =
         else
             ByteArrayMemory(Array.empty, 0, 0) :> ByteMemory
 
+#if !FABLE_COMPILER
     override _.CopyTo stream =
         if length > 0 then
             stream.Write(bytes, offset, length)
+#endif
 
     override _.Copy(srcOffset, dest, destOffset, count) =
         checkCount count
@@ -141,6 +149,8 @@ type ByteArrayMemory(bytes: byte[], offset, length) =
             Array.sub bytes offset length
         else
             Array.empty
+
+#if !FABLE_COMPILER
 
     override _.AsStream() =
         if length > 0 then
@@ -321,6 +331,8 @@ type RawByteMemory(addr: nativeptr<byte>, length: int, holder: obj) =
         else
             new MemoryStream([||], 0, 0, false) :> Stream
 
+#endif //!FABLE_COMPILER
+
 [<Struct; NoEquality; NoComparison>]
 type ReadOnlyByteMemory(bytes: ByteMemory) =
 
@@ -342,16 +354,22 @@ type ReadOnlyByteMemory(bytes: ByteMemory) =
     member _.Slice(pos, count) =
         bytes.Slice(pos, count) |> ReadOnlyByteMemory
 
+#if !FABLE_COMPILER
     member _.CopyTo stream = bytes.CopyTo stream
+#endif
 
     member _.Copy(srcOffset, dest, destOffset, count) =
         bytes.Copy(srcOffset, dest, destOffset, count)
 
     member _.ToArray() = bytes.ToArray()
 
+#if !FABLE_COMPILER
     member _.AsStream() = bytes.AsReadOnlyStream()
 
     member _.Underlying = bytes
+#endif
+
+#if !FABLE_COMPILER
 
 [<AutoOpen>]
 module MemoryMappedFileExtensions =
@@ -396,6 +414,8 @@ module MemoryMappedFileExtensions =
                 let span = Span<byte>(stream.PositionPointer |> NativePtr.toVoidPtr, int length)
                 bytes.Span.CopyTo(span)
                 stream.Position <- stream.Position + length)
+
+#endif //!FABLE_COMPILER
 
 [<RequireQualifiedAccess>]
 module internal FileSystemUtils =
@@ -447,6 +467,50 @@ module internal FileSystemUtils =
     let trimQuotes (path: string) = path.Trim([| ' '; '\"' |])
 
     let isDll fileName = checkSuffix fileName ".dll"
+
+#if FABLE_COMPILER
+
+[<AbstractClass; Sealed>]
+type FileSystem =
+
+    static member GetFullPathShim (fileName: string) =
+        fileName // not getting a full path, unless it already is
+
+    static member IsPathRootedShim (path: string) =
+        path.StartsWith("/") || path.StartsWith("\\") || path.IndexOf(':') = 1
+
+    static member NormalizePathShim (path: string) =
+        let path =
+            if FileSystem.IsPathRootedShim path
+            then FileSystem.GetFullPathShim path
+            else path
+        path.Replace('\\', '/')
+
+    static member GetFullFilePathInDirectoryShim (dir: string) (fileName: string) =
+        let path =
+            if FileSystem.IsPathRootedShim(fileName)
+            then fileName
+            else Path.Combine(dir, fileName)
+        FileSystem.GetFullPathShim(path)
+
+    static member IsInvalidPathShim(path: string) =
+        let isInvalidPath(p: string) =
+            String.IsNullOrEmpty p || p.IndexOfAny(Path.GetInvalidPathChars()) <> -1
+        let isInvalidFilename(p: string) =
+            String.IsNullOrEmpty p || p.IndexOfAny(Path.GetInvalidFileNameChars()) <> -1
+        let isInvalidDirectory(d: string) =
+            d=null || d.IndexOfAny(Path.GetInvalidPathChars()) <> -1
+        isInvalidPath path ||
+        let directory = Path.GetDirectoryName path
+        let filename = Path.GetFileName path
+        isInvalidDirectory directory || isInvalidFilename filename
+
+    static member GetTempPathShim() = "."
+
+    static member GetDirectoryNameShim(path: string) =
+        Path.GetDirectoryName(path)
+
+#else //!FABLE_COMPILER
 
 [<Experimental("This FCS API/Type is experimental and subject to change.")>]
 type IAssemblyLoader =
@@ -850,18 +914,22 @@ module public FileSystemAutoOpens =
     /// The global hook into the file system
     let mutable FileSystem: IFileSystem = DefaultFileSystem() :> IFileSystem
 
+#endif //!FABLE_COMPILER
+
 type ByteMemory with
 
     member x.AsReadOnly() = ReadOnlyByteMemory x
 
     static member Empty = ByteArrayMemory([||], 0, 0) :> ByteMemory
 
+#if !FABLE_COMPILER
     static member FromMemoryMappedFile(mmf: MemoryMappedFile) =
         let accessor = mmf.CreateViewAccessor()
         RawByteMemory.FromUnsafePointer(accessor.SafeMemoryMappedViewHandle.DangerousGetHandle(), int accessor.Capacity, (mmf, accessor))
 
     static member FromUnsafePointer(addr, length, holder: obj) =
         RawByteMemory(NativePtr.ofNativeInt addr, length, holder) :> ByteMemory
+#endif //!FABLE_COMPILER
 
     static member FromArray(bytes, offset, length) =
         ByteArrayMemory(bytes, offset, length) :> ByteMemory
@@ -941,19 +1009,26 @@ type internal ByteBuffer =
             let old = buf.bbArray
 
             buf.bbArray <-
+#if !FABLE_COMPILER
                 if buf.useArrayPool then
                     ArrayPool.Shared.Rent(max newSize (oldBufSize * 2))
                 else
+#endif
                     Bytes.zeroCreate (max newSize (oldBufSize * 2))
 
             Bytes.blit old 0 buf.bbArray 0 buf.bbCurrent
 
-            if buf.useArrayPool then
-                ArrayPool.Shared.Return old
+#if !FABLE_COMPILER
+            if buf.useArrayPool then ArrayPool.Shared.Return old
+#endif
 
+#if FABLE_COMPILER
+    member buf.Close () = Bytes.sub buf.bbArray 0 buf.bbCurrent
+#else
     member buf.AsMemory() =
         buf.CheckDisposed()
         ReadOnlyMemory(buf.bbArray, 0, buf.bbCurrent)
+#endif
 
     member buf.EmitIntAsByte(i: int) =
         buf.CheckDisposed()
@@ -1001,6 +1076,7 @@ type internal ByteBuffer =
         Bytes.blit i 0 buf.bbArray buf.bbCurrent n
         buf.bbCurrent <- newSize
 
+#if !FABLE_COMPILER
     member buf.EmitMemory(i: ReadOnlyMemory<byte>) =
         buf.CheckDisposed()
         let n = i.Length
@@ -1016,6 +1092,7 @@ type internal ByteBuffer =
         buf.Ensure newSize
         i.Copy(0, buf.bbArray, buf.bbCurrent, n)
         buf.bbCurrent <- newSize
+#endif //!FABLE_COMPILER
 
     member buf.EmitInt32AsUInt16 n =
         buf.CheckDisposed()
@@ -1048,11 +1125,15 @@ type internal ByteBuffer =
         {
             useArrayPool = useArrayPool
             isDisposed = false
+#if FABLE_COMPILER
+            bbArray = Bytes.zeroCreate capacity
+#else
             bbArray =
                 if useArrayPool then
                     ArrayPool.Shared.Rent capacity
                 else
                     Bytes.zeroCreate capacity
+#endif
             bbCurrent = 0
         }
 
@@ -1062,8 +1143,12 @@ type internal ByteBuffer =
             if not this.isDisposed then
                 this.isDisposed <- true
 
+#if !FABLE_COMPILER
                 if this.useArrayPool then
                     ArrayPool.Shared.Return this.bbArray
+#endif
+
+#if !FABLE_COMPILER
 
 [<Sealed>]
 type ByteStorage(getByteMemory: unit -> ReadOnlyByteMemory) =
@@ -1112,3 +1197,5 @@ type ByteStorage(getByteMemory: unit -> ReadOnlyByteMemory) =
 
     static member FromByteArrayAndCopy(bytes: byte[], useBackingMemoryMappedFile: bool) =
         ByteStorage.FromByteMemoryAndCopy(ByteMemory.FromArray(bytes).AsReadOnly(), useBackingMemoryMappedFile)
+
+#endif //!FABLE_COMPILER

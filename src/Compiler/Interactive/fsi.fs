@@ -2597,7 +2597,11 @@ type FsiStdinLexerProvider
                 let numTrimmed = min len input.Length
 
                 for i = 0 to numTrimmed-1 do
+#if FABLE_COMPILER
+                    buf[i+start] <- uint16 input.[i]
+#else
                     buf[i+start] <- input[i]
+#endif
 
                 numTrimmed
           ))
