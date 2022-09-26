@@ -32,6 +32,9 @@ type ISourceText =
 type StringText(str: string) =
 
     let getLines (str: string) =
+#if FABLE_COMPILER
+        System.Text.RegularExpressions.Regex.Split(str, "\r\n|\r|\n");
+#else
         use reader = new StringReader(str)
 
         [|
@@ -46,6 +49,7 @@ type StringText(str: string) =
                 // http://stackoverflow.com/questions/19365404/stringreader-omits-trailing-linebreak
                 yield String.Empty
         |]
+#endif //!FABLE_COMPILER
 
     let getLines =
         // This requires allocating and getting all the lines.
@@ -96,7 +100,12 @@ type StringText(str: string) =
             if lastIndex <= startIndex || lastIndex >= str.Length then
                 invalidArg "target" "Too big."
 
+
+#if FABLE_COMPILER
+            str.IndexOf(target, startIndex) <> -1
+#else
             str.IndexOf(target, startIndex, target.Length) <> -1
+#endif
 
         member _.Length = str.Length
 
@@ -106,7 +115,11 @@ type StringText(str: string) =
             | _ -> false
 
         member _.CopyTo(sourceIndex, destination, destinationIndex, count) =
+#if FABLE_COMPILER
+            Array.blit (str.ToCharArray()) sourceIndex destination destinationIndex count
+#else
             str.CopyTo(sourceIndex, destination, destinationIndex, count)
+#endif
 
 module SourceText =
 
@@ -158,6 +171,12 @@ type internal Position =
 
     static member FirstLine fileIdx = Position(fileIdx, 1, 0, 0, 0)
 
+#if FABLE_COMPILER
+    type internal LexBufferChar = uint16
+#else
+    type internal LexBufferChar = char
+#endif
+
 type internal LexBufferFiller<'Char> = LexBuffer<'Char> -> unit
 
 and [<Sealed>] internal LexBuffer<'Char>(filler: LexBufferFiller<'Char>, reportLibraryOnlyFeatures: bool, langVersion: LanguageVersion) =
@@ -201,8 +220,10 @@ and [<Sealed>] internal LexBuffer<'Char>(filler: LexBufferFiller<'Char>, reportL
         with get () = endPos
         and set b = endPos <- b
 
+#if !FABLE_COMPILER
     member lexbuf.LexemeView =
         System.ReadOnlySpan<'Char>(buffer, bufferScanStart, lexemeLength)
+#endif
 
     member lexbuf.LexemeChar n = buffer[n + bufferScanStart]
 
@@ -237,8 +258,13 @@ and [<Sealed>] internal LexBuffer<'Char>(filler: LexBufferFiller<'Char>, reportL
 
     member lexbuf.RefillBuffer() = filler lexbuf
 
-    static member LexemeString(lexbuf: LexBuffer<char>) =
+    static member LexemeString(lexbuf: LexBuffer<LexBufferChar>) =
+#if FABLE_COMPILER
+        let chars = Array.init lexbuf.LexemeLength (lexbuf.LexemeChar >> char)
+        new System.String(chars)
+#else
         System.String(lexbuf.Buffer, lexbuf.BufferScanStart, lexbuf.LexemeLength)
+#endif
 
     member lexbuf.IsPastEndOfStream
         with get () = eof
@@ -293,6 +319,10 @@ and [<Sealed>] internal LexBuffer<'Char>(filler: LexBufferFiller<'Char>, reportL
         LexBuffer.FromArrayNoCopy(reportLibraryOnlyFeatures, langVersion, arr)
 
     static member FromSourceText(reportLibraryOnlyFeatures, langVersion, sourceText: ISourceText) =
+#if FABLE_COMPILER
+        let arr = Array.init sourceText.Length (fun i -> uint16 (sourceText.Item i))
+        LexBuffer.FromArrayNoCopy (reportLibraryOnlyFeatures, langVersion, arr)
+#else
         let mutable currentSourceIndex = 0
 
         LexBuffer<char>.FromFunction
@@ -311,16 +341,25 @@ and [<Sealed>] internal LexBuffer<'Char>(filler: LexBufferFiller<'Char>, reportL
                      sourceText.CopyTo(currentSourceIndex, chars, start, lengthToCopy)
                      currentSourceIndex <- currentSourceIndex + lengthToCopy
                      lengthToCopy)
+#endif //!FABLE_COMPILER
+
+    static member FromString (reportLibraryOnlyFeatures, langVersion, s: string) =
+#if FABLE_COMPILER
+        let arr = Array.init s.Length (fun i -> uint16 s.[i])
+        LexBuffer.FromArrayNoCopy (reportLibraryOnlyFeatures, langVersion, arr)
+#else
+        LexBuffer.FromArrayNoCopy (reportLibraryOnlyFeatures, langVersion, s.ToCharArray())
+#endif
 
 module GenericImplFragments =
-    let startInterpret (lexBuffer: LexBuffer<char>) =
+    let startInterpret (lexBuffer: LexBuffer<LexBufferChar>) =
         lexBuffer.BufferScanStart <- lexBuffer.BufferScanStart + lexBuffer.LexemeLength
         lexBuffer.BufferMaxScanLength <- lexBuffer.BufferMaxScanLength - lexBuffer.LexemeLength
         lexBuffer.BufferScanLength <- 0
         lexBuffer.LexemeLength <- 0
         lexBuffer.BufferAcceptAction <- -1
 
-    let afterRefill (trans: uint16[][], sentinel, lexBuffer: LexBuffer<char>, scanUntilSentinel, endOfScan, state, eofPos) =
+    let afterRefill (trans: uint16[][], sentinel, lexBuffer: LexBuffer<LexBufferChar>, scanUntilSentinel, endOfScan, state, eofPos) =
         // end of file occurs if we couldn't extend the buffer
         if lexBuffer.BufferScanLength = lexBuffer.BufferMaxScanLength then
             let snew = int trans[state].[eofPos] // == EOF
@@ -337,7 +376,7 @@ module GenericImplFragments =
         else
             scanUntilSentinel lexBuffer state
 
-    let onAccept (lexBuffer: LexBuffer<char>, a) =
+    let onAccept (lexBuffer: LexBuffer<LexBufferChar>, a) =
         lexBuffer.LexemeLength <- lexBuffer.BufferScanLength
         lexBuffer.BufferAcceptAction <- a
 
@@ -352,7 +391,7 @@ type internal UnicodeTables(trans: uint16[] array, accept: uint16[]) =
     let numSpecificUnicodeChars =
         (trans[0].Length - 1 - numLowUnicodeChars - numUnicodeCategories) / 2
 
-    let lookupUnicodeCharacters state inp =
+    let lookupUnicodeCharacters state (inp: LexBufferChar) =
         let inpAsInt = int inp
         // Is it a fast ASCII character?
         if inpAsInt < numLowUnicodeChars then
@@ -367,15 +406,19 @@ type internal UnicodeTables(trans: uint16[] array, accept: uint16[]) =
                     // which covers all Unicode characters not covered in other
                     // ways
                     let baseForUnicodeCategories = numLowUnicodeChars + numSpecificUnicodeChars * 2
-                    let unicodeCategory = System.Char.GetUnicodeCategory(inp)
+                    let unicodeCategory = System.Char.GetUnicodeCategory(char inp)
                     //System.Console.WriteLine("inp = {0}, unicodeCategory = {1}", [| box inp; box unicodeCategory |]);
                     int trans[state].[baseForUnicodeCategories + int32 unicodeCategory]
                 else
                     // This is the specific unicode character
-                    let c = char (int trans[state].[baseForSpecificUnicodeChars + i * 2])
+                    let c = (int trans[state].[baseForSpecificUnicodeChars + i * 2])
                     //System.Console.WriteLine("c = {0}, inp = {1}, i = {2}", [| box c; box inp; box i |]);
                     // OK, have we found the entry for a specific unicode character?
-                    if c = inp then
+#if FABLE_COMPILER
+                    if c = int inp then
+#else
+                    if char c = inp then
+#endif
                         int trans[state].[baseForSpecificUnicodeChars + i * 2 + 1]
                     else
                         loop (i + 1)
@@ -414,7 +457,7 @@ type internal UnicodeTables(trans: uint16[] array, accept: uint16[]) =
     //      30 entries, one for each UnicodeCategory
     //      1 entry for EOF
 
-    member tables.Interpret(initialState, lexBuffer: LexBuffer<char>) =
+    member tables.Interpret(initialState, lexBuffer: LexBuffer<LexBufferChar>) =
         startInterpret (lexBuffer)
         scanUntilSentinel lexBuffer initialState
 

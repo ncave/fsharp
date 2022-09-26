@@ -9,7 +9,9 @@ open FSharp.Compiler.Text
 [<RequireQualifiedAccess>]
 type internal TextContainer =
     | OnDisk
+#if !FABLE_COMPILER
     | Stream of Stream
+#endif
     | SourceText of ISourceText
 
     interface IDisposable
@@ -28,12 +30,17 @@ type internal FSharpSource =
     /// Gets the internal text container. Text may be on-disk, in a stream, or a source text.
     abstract internal GetTextContainer: unit -> TextContainer
 
+#if !FABLE_COMPILER
     /// Creates a FSharpSource from disk. Only used internally.
     static member internal CreateFromFile: filePath: string -> FSharpSource
 
     /// Creates a FSharpSource from the specified file path by shadow-copying the file.
     static member CreateCopyFromFile: filePath: string -> FSharpSource
+#endif //!FABLE_COMPILER
 
     /// Creates a FSharpSource.
     static member Create:
         filePath: string * getTimeStamp: (unit -> DateTime) * getSourceText: (unit -> ISourceText) -> FSharpSource
+
+    /// Creates a FSharpSource.
+    static member Create : filePath: string * getTimeStamp: (unit -> DateTime) * getSourceText: (unit -> ISourceText) -> FSharpSource

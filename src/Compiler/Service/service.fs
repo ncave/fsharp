@@ -15,15 +15,21 @@ open FSharp.Compiler
 open FSharp.Compiler.AbstractIL
 open FSharp.Compiler.AbstractIL.IL
 open FSharp.Compiler.AbstractIL.ILBinaryReader
+#if !FABLE_COMPILER
 open FSharp.Compiler.AbstractIL.ILDynamicAssemblyWriter
+#endif
 open FSharp.Compiler.CodeAnalysis
 open FSharp.Compiler.CompilerConfig
 open FSharp.Compiler.CompilerDiagnostics
 open FSharp.Compiler.CompilerImports
 open FSharp.Compiler.CompilerOptions
+#if !FABLE_COMPILER
 open FSharp.Compiler.DependencyManager
+#endif
 open FSharp.Compiler.Diagnostics
+#if !FABLE_COMPILER
 open FSharp.Compiler.Driver
+#endif
 open FSharp.Compiler.DiagnosticsLogger
 open FSharp.Compiler.IO
 open FSharp.Compiler.ParseAndCheckInputs
@@ -44,6 +50,8 @@ module EnvMisc =
 
     let projectCacheSizeDefault = GetEnvInteger "FCS_ProjectCacheSizeDefault" 3
     let frameworkTcImportsCacheStrongSize = GetEnvInteger "FCS_frameworkTcImportsCacheStrongSizeDefault" 8
+
+#if !FABLE_COMPILER
 
 //----------------------------------------------------------------------------
 // BackgroundCompiler
@@ -1699,3 +1707,5 @@ type CompilerEnvironment() =
 
         singleFileProjectExtensions
         |> List.exists (fun e -> 0 = String.Compare(e, ext, StringComparison.OrdinalIgnoreCase))
+
+#endif //!FABLE_COMPILER
