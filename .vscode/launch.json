@@ -80,7 +80,7 @@
             "name": "FCS Test",
             "type": "coreclr",
             "request": "launch",
-            "program": "${workspaceFolder}/artifacts/bin/fcs-test/Debug/net6.0/fcs-test.dll",
+            "program": "${workspaceFolder}/artifacts/bin/fcs-test/Debug/net7.0/fcs-test.dll",
             "args": [],
             "cwd": "${workspaceFolder}/fcs/fcs-test",
             "console": "internalConsole",
