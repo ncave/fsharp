@@ -14,11 +14,15 @@ module Activity =
     let start (name: string) (tags: (string * string) seq) : IDisposable =
         let activity = activitySource.StartActivity(name)
 
+#if FABLE_COMPILER
+        ignore tags
+#else
         match activity with
         | null -> ()
         | activity ->
             for key, value in tags do
                 activity.AddTag(key, value) |> ignore
+#endif
 
         activity
 
