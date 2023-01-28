@@ -2507,6 +2507,46 @@ and [<Sealed>] TcImports
             global_g <- Some tcGlobals
 #endif
             frameworkTcImports.SetTcGlobals tcGlobals
+
+#if EXPORT_METADATA
+            let metadataPath = __SOURCE_DIRECTORY__ + "/../../../temp/metadata/"
+            let writeMetadata (dllInfo: ImportedBinary) =
+                let outfile = Path.GetFullPath(metadataPath + Path.GetFileName(dllInfo.FileName))
+                let ilModule = dllInfo.RawMetadata.TryGetILModuleDef().Value
+                try
+                    let args: AbstractIL.ILBinaryWriter.options = {
+                        ilg = tcGlobals.ilg
+                        outfile = outfile
+                        pdbfile = None //pdbfile
+                        emitTailcalls = tcConfig.emitTailcalls
+                        deterministic = tcConfig.deterministic
+                        portablePDB = tcConfig.portablePDB
+                        embeddedPDB = tcConfig.embeddedPDB
+                        embedAllSource = tcConfig.embedAllSource
+                        embedSourceList = tcConfig.embedSourceList
+                        allGivenSources = [] //ilSourceDocs
+                        sourceLink = tcConfig.sourceLink
+                        checksumAlgorithm = tcConfig.checksumAlgorithm
+                        signer = None //GetStrongNameSigner signingInfo
+                        dumpDebugInfo = tcConfig.dumpDebugInfo
+                        referenceAssemblyOnly = false
+                        referenceAssemblyAttribOpt = None
+                        pathMap = tcConfig.pathMap
+                    }
+                    AbstractIL.ILBinaryWriter.WriteILBinaryFile (args, ilModule, id)
+                with Failure msg ->
+                    printfn "Export error: %s" msg
+
+            _assemblies
+            |> List.iter (function
+                | ResolvedImportedAssembly (asm, m) ->
+                    let ilShortAssemName = getNameOfScopeRef asm.ILScopeRef
+                    let dllInfo = frameworkTcImports.FindDllInfo(ctok, m, ilShortAssemName)
+                    writeMetadata dllInfo
+                | UnresolvedImportedAssembly (_assemblyName, _m) -> ()
+            )
+#endif
+
             return tcGlobals, frameworkTcImports
         }
 
