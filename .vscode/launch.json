@@ -84,6 +84,16 @@
             },
             "justMyCode": true,
             "enableStepFiltering": false,
+        },
+        {
+            "name": "FCS Export",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/artifacts/bin/fcs-export/Debug/net7.0/fcs-export.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/fcs/fcs-export",
+            "console": "internalConsole",
+            "stopAtEntry": false
         }
     ]
 }
