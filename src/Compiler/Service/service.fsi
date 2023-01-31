@@ -16,6 +16,8 @@ open FSharp.Compiler.Syntax
 open FSharp.Compiler.Text
 open FSharp.Compiler.Tokenization
 
+#if !FABLE_COMPILER
+
 [<Experimental "This type is experimental and likely to be removed in the future.">]
 [<RequireQualifiedAccess>]
 type DocumentSource =
@@ -465,3 +467,5 @@ type public CompilerEnvironment =
 
     /// Whether or not this file should be a single-file project
     static member MustBeSingleFileProject: string -> bool
+
+#endif //!FABLE_COMPILER

@@ -7,8 +7,24 @@ open Internal.Utilities.Library
 open FSharp.Compiler.AbstractIL
 open FSharp.Compiler.AbstractIL.AsciiConstants
 
+#if FABLE_COMPILER
+
+let lexeme (lexbuf : LexBuffer<_>) = LexBuffer<_>.LexemeString lexbuf
+let lexemeChar (lexbuf : LexBuffer<_>) n = lexbuf.LexemeChar n |> char
+
+let lexemeTrimBoth (lexbuf : LexBuffer<_>) (n:int) (m:int) = 
+    LexBuffer<_>.LexemeString(lexbuf).Substring(n, lexbuf.LexemeLength - (n+m))
+
+#else //!FABLE_COMPILER
+
 let lexeme (lexbuf : LexBuffer<char>) = LexBuffer<char>.LexemeString lexbuf
 let lexemeChar (lexbuf : LexBuffer<char>) n = lexbuf.LexemeChar n
+
+let lexemeTrimBoth (lexbuf : LexBuffer<_>) (n:int) (m:int) = 
+    let s = lexbuf.LexemeView
+    s.Slice(n, s.Length - (n+m)).ToString()
+
+#endif //!FABLE_COMPILER
 
 let unexpectedChar _lexbuf =
   raise Parsing.RecoverableParseError ;;
@@ -106,8 +122,7 @@ rule token = parse
   (* The problem is telling an integer-followed-by-ellipses from a floating-point-nubmer-followed-by-dots *)
 
   | ((['0'-'9']) | (['0'-'9']['0'-'9']['0'-'9']+)) "..."
-      {  let b = lexbuf.LexemeView in 
-         VAL_INT32_ELIPSES(int32(b.Slice(0, (b.Length - 3)).ToString())) }
+      { VAL_INT32_ELIPSES(int32(lexemeTrimBoth lexbuf 0 3)) }
   | ['0'-'9' 'A'-'F' 'a'-'f' ] ['0'-'9' 'A'-'F' 'a'-'f' ] 
       { let c1 = (lexemeChar lexbuf 0) in 
         let c2 = (lexemeChar lexbuf 1) in 

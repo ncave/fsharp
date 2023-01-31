@@ -395,7 +395,11 @@ module TcResolutionsExtensions =
                         formatSpecifierLocations
                         |> Array.map (fun (m, _) -> SemanticClassificationItem((m, SemanticClassificationType.Printf)))
 
+#if FABLE_COMPILER
+                    results.AddRange(locs :> IEnumerable<SemanticClassificationItem>)
+#else
                     results.AddRange(locs)
+#endif
                     results.ToArray())
                 (fun msg ->
                     Trace.TraceInformation(sprintf "FCS: recovering from error in GetSemanticClassification: '%s'" msg)

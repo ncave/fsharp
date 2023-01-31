@@ -6,7 +6,9 @@ module internal FSharp.Compiler.CompilerDiagnostics
 open System
 open System.Diagnostics
 open System.IO
+#if !FABLE_COMPILER
 open System.Reflection
+#endif
 open System.Text
 
 open Internal.Utilities.Library.Extras
@@ -204,8 +206,10 @@ type Exception with
         | AssemblyNotResolved(_, m)
         | HashLoadedSourceHasIssues(_, _, _, m)
         | HashLoadedScriptConsideredSource m -> Some m
+#if !FABLE_COMPILER
         // Strip TargetInvocationException wrappers
         | :? System.Reflection.TargetInvocationException as e -> e.InnerException.DiagnosticRange
+#endif
 #if !NO_TYPEPROVIDERS
         | :? TypeProviderError as e -> e.Range |> Some
 #endif
@@ -329,8 +333,10 @@ type Exception with
 #endif
         | PatternMatchCompilation.EnumMatchIncomplete _ -> 104
 
+#if !FABLE_COMPILER
         // Strip TargetInvocationException wrappers
         | :? TargetInvocationException as e -> e.InnerException.DiagnosticNumber
+#endif
         | WrappedError(e, _) -> e.DiagnosticNumber
         | DiagnosticWithText(n, _, _) -> n
         | DiagnosticWithSuggestions(n, _, _, _, _) -> n
@@ -444,7 +450,9 @@ type PhasedDiagnostic with
 module OldStyleMessages =
     let Message (name, format) = DeclareResourceString(name, format)
 
+#if !FABLE_COMPILER
     do FSComp.SR.RunStartupValidation()
+#endif
     let SeeAlsoE () = Message("SeeAlso", "%s")
     let ConstraintSolverTupleDiffLengthsE () = Message("ConstraintSolverTupleDiffLengths", "%d%d")
     let ConstraintSolverInfiniteTypesE () = Message("ConstraintSolverInfiniteTypes", "%s%s")
@@ -617,6 +625,13 @@ let (|InvalidArgument|_|) (exn: exn) =
     match exn with
     | :? ArgumentException as e -> Some e.Message
     | _ -> None
+
+#if FABLE_COMPILER
+module Printf =
+    let bprintf (sb: StringBuilder) =
+        let f (s: string) = sb.AppendString(s)
+        Printf.kprintf f
+#endif
 
 let OutputNameSuggestions (os: StringBuilder) suggestNames suggestionsF idText =
     if suggestNames then
@@ -1891,6 +1906,7 @@ type Exception with
         | ArgumentsInSigAndImplMismatch(sigArg, implArg) ->
             os.AppendString(ArgumentsInSigAndImplMismatchE().Format sigArg.idText implArg.idText)
 
+#if !FABLE_COMPILER
         // Strip TargetInvocationException wrappers
         | :? TargetInvocationException as exn -> exn.InnerException.Output(os, suggestNames)
 
@@ -1905,6 +1921,7 @@ type Exception with
         | :? IOException as exn -> Printf.bprintf os "%s" exn.Message
 
         | :? UnauthorizedAccessException as exn -> Printf.bprintf os "%s" exn.Message
+#endif //!FABLE_COMPILER
 
         | :? InvalidOperationException as exn when exn.Message.Contains "ControlledExecution.Run" -> Printf.bprintf os "%s" exn.Message
 
@@ -1967,6 +1984,8 @@ let SanitizeFileName fileName implicitIncludeDir =
             fullPath.Replace(currentDir + "\\", "")
     with _ ->
         fileName
+
+#if !FABLE_COMPILER
 
 [<RequireQualifiedAccess>]
 type FormattedDiagnosticLocation =
@@ -2172,6 +2191,8 @@ type PhasedDiagnostic with
         writeViaBuffer os (fun buf ->
             diagnostic.OutputContext(buf, prefix, fileLineFunction)
             diagnostic.Output(buf, tcConfig, severity))
+
+#endif //!FABLE_COMPILER
 
 //----------------------------------------------------------------------------
 // Scoped #nowarn pragmas

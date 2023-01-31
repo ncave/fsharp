@@ -23,7 +23,9 @@ open FSharp.Compiler.TypedTreeBasics
 open FSharp.Compiler.TypedTreeOps
 open FSharp.Compiler.TypedTreeOps.DebugPrint
 open FSharp.Compiler.TypeRelations
+#if !FABLE_COMPILER
 open type System.MemoryExtensions
+#endif
 
 exception MatchIncomplete of bool * (string * bool) option * range
 exception RuleNeverMatched of range
@@ -785,7 +787,11 @@ let (|ConstNeedsDefaultCase|_|) c =
 ///     switches, string switches and floating point switches are treated in the
 ///     same way as DecisionTreeTest.IsInst.
 let rec BuildSwitch inpExprOpt g expr edges dflt m =
+#if FABLE_COMPILER
+    if verbose then dprintf "--> BuildSwitch@%s, #edges = %A, dflt.IsSome = %A\n" (stringOfRange m) (List.length edges) (Option.isSome dflt)
+#else
     if verbose then dprintf "--> BuildSwitch@%a, #edges = %A, dflt.IsSome = %A\n" outputRange m (List.length edges) (Option.isSome dflt)
+#endif
     match edges, dflt with
     | [], None      -> failwith "internal error: no edges and no default"
     | [], Some dflt -> dflt
@@ -1731,7 +1737,11 @@ let isProblematicClause (clause: MatchClause) =
         // Look for multiple decision points.
         // We don't mind about the last logical decision point
         let ips = investigationPoints clause.Pattern
+#if FABLE_COMPILER
+        ips.Length > 0 && Array.exists id ips[0..ips.Length-2]
+#else
         ips.Length > 0 && Span.exists id (ips.AsSpan (0, ips.Length - 1))
+#endif
 
 let rec CompilePattern  g denv amap tcVal infoReader mExpr mMatch warnOnUnused actionOnFailure (origInputVal, origInputValTypars, origInputExprOpt) (clausesL: MatchClause list) inputTy resultTy =
     match clausesL with

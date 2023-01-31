@@ -130,7 +130,7 @@ module internal PervasiveAutoOpens =
         | None -> failwith "getHole"
         | Some x -> x
 
-    let reportTime =
+    let reportTime: (string -> unit) =
         let mutable tPrev: IDisposable = null
 
         fun descr ->
@@ -139,7 +139,11 @@ module internal PervasiveAutoOpens =
 
             tPrev <-
                 if descr <> "Finish" then
+#if FABLE_COMPILER
+                    null
+#else
                     FSharp.Compiler.Diagnostics.Activity.Profiling.startAndMeasureEnvironmentStats descr
+#endif
                 else
                     null
 
@@ -147,6 +151,7 @@ module internal PervasiveAutoOpens =
 
     let notFound () = raise (KeyNotFoundException())
 
+#if !FABLE_COMPILER
     type Async with
 
         static member RunImmediate(computation: Async<'T>, ?cancellationToken) =
@@ -157,6 +162,7 @@ module internal PervasiveAutoOpens =
             Async.StartWithContinuations(computation, (ts.SetResult), (ts.SetException), (fun _ -> ts.SetCanceled()), cancellationToken)
 
             task.Result
+#endif //!FABLE_COMPILER
 
 [<AbstractClass>]
 type DelayInitArrayMap<'T, 'TDictKey, 'TDictValue>(f: unit -> 'T[]) =
@@ -469,7 +475,9 @@ module List =
         | _ -> true
 
     let mapq (f: 'T -> 'T) inp =
+#if !FABLE_COMPILER
         assert not typeof<'T>.IsValueType
+#endif
 
         match inp with
         | [] -> inp
@@ -686,7 +694,11 @@ module ResizeArray =
     /// This is done to help prevent a stop-the-world collection of the single large array, instead allowing for a greater
     /// probability of smaller collections. Stop-the-world is still possible, just less likely.
     let mapToSmallArrayChunks f (inp: ResizeArray<'t>) =
+#if FABLE_COMPILER
+        let itemSizeBytes = 8
+#else
         let itemSizeBytes = sizeof<'t>
+#endif
         // rounding down here is good because it ensures we don't go over
         let maxArrayItemCount = LOH_SIZE_THRESHOLD_BYTES / itemSizeBytes
 
@@ -694,6 +706,7 @@ module ResizeArray =
         // in order to prevent long-term storage of those values
         chunkBySize maxArrayItemCount f inp
 
+#if !FABLE_COMPILER
 module Span =
     let inline exists ([<InlineIfLambda>] predicate: 'T -> bool) (span: Span<'T>) =
         let mutable state = false
@@ -704,6 +717,7 @@ module Span =
             i <- i + 1
 
         state
+#endif
 
 module ValueOptionInternal =
 
@@ -798,12 +812,15 @@ module String =
         elif value.StartsWithOrdinal pattern then Some()
         else None
 
-    let (|Contains|_|) pattern value =
+    let (|Contains|_|) (pattern: string) (value: string) =
         if String.IsNullOrWhiteSpace value then None
         elif value.Contains pattern then Some()
         else None
 
     let getLines (str: string) =
+#if FABLE_COMPILER
+        System.Text.RegularExpressions.Regex.Split(str, "\r\n|\r|\n");
+#else
         use reader = new StringReader(str)
 
         [|
@@ -818,6 +835,7 @@ module String =
                 // http://stackoverflow.com/questions/19365404/stringreader-omits-trailing-linebreak
                 yield String.Empty
         |]
+#endif //!FABLE_COMPILER
 
 module Dictionary =
     let inline newWithSize (size: int) =
@@ -896,12 +914,14 @@ module internal LockAutoOpens =
 
     let AssumeLockWithoutEvidence<'LockTokenType when 'LockTokenType :> LockToken> () = Unchecked.defaultof<'LockTokenType>
 
+#if !FABLE_COMPILER
 /// Encapsulates a lock associated with a particular token-type representing the acquisition of that lock.
 type Lock<'LockTokenType when 'LockTokenType :> LockToken>() =
     let lockObj = obj ()
 
     member _.AcquireLock f =
         lock lockObj (fun () -> f (AssumeLockWithoutEvidence<'LockTokenType>()))
+#endif
 
 //---------------------------------------------------
 // Misc
@@ -949,7 +969,11 @@ type UniqueStampGenerator<'T when 'T: equality>() =
     member _.Encode str =
         encodeTable.GetOrAdd(str, computeFunc).Value
 
+#if FABLE_COMPILER
+    member _.Table = encodeTable.Keys :> ICollection<'T>
+#else
     member _.Table = encodeTable.Keys
+#endif
 
 /// memoize tables (all entries cached, never collected)
 type MemoizationTable<'T, 'U>(compute: 'T -> 'U, keyComparer: IEqualityComparer<'T>, ?canMemoize) =
@@ -1045,6 +1069,9 @@ type LazyWithContext<'T, 'Ctxt> =
         match x.funcOrException with
         | null -> x.value
         | _ ->
+#if FABLE_COMPILER
+            x.UnsynchronizedForce(ctxt)
+#else
             // Enter the lock in case another thread is in the process of evaluating the result
             Monitor.Enter x
 
@@ -1052,6 +1079,7 @@ type LazyWithContext<'T, 'Ctxt> =
                 x.UnsynchronizedForce ctxt
             finally
                 Monitor.Exit x
+#endif
 
     member x.UnsynchronizedForce ctxt =
         match x.funcOrException with

@@ -15,7 +15,9 @@ open System.Collections
 open System.Collections.Generic
 open System.Collections.Concurrent
 open System.Collections.ObjectModel
+#if !FABLE_COMPILER
 open System.Linq
+#endif
 open System.Reflection
 open System.Text
 open System.Threading
@@ -488,6 +490,7 @@ type ILAssemblyRef(data) =
                 assemRefLocale = locale
             }
 
+#if !FABLE_COMPILER
     static member FromAssemblyName(aname: AssemblyName) =
 
         let locale = None
@@ -510,6 +513,7 @@ type ILAssemblyRef(data) =
         let retargetable = aname.Flags = AssemblyNameFlags.Retargetable
 
         ILAssemblyRef.Create(aname.Name, None, publicKey, retargetable, version, locale)
+#endif //!FABLE_COMPILER
 
     member aref.QualifiedName =
         let b = StringBuilder(100)
@@ -2834,7 +2838,11 @@ and [<Sealed>] ILTypeDefs(f: unit -> ILPreTypeDef[]) =
             let key = pre.Namespace, pre.Name
             t[key] <- pre
 
+#if FABLE_COMPILER
+        t
+#else
         ReadOnlyDictionary t
+#endif
 
     member x.AsArray() =
         [| for pre in x.GetArray() -> pre.GetTypeDef() |]
@@ -2958,7 +2966,11 @@ type ILResourceAccess =
 
 [<RequireQualifiedAccess; NoEquality; NoComparison>]
 type ILResourceLocation =
+#if FABLE_COMPILER
+    | Local of ByteMemory
+#else
     | Local of ByteStorage
+#endif
     | File of ILModuleRef * int32
     | Assembly of ILAssemblyRef
 
@@ -2974,7 +2986,11 @@ type ILResource =
     /// Read the bytes from a resource local to an assembly
     member r.GetBytes() =
         match r.Location with
+#if FABLE_COMPILER
+        | ILResourceLocation.Local bytes -> bytes.AsReadOnly()
+#else
         | ILResourceLocation.Local bytes -> bytes.GetByteMemory()
+#endif
         | _ -> failwith "GetBytes"
 
     member x.CustomAttrs = x.CustomAttrsStored.GetCustomAttrs x.MetadataIndex
@@ -3211,7 +3227,11 @@ let formatCodeLabel (x: int) = "L" + string x
 
 //  ++GLOBAL MUTABLE STATE (concurrency safe)
 let codeLabelCount = ref 0
+#if FABLE_COMPILER
+let generateCodeLabel () = codeLabelCount.Value <- codeLabelCount.Value + 1; codeLabelCount.Value
+#else
 let generateCodeLabel () = Interlocked.Increment codeLabelCount
+#endif
 
 let instrIsRet i =
     match i with
@@ -4696,6 +4716,11 @@ let parseILVersion (vstr: string) =
             versionComponents[3] <- defaultRevision.ToString()
             vstr <- String.Join(".", versionComponents)
 
+#if FABLE_COMPILER
+    let parts = vstr.Split([|'.'|])
+    let versions = Array.append (Array.map uint16 parts) [|0us;0us;0us;0us|]
+    ILVersionInfo (versions.[0], versions.[1], versions.[2], versions.[3])
+#else
     let version = Version vstr
     let zero32 n = if n < 0 then 0us else uint16 n
     // since the minor revision will be -1 if none is specified, we need to truncate to 0 to not break existing code
@@ -4706,6 +4731,7 @@ let parseILVersion (vstr: string) =
             uint16 version.MinorRevision
 
     ILVersionInfo(zero32 version.Major, zero32 version.Minor, zero32 version.Build, minorRevision)
+#endif
 
 let compareILVersions (version1: ILVersionInfo) (version2: ILVersionInfo) =
     let c = compare version1.Major version2.Major
@@ -5022,7 +5048,11 @@ type ILTypeSigParser(tstring: string) =
                     ]
                     |> String.concat ","
 
+#if FABLE_COMPILER
+                ILScopeRef.Assembly(mkSimpleAssemblyRef scope)
+#else
                 ILScopeRef.Assembly(ILAssemblyRef.FromAssemblyName(AssemblyName scope))
+#endif
             else
                 ILScopeRef.Local
 
@@ -5194,7 +5224,11 @@ let decodeILAttribData (ca: ILAttribute) =
 
                         let scoref =
                             match rest with
+#if FABLE_COMPILER
+                            | Some aname -> ILScopeRef.Assembly(mkSimpleAssemblyRef aname)
+#else
                             | Some aname -> ILScopeRef.Assembly(ILAssemblyRef.FromAssemblyName(AssemblyName aname))
+#endif
                             | None -> PrimaryAssemblyILGlobals.primaryAssemblyScopeRef
 
                         let tref = mkILTyRef (scoref, unqualified_tname)
@@ -5565,11 +5599,19 @@ let computeILRefs ilg modul =
     refsOfILModule s modul
 
     {
+#if FABLE_COMPILER
+        AssemblyReferences = s.refsA |> Seq.toArray
+        ModuleReferences = s.refsM |> Seq.toArray
+        TypeReferences = s.refsTs |> Seq.toArray
+        MethodReferences = s.refsMs |> Seq.toArray
+        FieldReferences = s.refsFs |> Seq.toArray
+#else
         AssemblyReferences = s.refsA.ToArray()
         ModuleReferences = s.refsM.ToArray()
         TypeReferences = s.refsTs.ToArray()
         MethodReferences = s.refsMs.ToArray()
         FieldReferences = s.refsFs.ToArray()
+#endif
     }
 
 let unscopeILTypeRef (x: ILTypeRef) =

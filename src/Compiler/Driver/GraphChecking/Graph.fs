@@ -85,7 +85,11 @@ module internal Graph =
 
         appendLine "```"
 
+#if FABLE_COMPILER
+        ignore (path: string)
+#else
         use out =
             FileSystem.OpenFileForWriteShim(path, fileMode = System.IO.FileMode.Create)
 
         out.WriteAllText(sb.ToString())
+#endif //!FABLE_COMPILER

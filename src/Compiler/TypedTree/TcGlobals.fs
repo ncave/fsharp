@@ -9,7 +9,9 @@
 module internal FSharp.Compiler.TcGlobals
 
 open System.Collections.Concurrent
+#if !FABLE_COMPILER
 open System.Linq
+#endif
 open System.Diagnostics
 
 open Internal.Utilities.Library
@@ -1074,7 +1076,11 @@ type TcGlobals(
   member _.embeddedTypeDefs = embeddedILTypeDefs.Values |> Seq.toList
 
   member _.tryRemoveEmbeddedILTypeDefs () = [
+#if FABLE_COMPILER
+      for key in embeddedILTypeDefs.Keys do
+#else
       for key in embeddedILTypeDefs.Keys.OrderBy id do
+#endif
         match (embeddedILTypeDefs.TryRemove(key)) with
         | true, ilTypeDef -> yield ilTypeDef
         | false, _ -> ()

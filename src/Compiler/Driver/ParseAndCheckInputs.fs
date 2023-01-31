@@ -509,7 +509,7 @@ let ParseInput
 type Tokenizer = unit -> Parser.token
 
 // Show all tokens in the stream, for testing purposes
-let ShowAllTokensAndExit (tokenizer: Tokenizer, lexbuf: LexBuffer<char>, exiter: Exiter) =
+let ShowAllTokensAndExit (tokenizer: Tokenizer, lexbuf: LexBuffer<LexBufferChar>, exiter: Exiter) =
     let mutable indent = 0
 
     while true do
@@ -536,10 +536,14 @@ let ShowAllTokensAndExit (tokenizer: Tokenizer, lexbuf: LexBuffer<char>, exiter:
             printf "!!! at end of stream\n"
 
 // Test one of the parser entry points, just for testing purposes
-let TestInteractionParserAndExit (tokenizer: Tokenizer, lexbuf: LexBuffer<char>, exiter: Exiter) =
+let TestInteractionParserAndExit (tokenizer: Tokenizer, lexbuf: LexBuffer<LexBufferChar>, exiter: Exiter) =
     while true do
         match (Parser.interaction (fun _ -> tokenizer ()) lexbuf) with
+#if FABLE_COMPILER
+        | ParsedScriptInteraction.Definitions(l, m) -> printfn "Parsed OK, got %d defs @ %s" l.Length (stringOfRange m)
+#else
         | ParsedScriptInteraction.Definitions(l, m) -> printfn "Parsed OK, got %d defs @ %a" l.Length outputRange m
+#endif
 
     exiter.Exit 0
 
@@ -688,6 +692,8 @@ let ParseOneInputLexbuf (tcConfig: TcConfig, lexResourceManager, lexbuf, fileNam
         EmptyParsedInput(fileName, isLastCompiland)
 
 let ValidSuffixes = FSharpSigFileSuffixes @ FSharpImplFileSuffixes
+
+#if !FABLE_COMPILER
 
 let checkInputFile (tcConfig: TcConfig) fileName =
     if List.exists (FileSystemUtils.checkSuffix fileName) ValidSuffixes then
@@ -1014,6 +1020,8 @@ let ApplyMetaCommandsFromInputToTcConfig (tcConfig: TcConfig, inp: ParsedInput, 
     ProcessMetaCommandsFromInput (getWarningNumber, addReferenceDirective, addLoadedSource) (tcConfigB, inp, pathOfMetaCommandSource, ())
     TcConfig.Create(tcConfigB, validate = false)
 
+#endif //!FABLE_COMPILER
+
 /// Build the initial type checking environment
 let GetInitialTcEnv (assemblyName: string, initm: range, tcConfig: TcConfig, tcImports: TcImports, tcGlobals) =
     let initm = initm.StartRange
@@ -1042,6 +1050,8 @@ let GetInitialTcEnv (assemblyName: string, initm: range, tcConfig: TcConfig, tcI
     else
         tcEnv, openDecls0
 
+#if !FABLE_COMPILER
+
 /// Inject faults into checking
 let CheckSimulateException (tcConfig: TcConfig) =
     match tcConfig.simulateException with
@@ -1065,6 +1075,8 @@ let CheckSimulateException (tcConfig: TcConfig) =
     | Some("tc-oc") -> raise (OperationCanceledException())
     | Some("tc-fail") -> failwith "simulated"
     | _ -> ()
+
+#endif //!FABLE_COMPILER
 
 //----------------------------------------------------------------------------
 // Type-check sets of files
@@ -1222,7 +1234,11 @@ let SkippedImplFilePlaceholder (tcConfig: TcConfig, tcImports: TcImports, tcGlob
     use _ =
         Activity.start "ParseAndCheckInputs.SkippedImplFilePlaceholder" [| Activity.Tags.fileName, input.FileName |]
 
+#if FABLE_COMPILER
+    ignore tcConfig
+#else
     CheckSimulateException tcConfig
+#endif
 
     match input with
     | ParsedInput.ImplFile file ->
@@ -1276,7 +1292,9 @@ let CheckOneInput
             use _ =
                 Activity.start "ParseAndCheckInputs.CheckOneInput" [| Activity.Tags.fileName, input.FileName |]
 
+#if !FABLE_COMPILER
             CheckSimulateException tcConfig
+#endif
 
             let m = input.Range
             let amap = tcImports.GetImportMap()
@@ -1436,6 +1454,8 @@ let CheckClosedInputSetFinish (declaredImpls: CheckedImplFile list, tcState) =
 let CheckMultipleInputsSequential (ctok, checkForErrors, tcConfig, tcImports, tcGlobals, prefixPathOpt, tcState, inputs) =
     (tcState, inputs)
     ||> List.mapFold (CheckOneInputEntry(ctok, checkForErrors, tcConfig, tcImports, tcGlobals, prefixPathOpt))
+
+#if !FABLE_COMPILER
 
 open FSharp.Compiler.GraphChecking
 
@@ -1909,10 +1929,16 @@ let CheckMultipleInputsUsingGraphMode
 
         partialResults, tcState)
 
-let CheckClosedInputSet (ctok, checkForErrors, tcConfig: TcConfig, tcImports, tcGlobals, prefixPathOpt, tcState, eagerFormat, inputs) =
+#endif //!FABLE_COMPILER
+
+let CheckClosedInputSet (ctok, checkForErrors, tcConfig: TcConfig, tcImports, tcGlobals, prefixPathOpt, tcState, eagerFormat: (PhasedDiagnostic -> PhasedDiagnostic), inputs) =
     // tcEnvAtEndOfLastFile is the environment required by fsi.exe when incrementally adding definitions
+#if FABLE_COMPILER
+    ignore eagerFormat
+#endif
     let results, tcState =
         match tcConfig.typeCheckingConfig.Mode with
+#if !FABLE_COMPILER
         | TypeCheckingMode.Graph when (not tcConfig.isInteractive && not tcConfig.compilingFSharpCore) ->
             CheckMultipleInputsUsingGraphMode(
                 ctok,
@@ -1925,6 +1951,7 @@ let CheckClosedInputSet (ctok, checkForErrors, tcConfig: TcConfig, tcImports, tc
                 eagerFormat,
                 inputs
             )
+#endif //!FABLE_COMPILER
         | _ -> CheckMultipleInputsSequential(ctok, checkForErrors, tcConfig, tcImports, tcGlobals, prefixPathOpt, tcState, inputs)
 
     let (tcEnvAtEndOfLastFile, topAttrs, implFiles, _), tcState =

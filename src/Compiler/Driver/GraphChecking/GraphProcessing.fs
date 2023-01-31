@@ -41,7 +41,9 @@ let processGraph<'Item, 'Result when 'Item: equality and 'Item: comparison>
     let dependants = graph |> Graph.reverse
     // Cancellation source used to signal either an exception in one of the items or end of processing.
     use localCts = new CancellationTokenSource()
+#if !FABLE_COMPILER
     use cts = CancellationTokenSource.CreateLinkedTokenSource(parentCt, localCts.Token)
+#endif
 
     let makeNode (item: 'Item) : GraphNode<'Item, 'Result> =
         let info =
@@ -109,6 +111,12 @@ let processGraph<'Item, 'Result when 'Item: equality and 'Item: comparison>
             localCts.Cancel()
 
     let rec queueNode node =
+#if FABLE_COMPILER
+        try
+            processNode node
+        with ex ->
+            raiseExn (Some(node.Info.Item, ex))
+#else //!FABLE_COMPILER
         Async.Start(
             async {
                 let! res = async { processNode node } |> Async.Catch
@@ -119,6 +127,7 @@ let processGraph<'Item, 'Result when 'Item: equality and 'Item: comparison>
             },
             cts.Token
         )
+#endif //!FABLE_COMPILER
 
     and processNode (node: GraphNode<'Item, 'Result>) : unit =
 
@@ -142,8 +151,10 @@ let processGraph<'Item, 'Result when 'Item: equality and 'Item: comparison>
 
     leaves |> Array.iter queueNode
 
+#if !FABLE_COMPILER
     // Wait for end of processing, an exception, or an external cancellation request.
     cts.Token.WaitHandle.WaitOne() |> ignore
+#endif
     // If we stopped early due to external cancellation, throw.
     parentCt.ThrowIfCancellationRequested()
 

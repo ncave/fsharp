@@ -9808,7 +9808,11 @@ let rec EvalAttribArgExpr suppressLangFeatureCheck (g: TcGlobals) (x: Expr) =
         
         match v1, v2 with
         | Expr.Const (Const.Char x1, m, ty), Expr.Const (Const.Char x2, _, _) ->
+#if FABLE_COMPILER
+            Expr.Const (Const.Char (char (int x1 - int x2)), m, ty)
+#else
             Expr.Const (Const.Char (x1 - x2), m, ty)
+#endif
         | _ ->
             EvalArithBinOp (Checked.(-), Checked.(-), Checked.(-), Checked.(-), Checked.(-), Checked.(-), Checked.(-), Checked.(-), Checked.(-), Checked.(-)) v1 v2
     | SpecificBinopExpr g g.unchecked_multiply_vref (arg1, arg2) ->
@@ -10289,6 +10293,23 @@ let CombineCcuContentFragments l =
 /// An immutable mappping from witnesses to some data.
 ///
 /// Note: this uses an immutable HashMap/Dictionary with an IEqualityComparer that captures TcGlobals, see EmptyTraitWitnessInfoHashMap
+#if FABLE_COMPILER
+type TraitWitnessInfoHashMap<'T> = Internal.Utilities.Collections.Tagged.Map<TraitWitnessInfo, 'T>
+
+/// Create an empty immutable mapping from witnesses to some data
+let EmptyTraitWitnessInfoHashMap g : TraitWitnessInfoHashMap<'T> =
+    let comparer =
+        { new IComparer<TraitWitnessInfo> with
+            member _.Compare(x, y) =
+                let xhash = hash x
+                let yhash = hash y
+                let equals x y = traitKeysAEquiv g TypeEquivEnv.Empty x y
+                if xhash = yhash
+                then if equals x y then 0 else -1
+                else if xhash < yhash then -1 else 1
+        }
+    Internal.Utilities.Collections.Tagged.Map<_,_>.FromList(comparer, [])
+#else //!FABLE_COMPILER
 type TraitWitnessInfoHashMap<'T> = ImmutableDictionary<TraitWitnessInfo, 'T>
 
 /// Create an empty immutable mapping from witnesses to some data
@@ -10298,6 +10319,7 @@ let EmptyTraitWitnessInfoHashMap g : TraitWitnessInfoHashMap<'T> =
             member _.Equals(a, b) = traitKeysAEquiv g TypeEquivEnv.Empty a b
             member _.GetHashCode(a) = hash a.MemberName
         })
+#endif //!FABLE_COMPILER
 
 let (|WhileExpr|_|) expr = 
     match expr with 
@@ -10691,6 +10713,8 @@ and visitVal (v: Val) : TypedTreeNode =
         Children = Seq.toList children
     }
 
+#if !FABLE_COMPILER
+
 let rec serializeNode (writer: IndentedTextWriter) (addTrailingComma:bool) (node: TypedTreeNode) =
     writer.WriteLine("{")
     // Add indent after opening {
@@ -10756,6 +10780,8 @@ let updateSeqTypeIsPrefix (fsharpCoreMSpec: ModuleOrNamespace) =
                 )
         )
     )
+
+#endif //!FABLE_COMPILER
 
 let isTyparOrderMismatch (tps: Typars) (argInfos: CurriedArgInfos) =
     let rec getTyparName (ty: TType) : string list =

@@ -159,7 +159,13 @@ type CancellableBuilder() =
 
             match compRes with
             | ValueOrCancelled.Value res ->
+#if FABLE_COMPILER
+                match box resource with
+                | null -> ()
+                | _ -> resource.Dispose()
+#else
                 Microsoft.FSharp.Core.LanguagePrimitives.IntrinsicFunctions.Dispose resource
+#endif
 
                 match res with
                 | Choice1Of2 r -> ValueOrCancelled.Value r

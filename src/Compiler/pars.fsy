@@ -158,9 +158,9 @@ let parse_error_rich = Some(fun (ctxt: ParseErrorContext<_>) ->
 %type <Ident> ident
 %type <SynType> typ typEOF
 %type <SynTypeDefnSig list> tyconSpfnList
-%type <SynArgPats * Range> atomicPatsOrNamePatPairs
+%type <SynArgPats * range> atomicPatsOrNamePatPairs
 %type <SynPat list> atomicPatterns
-%type <Range * SynExpr> patternResult
+%type <range * SynExpr> patternResult
 %type <SynExpr> declExpr
 %type <SynExpr> minusExpr
 %type <SynExpr> appExpr

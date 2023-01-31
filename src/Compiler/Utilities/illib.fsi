@@ -79,10 +79,12 @@ module internal PervasiveAutoOpens =
 
         member inline EndsWithOrdinalIgnoreCase: value: string -> bool
 
+#if !FABLE_COMPILER
     type Async with
 
         /// Runs the computation synchronously, always starting on the current thread.
         static member RunImmediate: computation: Async<'T> * ?cancellationToken: CancellationToken -> 'T
+#endif
 
     val foldOn: p: ('a -> 'b) -> f: ('c -> 'b -> 'd) -> z: 'c -> x: 'a -> 'd
 
@@ -246,8 +248,10 @@ module internal ResizeArray =
     /// probability of smaller collections. Stop-the-world is still possible, just less likely.
     val mapToSmallArrayChunks: f: ('t -> 'a) -> inp: ResizeArray<'t> -> 'a[][]
 
+#if !FABLE_COMPILER
 module internal Span =
     val inline exists: predicate: ('T -> bool) -> span: Span<'T> -> bool
+#endif
 
 module internal ValueOptionInternal =
 
@@ -345,11 +349,13 @@ type internal LockToken =
         inherit ExecutionToken
     end
 
+#if !FABLE_COMPILER
 /// Encapsulates a lock associated with a particular token-type representing the acquisition of that lock.
 type internal Lock<'LockTokenType when 'LockTokenType :> LockToken> =
 
     new: unit -> Lock<'LockTokenType>
     member AcquireLock: f: ('LockTokenType -> 'a) -> 'a
+#endif
 
 [<AutoOpen>]
 module internal LockAutoOpens =
