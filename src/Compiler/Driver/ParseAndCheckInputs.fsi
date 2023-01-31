@@ -10,7 +10,9 @@ open FSharp.Compiler.CheckDeclarations
 open FSharp.Compiler.CompilerConfig
 open FSharp.Compiler.CompilerImports
 open FSharp.Compiler.Diagnostics
+#if !FABLE_COMPILER
 open FSharp.Compiler.DependencyManager
+#endif
 open FSharp.Compiler.DiagnosticsLogger
 open FSharp.Compiler.GraphChecking
 open FSharp.Compiler.NameResolution
@@ -75,6 +77,8 @@ val ParseInput:
     userOpName: string option ->
         ParsedInput
 
+#if !FABLE_COMPILER
+
 /// A general routine to process hash directives
 val ProcessMetaCommandsFromInput:
     ('T -> range * string * Directive -> 'T) * ('T -> range * string -> unit) ->
@@ -124,7 +128,11 @@ val ParseOneInputLexbuf:
     diagnosticsLogger: DiagnosticsLogger ->
         ParsedInput
 
+#endif //!FABLE_COMPILER
+
 val EmptyParsedInput: fileName: string * isLastCompiland: (bool * bool) -> ParsedInput
+
+#if !FABLE_COMPILER
 
 /// Parse multiple input files from disk
 val ParseInputFiles:
@@ -137,6 +145,8 @@ val ParseInputFiles:
 
 /// Process collected directives
 val FinishPreprocessing: Lexbuf -> FSharpDiagnosticOptions -> bool -> range list -> unit
+
+#endif //!FABLE_COMPILER
 
 /// Get the initial type checking environment including the loading of mscorlib/System.Core, FSharp.Core
 /// applying the InternalsVisibleTo in referenced assemblies and opening 'Checked' if requested.

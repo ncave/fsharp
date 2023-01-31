@@ -12,12 +12,16 @@ open FSharp.Compiler.CodeAnalysis.TransparentCompiler
 open FSharp.Compiler.CompilerConfig
 open FSharp.Compiler.CompilerOptions
 open FSharp.Compiler.Diagnostics
+#if !FABLE_COMPILER
 open FSharp.Compiler.Driver
+#endif
 open FSharp.Compiler.DiagnosticsLogger
 open FSharp.Compiler.Symbols
 open FSharp.Compiler.Tokenization
 open FSharp.Compiler.Text
 open FSharp.Compiler.Text.Range
+
+#if !FABLE_COMPILER
 
 /// Callback that indicates whether a requested result has become obsolete.
 [<NoComparison; NoEquality>]
@@ -723,3 +727,5 @@ type CompilerEnvironment() =
 
         singleFileProjectExtensions
         |> List.exists (fun e -> 0 = String.Compare(e, ext, StringComparison.OrdinalIgnoreCase))
+
+#endif //!FABLE_COMPILER

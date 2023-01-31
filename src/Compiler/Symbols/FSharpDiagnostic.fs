@@ -225,9 +225,13 @@ type FSharpDiagnostic(m: range, severity: FSharpDiagnosticSeverity, message: str
             | _ -> None
 
         let msg =
+#if FABLE_COMPILER
+            diagnostic.FormatCore(flatErrors, suggestNames)
+#else
              match diagnostic.Exception.Data["CachedFormatCore"] with
              | :? string as message -> message
              | _ -> diagnostic.FormatCore(flatErrors, suggestNames)
+#endif
 
         let errorNum = diagnostic.Number
         let m = match diagnostic.Range with Some m -> m.ApplyLineDirectives() | None -> range0

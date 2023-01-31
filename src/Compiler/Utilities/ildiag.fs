@@ -4,6 +4,14 @@
 
 module internal FSharp.Compiler.AbstractIL.Diagnostics
 
+#if FABLE_COMPILER
+
+let dprintf fmt = printf fmt
+let dprintfn fmt = printfn fmt
+let dprintn s = printfn "%s" s
+
+#else
+
 let mutable diagnosticsLog = Some stdout
 
 let setDiagnosticsChannel s = diagnosticsLog <- s
@@ -43,3 +51,5 @@ let dprintfn (fmt: Format<_, _, _, _>) =
          | None -> System.IO.TextWriter.Null
          | Some d -> d)
         fmt
+
+#endif //!FABLE_COMPILER

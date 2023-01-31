@@ -7,7 +7,7 @@ open FSharp.Compiler.Features
 open FSharp.Compiler.Text
 open Internal.Utilities.Text.Lexing
 
-type Lexbuf = LexBuffer<char>
+type Lexbuf = LexBuffer<LexBufferChar>
 
 type LexBuffer<'char> with
     member GetLocalData<'T when 'T: not null> : key: string * initializer: (unit -> 'T) -> 'T
@@ -20,7 +20,7 @@ val FunctionAsLexbuf:
     reportLibraryOnlyFeatures: bool *
     langVersion: LanguageVersion *
     strictIndentation: bool option *
-    bufferFiller: (char[] * int * int -> int) ->
+    bufferFiller: (LexBufferChar[] * int * int -> int) ->
         Lexbuf
 
 val SourceTextAsLexbuf:
@@ -30,6 +30,8 @@ val SourceTextAsLexbuf:
     sourceText: ISourceText ->
         Lexbuf
 
+#if !FABLE_COMPILER
+
 /// Will not dispose of the stream reader.
 val StreamReaderAsLexbuf:
     reportLibraryOnlyFeatures: bool *
@@ -37,3 +39,5 @@ val StreamReaderAsLexbuf:
     strictIndentation: bool option *
     reader: StreamReader ->
         Lexbuf
+
+#endif //!FABLE_COMPILER
