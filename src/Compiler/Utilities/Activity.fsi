@@ -53,9 +53,11 @@ module internal Activity =
 
     val addEventWithTags: name: string -> tags: (string * objnull) seq -> unit
 
+#if !FABLE_COMPILER
     module Profiling =
         val startAndMeasureEnvironmentStats: name: string -> System.IDisposable | null
         val addConsoleListener: unit -> IDisposable
 
     module CsvExport =
         val addCsvFileListener: pathToFile: string -> IDisposable
+#endif
