@@ -130,7 +130,11 @@ let usingLexbufForParsing (lexbuf: Lexbuf, fileName) f =
 //-----------------------------------------------------------------------
 
 let stringBufferAsString (buf: ByteBuffer) =
+#if FABLE_COMPILER
+    let buf = buf.Close()
+#else
     let buf = buf.AsMemory()
+#endif
 
     if buf.Length % 2 <> 0 then
         failwith "Expected even number of bytes"
@@ -138,8 +142,13 @@ let stringBufferAsString (buf: ByteBuffer) =
     let chars: char[] = Array.zeroCreate (buf.Length / 2)
 
     for i = 0 to (buf.Length / 2) - 1 do
+#if FABLE_COMPILER
+        let hi = buf[i*2+1]
+        let lo = buf[i*2]
+#else
         let hi = buf.Span[i * 2 + 1]
         let lo = buf.Span[i * 2]
+#endif
         let c = char (((int hi) * 256) + (int lo))
         chars[i] <- c
 
@@ -151,8 +160,13 @@ let stringBufferAsString (buf: ByteBuffer) =
 /// we just take every second byte we stored.  Note all bytes > 127 should have been
 /// stored using addIntChar
 let stringBufferAsBytes (buf: ByteBuffer) =
+#if FABLE_COMPILER
+    let bytes = buf.Close()
+    Array.init (bytes.Length / 2) (fun i -> bytes[i*2])
+#else
     let bytes = buf.AsMemory()
     Array.init (bytes.Length / 2) (fun i -> bytes.Span[i * 2])
+#endif
 
 [<Flags>]
 type LexerStringFinisherContext =
@@ -226,7 +240,11 @@ type LargerThan127ButInsideByte = int
 
 /// Sanity check that high bytes are zeros. Further check each low byte <= 127
 let errorsInByteStringBuffer (buf: ByteBuffer) =
+#if FABLE_COMPILER
+    let bytes = buf.Close()
+#else
     let bytes = buf.AsMemory()
+#endif
     assert (bytes.Length % 2 = 0)
 
     // Enhancement?: return faulty values?
@@ -238,10 +256,17 @@ let errorsInByteStringBuffer (buf: ByteBuffer) =
     let mutable largerThan127ButSingleByteCount = 0
 
     for i = 0 to bytes.Length / 2 - 1 do
+#if FABLE_COMPILER
+        if bytes[i * 2 + 1] <> 0uy then
+            largerThanOneByteCount <- largerThanOneByteCount + 1
+        elif bytes[i * 2] > 127uy then
+            largerThan127ButSingleByteCount <- largerThan127ButSingleByteCount + 1
+#else
         if bytes.Span[i * 2 + 1] <> 0uy then
             largerThanOneByteCount <- largerThanOneByteCount + 1
         elif bytes.Span[i * 2] > 127uy then
             largerThan127ButSingleByteCount <- largerThan127ButSingleByteCount + 1
+#endif
 
     if largerThanOneByteCount + largerThan127ButSingleByteCount > 0 then
         Some(largerThanOneByteCount, largerThan127ButSingleByteCount)

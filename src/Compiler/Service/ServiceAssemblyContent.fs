@@ -118,6 +118,8 @@ type IAssemblyContentCache =
     abstract TryGet: AssemblyPath -> AssemblyContentCacheEntry option
     abstract Set: AssemblyPath -> AssemblyContentCacheEntry -> unit
 
+#if !FABLE_COMPILER
+
 module AssemblyContent =
 
     let UnresolvedSymbol (topRequireQualifiedAccessParent: ShortIdents option) (cleanedIdents: ShortIdents) (fullName: string) ns =
@@ -314,6 +316,8 @@ module AssemblyContent =
             | Full -> true
             | Public -> entity.Symbol.Accessibility.IsPublic)
 
+#endif //!FABLE_COMPILER
+
 type EntityCache() =
     let dic = Dictionary<AssemblyPath, AssemblyContentCacheEntry>()
     interface IAssemblyContentCache with
@@ -325,4 +329,3 @@ type EntityCache() =
 
     member _.Clear() = dic.Clear()
     member x.Locking f = lock dic <| fun _ -> f (x :> IAssemblyContentCache)
-

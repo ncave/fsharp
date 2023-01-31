@@ -7,7 +7,9 @@ open FSharp.Compiler
 open FSharp.Compiler.AbstractIL.ILBinaryReader
 open FSharp.Compiler.CompilerConfig
 open FSharp.Compiler.CompilerImports
+#if !FABLE_COMPILER
 open FSharp.Compiler.DependencyManager
+#endif
 open FSharp.Compiler.Diagnostics
 open FSharp.Compiler.DiagnosticsLogger
 open FSharp.Compiler.CodeAnalysis
@@ -70,6 +72,8 @@ type LoadClosure =
         LoadClosureRootFileDiagnostics: (PhasedDiagnostic * FSharpDiagnosticSeverity) list
     }
 
+#if !FABLE_COMPILER
+
     /// Analyze a script text and find the closure of its references.
     /// Used from FCS, when editing a script file.
     //
@@ -102,3 +106,5 @@ type LoadClosure =
         lexResourceManager: Lexhelp.LexResourceManager *
         dependencyProvider: DependencyProvider ->
             LoadClosure
+
+#endif //!FABLE_COMPILER

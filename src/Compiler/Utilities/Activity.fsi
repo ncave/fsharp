@@ -45,9 +45,11 @@ module internal Activity =
 
     val addEvent: name: string -> unit
 
+#if !FABLE_COMPILER
     module Profiling =
         val startAndMeasureEnvironmentStats: name: string -> IDisposable
         val addConsoleListener: unit -> IDisposable
 
     module CsvExport =
         val addCsvFileListener: pathToFile: string -> IDisposable
+#endif

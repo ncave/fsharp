@@ -69,6 +69,23 @@ module internal Activity =
     module Events =
         let cacheHit = "cacheHit"
 
+#if FABLE_COMPILER
+
+    let start (name: string) (tags: (string * string) seq) : IDisposable =
+        ignore name
+        ignore tags
+        null
+
+    let startNoTags (name: string) : IDisposable =
+        ignore name
+        null
+
+    let addEvent (name: string) =
+        ignore name
+        ()
+
+#else //!FABLE_COMPILER
+
     type Diagnostics.Activity with
 
         member this.RootId =
@@ -272,3 +289,5 @@ module internal Activity =
                     (msgQueue :> IDisposable).Dispose() // Wait for the msg queue to be written out
                     sw.Dispose() // Only then flush the messages and close the file
             }
+
+#endif //!FABLE_COMPILER

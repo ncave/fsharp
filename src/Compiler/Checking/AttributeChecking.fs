@@ -312,7 +312,11 @@ let CheckFSharpAttributes (g:TcGlobals) attribs m =
                     if g.compilingFSharpCore then
                         true
                     else
+#if FABLE_COMPILER
+                        g.langVersion.IsPreviewEnabled && (s.ToLower().IndexOf(langVersionPrefix.ToLower()) >= 0)
+#else
                         g.langVersion.IsPreviewEnabled && (s.IndexOf(langVersionPrefix, StringComparison.OrdinalIgnoreCase) >= 0)
+#endif
                 if not (isExperimentalAttributeDisabled s) then
                     do! WarnD(Experimental(s, m))
             | Some _ ->
@@ -439,7 +443,7 @@ let CheckMethInfoAttributes g m tyargsOpt (minfo: MethInfo) =
                         
                     Some res) 
 #if !NO_TYPEPROVIDERS
-                (fun provAttribs -> Some (CheckProvidedAttributes g m provAttribs)) 
+                (fun provAttribs -> Some (CheckProvidedAttributes g m provAttribs))
 #else
                 (fun _provAttribs -> None)
 #endif 

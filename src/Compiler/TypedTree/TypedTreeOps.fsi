@@ -2707,7 +2707,11 @@ val GetTraitWitnessInfosOfTypars: TcGlobals -> numParentTypars: int -> typars: T
 /// An immutable mapping from witnesses to some data.
 ///
 /// Note: this uses an immutable HashMap/Dictionary with an IEqualityComparer that captures TcGlobals, see EmptyTraitWitnessInfoHashMap
+#if FABLE_COMPILER
+type TraitWitnessInfoHashMap<'T> = Internal.Utilities.Collections.Tagged.Map<TraitWitnessInfo, 'T>
+#else
 type TraitWitnessInfoHashMap<'T> = ImmutableDictionary<TraitWitnessInfo, 'T>
+#endif
 
 /// Create an empty immutable mapping from witnesses to some data
 val EmptyTraitWitnessInfoHashMap: TcGlobals -> TraitWitnessInfoHashMap<'T>
@@ -2894,12 +2898,16 @@ val tryAddExtensionAttributeIfNotAlreadyPresentForType:
     typeEntity: Entity ->
         Entity
 
+#if !FABLE_COMPILER
+
 /// Serialize an entity to a very basic json structure.
 val serializeEntity: path: string -> entity: Entity -> unit
 
 /// Updates the IsPrefixDisplay to false for the Microsoft.FSharp.Collections.seq`1 entity
 /// Meant to be called with the FSharp.Core module spec right after it was unpickled.
 val updateSeqTypeIsPrefix: fsharpCoreMSpec: ModuleOrNamespace -> unit
+
+#endif //!FABLE_COMPILER
 
 /// Check if the order of defined typars is different from the order of used typars in the curried arguments.
 /// If this is the case, a generated signature would require explicit typars.

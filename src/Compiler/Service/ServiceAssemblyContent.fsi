@@ -88,6 +88,8 @@ type public EntityCache =
     /// Performs an operation on the cache in thread safe manner.
     member Locking: (IAssemblyContentCache -> 'T) -> 'T
 
+#if !FABLE_COMPILER
+
 /// Provides assembly content.
 module public AssemblyContent =
 
@@ -101,3 +103,6 @@ module public AssemblyContent =
         fileName: string option ->
         assemblies: FSharpAssembly list ->
             AssemblySymbol list
+
+#endif //!FABLE_COMPILER
+

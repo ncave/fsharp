@@ -20,7 +20,11 @@ module internal PathMap =
 
     let addMapping (src: string) (dst: string) (PathMap map) : PathMap =
         // Normalise the path
+#if FABLE_COMPILER
+        let normalSrc = src // no file system
+#else
         let normalSrc = FileSystem.GetFullPathShim src
+#endif
 
         let oldPrefix =
             if normalSrc.EndsWithOrdinal dirSepStr then

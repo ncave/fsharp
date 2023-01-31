@@ -15,16 +15,22 @@ open FSharp.Compiler
 open FSharp.Compiler.AbstractIL
 open FSharp.Compiler.AbstractIL.IL
 open FSharp.Compiler.AbstractIL.ILBinaryReader
+#if !FABLE_COMPILER
 open FSharp.Compiler.AbstractIL.ILDynamicAssemblyWriter
+#endif
 open FSharp.Compiler.CodeAnalysis
 open FSharp.Compiler.CodeAnalysis.TransparentCompiler
 open FSharp.Compiler.CompilerConfig
 open FSharp.Compiler.CompilerDiagnostics
 open FSharp.Compiler.CompilerImports
 open FSharp.Compiler.CompilerOptions
+#if !FABLE_COMPILER
 open FSharp.Compiler.DependencyManager
+#endif
 open FSharp.Compiler.Diagnostics
+#if !FABLE_COMPILER
 open FSharp.Compiler.Driver
+#endif
 open FSharp.Compiler.DiagnosticsLogger
 open FSharp.Compiler.IO
 open FSharp.Compiler.ParseAndCheckInputs
@@ -36,6 +42,8 @@ open FSharp.Compiler.Text
 open FSharp.Compiler.Text.Range
 open FSharp.Compiler.TcGlobals
 open FSharp.Compiler.BuildGraph
+
+#if !FABLE_COMPILER
 
 /// Callback that indicates whether a requested result has become obsolete.
 [<NoComparison; NoEquality>]
@@ -750,3 +758,5 @@ type CompilerEnvironment() =
 
         singleFileProjectExtensions
         |> List.exists (fun e -> 0 = String.Compare(e, ext, StringComparison.OrdinalIgnoreCase))
+
+#endif //!FABLE_COMPILER

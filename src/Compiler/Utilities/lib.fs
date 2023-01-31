@@ -19,10 +19,15 @@ let mutable progress = false
 // Intended to be a general hook to control diagnostic output when tracking down bugs
 let mutable tracking = false
 
+#if FABLE_COMPILER
+let isEnvVarSet (s: string) = ignore s; false
+let GetEnvInteger (e: string) (dflt: int) = ignore e; dflt
+#else
 let isEnvVarSet s =
     try not(isNull(Environment.GetEnvironmentVariable s)) with _ -> false
 
 let GetEnvInteger e dflt = match Environment.GetEnvironmentVariable(e) with null -> dflt | t -> try int t with _ -> dflt
+#endif
 
 let dispose (x: IDisposable MaybeNull) = 
     match x with
@@ -286,11 +291,13 @@ let buildString f =
     f buf
     buf.ToString()
 
+#if !FABLE_COMPILER
 /// Writing to output stream via a string buffer.
 let writeViaBuffer (os: TextWriter) f =
     let buf = StringBuilder 100
     f buf
     os.Write(buf.ToString())
+#endif
 
 type StringBuilder with
 
@@ -400,10 +407,18 @@ let inline vsnd ((_, y): struct('T * 'T)) = y
 /// Track a set of resources to cleanup
 type DisposablesTracker() =
 
+#if FABLE_COMPILER
+    let items = List<IDisposable>()
+#else
     let items = Stack<IDisposable>()
+#endif
 
     /// Register some items to dispose
+#if FABLE_COMPILER
+    member _.Register i = items.Add i
+#else
     member _.Register i = items.Push i
+#endif
 
     interface IDisposable with
 
@@ -420,6 +435,9 @@ type DisposablesTracker() =
 module ArrayParallel =
 
     let inline iteri f (arr: 'T []) =
+#if FABLE_COMPILER
+        Array.iteri f arr
+#else
         let parallelOptions = ParallelOptions(MaxDegreeOfParallelism = max (min Environment.ProcessorCount arr.Length) 1)
         try
             Parallel.For(0, arr.Length, parallelOptions, fun i ->
@@ -428,6 +446,7 @@ module ArrayParallel =
         with
         | :? AggregateException as ex when ex.InnerExceptions.Count = 1 ->
             raise(ex.InnerExceptions[0])
+#endif
 
     let inline iter f (arr: 'T []) =
         arr |> iteri (fun _ item -> f item)

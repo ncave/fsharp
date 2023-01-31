@@ -330,9 +330,13 @@ module internal PrintUtilities =
         else
             restL
 
-    let squashToWidth width layout =
+    let squashToWidth (width: int option) (layout: Layout) =
         match width with
+#if FABLE_COMPILER
+        | Some w -> ignore w; layout
+#else
         | Some w -> Display.squashTo w layout
+#endif
         | None -> layout
         
     // When showing types in diagnostics, we don't show nullness annotations by default
@@ -981,7 +985,11 @@ module PrintTypes =
                 if not denv.includeStaticParametersInTypeNames then
                     None, args
                 else
+#if FABLE_COMPILER
+                    let regex = System.Text.RegularExpressions.Regex(@"`\d+")
+#else
                     let regex = System.Text.RegularExpressions.Regex(@"\`\d+")
+#endif
                     let path, skip =
                         (0, tc.CompilationPath.DemangledPath)
                         ||> List.mapFold (fun skip path ->

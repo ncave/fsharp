@@ -199,10 +199,11 @@ and LexCont = LexerContinuation
 // Parse IL assembly code
 //------------------------------------------------------------------------
 
-let ParseAssemblyCodeInstructions s reportLibraryOnlyFeatures langVersion strictIndentation m : IL.ILInstr[] =
+let ParseAssemblyCodeInstructions (s: string) (reportLibraryOnlyFeatures: bool) (langVersion: LanguageVersion) (strictIndentation: bool option) m : IL.ILInstr[] =
 #if NO_INLINE_IL_PARSER
     ignore s
-    ignore isFeatureSupported
+    ignore reportLibraryOnlyFeatures
+    ignore langVersion
 
     errorR (Error((193, "Inline IL not valid in a hosted environment"), m))
     [||]
@@ -214,10 +215,14 @@ let ParseAssemblyCodeInstructions s reportLibraryOnlyFeatures langVersion strict
         [||]
 #endif
 
-let ParseAssemblyCodeType s reportLibraryOnlyFeatures langVersion strictIndentation m =
+let ParseAssemblyCodeType (s: string) (reportLibraryOnlyFeatures: bool) (langVersion: LanguageVersion) (strictIndentation: bool option) m =
     ignore s
 
 #if NO_INLINE_IL_PARSER
+    ignore s
+    ignore reportLibraryOnlyFeatures
+    ignore langVersion
+
     errorR (Error((193, "Inline IL not valid in a hosted environment"), m))
     IL.PrimaryAssemblyILGlobals.typ_Object
 #else
