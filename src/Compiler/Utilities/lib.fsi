@@ -209,8 +209,10 @@ module Zset =
 /// Buffer printing utility
 val buildString: f: (StringBuilder -> unit) -> string
 
+#if !FABLE_COMPILER
 /// Writing to output stream via a string buffer.
 val writeViaBuffer: os: TextWriter -> f: (StringBuilder -> unit) -> unit
+#endif
 
 type StringBuilder with
 

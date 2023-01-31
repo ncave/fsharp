@@ -19,6 +19,7 @@ type internal HashMultiMap<'Key, 'Value
     /// and with the given key hash/equality functions.
     new: size: int * comparer: IEqualityComparer<'Key> * ?useConcurrentDictionary: bool -> HashMultiMap<'Key, 'Value>
 
+#if !FABLE_COMPILER
     /// Build a map that contains the bindings of the given IEnumerable.
     new: entries: seq<'Key * 'Value> * comparer: IEqualityComparer<'Key> * ?useConcurrentDictionary: bool -> HashMultiMap<'Key, 'Value>
 
@@ -60,7 +61,9 @@ type internal HashMultiMap<'Key, 'Value
     /// Apply the given function to each binding in the hash table.
     member Iterate: ('Key -> 'Value -> unit) -> unit
 
+#if !FABLE_COMPILER
     interface IDictionary<'Key, 'Value>
+#endif
     interface ICollection<KeyValuePair<'Key, 'Value>>
     interface IEnumerable<KeyValuePair<'Key, 'Value>>
     interface System.Collections.IEnumerable
