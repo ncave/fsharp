@@ -216,9 +216,13 @@ let ReportStatistics (oc: TextWriter) = reports oc
 let NewCounter nm =
     let mutable count = 0
 
+#if FABLE_COMPILER
+    ignore nm
+#else
     AddReport(fun oc ->
         if count <> 0 then
             oc.WriteLine(string count + " " + nm))
+#endif
 
     (fun () -> count <- count + 1)
 
@@ -1504,7 +1508,11 @@ let AddTemplateReplacement eenv (tcref, ftyvs, ilTy, inst) =
 
 let AddStorageForLocalWitness eenv (w, s) =
     { eenv with
+#if FABLE_COMPILER
+        witnessesInScope = eenv.witnessesInScope.Add (w, s)
+#else
         witnessesInScope = eenv.witnessesInScope.SetItem(w, s)
+#endif
     }
 
 let AddStorageForLocalWitnesses witnesses eenv =
@@ -1539,9 +1547,13 @@ let ComputeGenerateWitnesses (g: TcGlobals) eenv =
     && not eenv.suppressWitnesses
 
 let TryStorageForWitness (_g: TcGlobals) eenv (w: TraitWitnessInfo) =
+#if FABLE_COMPILER
+    eenv.witnessesInScope.TryFind w
+#else
     match eenv.witnessesInScope.TryGetValue w with
     | true, storage -> Some storage
     | _ -> None
+#endif
 
 let IsValRefIsDllImport g (vref: ValRef) =
     vref.Attribs |> HasFSharpAttributeOpt g g.attrib_DllImportAttribute
@@ -2042,7 +2054,11 @@ let GenPossibleILDebugRange (cenv: cenv) m =
 // Helpers for merging property definitions
 //--------------------------------------------------------------------------
 
+#if FABLE_COMPILER
+let HashRangeSorted (ht: IEnumerable<KeyValuePair<_, (int * _)>>) = 
+#else
 let HashRangeSorted (ht: IDictionary<_, int * _>) =
+#endif
     [ for KeyValue (_k, v) in ht -> v ] |> List.sortBy fst |> List.map snd
 
 let MergeOptions m o1 o2 =
@@ -2874,7 +2890,11 @@ let GenConstArray cenv (cgbuf: CodeGenBuffer) eenv ilElementType (data: 'a[]) (w
     let g = cenv.g
     use buf = ByteBuffer.Create data.Length
     data |> Array.iter (write buf)
+#if FABLE_COMPILER
+    let bytes = buf.Close()
+#else
     let bytes = buf.AsMemory().ToArray()
+#endif
     let ilArrayType = mkILArr1DTy ilElementType
 
     if data.Length = 0 then
@@ -11953,6 +11973,8 @@ type ExecutionContext =
         LookupType: ILType -> Type
     }
 
+#if !FABLE_COMPILER
+
 // A helper to generate a default value for any System.Type. I couldn't find a System.Reflection
 // method to do this.
 let defaultOf =
@@ -12061,6 +12083,8 @@ let ClearGeneratedValue (ctxt: ExecutionContext) eenv (v: Val) =
 #endif
         ()
 
+#endif //!FABLE_COMPILER
+
 /// The published API from the ILX code generator
 type IlxAssemblyGenerator(amap: ImportMap, tcGlobals: TcGlobals, tcVal: ConstraintSolver.TcValF, ccu: CcuThunk) =
 
@@ -12136,6 +12160,7 @@ type IlxAssemblyGenerator(amap: ImportMap, tcGlobals: TcGlobals, tcVal: Constrai
 
         GenerateCode(cenv, anonTypeTable, ilxGenEnv, typedAssembly, assemAttribs, moduleAttribs)
 
+#if !FABLE_COMPILER
     /// Invert the compilation of the given value and clear the storage of the value
     member _.ClearGeneratedValue(ctxt, v) = ClearGeneratedValue ctxt ilxGenEnv v
 
@@ -12146,3 +12171,4 @@ type IlxAssemblyGenerator(amap: ImportMap, tcGlobals: TcGlobals, tcVal: Constrai
     /// Invert the compilation of the given value and return its current dynamic value and its compiled System.Type
     member _.LookupGeneratedValue(ctxt, v) =
         LookupGeneratedValue cenv ctxt ilxGenEnv v
+#endif //!FABLE_COMPILER

@@ -315,9 +315,13 @@ module internal PrintUtilities =
         else
             restL
 
-    let squashToWidth width layout =
+    let squashToWidth (width: int option) (layout: Layout) =
         match width with
+#if FABLE_COMPILER
+        | Some w -> ignore w; layout
+#else
         | Some w -> Display.squashTo w layout
+#endif
         | None -> layout
         
 module PrintIL = 

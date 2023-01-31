@@ -14,8 +14,10 @@ type public XmlDoc =
     /// Merge two XML documentation
     static member Merge: doc1: XmlDoc -> doc2: XmlDoc -> XmlDoc
 
+#if !FABLE_COMPILER
     /// Check the XML documentation
     member internal Check: paramNamesOpt: string list option -> unit
+#endif
 
     /// Get the lines after insertion of implicit summary tags and encoding
     member GetElaboratedXmlLines: unit -> string[]

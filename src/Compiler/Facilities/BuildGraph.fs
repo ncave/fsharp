@@ -13,6 +13,8 @@ open Internal.Utilities.Library
 [<NoEquality; NoComparison>]
 type NodeCode<'T> = Node of Async<'T>
 
+#if !FABLE_COMPILER
+
 let wrapThreadStaticInfo computation =
     async {
         let diagnosticsLogger = DiagnosticsThreadStatics.DiagnosticsLogger
@@ -297,3 +299,5 @@ type GraphNode<'T> private (computation: NodeCode<'T>, cachedResult: ValueOption
         GraphNode(nodeResult, ValueSome result, nodeResult)
 
     new(computation) = GraphNode(computation, ValueNone, Unchecked.defaultof<_>)
+
+#endif //!FABLE_COMPILER

@@ -57,7 +57,21 @@ type ILegacyReferenceResolver =
 
 // Note, two implementations of this are provided, and no further implementations can be added from
 // outside FSharp.Compiler.Service
+#if !FABLE_COMPILER
 [<Class; AllowNullLiteral; Obsolete("This API is obsolete and not for external use")>]
+#endif
 type LegacyReferenceResolver =
     new: impl: ILegacyReferenceResolver -> LegacyReferenceResolver
     member internal Impl: ILegacyReferenceResolver
+
+#if FABLE_COMPILER
+    static member getResolver: unit -> LegacyReferenceResolver
+
+type FxResolver =
+    internal new: unit -> FxResolver
+
+namespace Internal.Utilities
+
+module internal FSharpEnvironment =
+    val isRunningOnCoreClr: bool
+#endif //FABLE_COMPILER

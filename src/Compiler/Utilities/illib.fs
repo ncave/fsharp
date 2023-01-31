@@ -84,7 +84,7 @@ module internal PervasiveAutoOpens =
         | None -> failwith "getHole"
         | Some x -> x
 
-    let reportTime =
+    let reportTime: (string -> unit) =
         let mutable tPrev: IDisposable = null
 
         fun descr ->
@@ -93,7 +93,11 @@ module internal PervasiveAutoOpens =
 
             tPrev <-
                 if descr <> "Finish" then
+#if FABLE_COMPILER
+                    null
+#else
                     FSharp.Compiler.Diagnostics.Activity.Profiling.startAndMeasureEnvironmentStats descr
+#endif
                 else
                     null
 
@@ -101,6 +105,7 @@ module internal PervasiveAutoOpens =
 
     let notFound () = raise (KeyNotFoundException())
 
+#if !FABLE_COMPILER
     type Async with
 
         static member RunImmediate(computation: Async<'T>, ?cancellationToken) =
@@ -117,8 +122,14 @@ module internal PervasiveAutoOpens =
             )
 
             task.Result
+#endif //!FABLE_COMPILER
 
 /// An efficient lazy for inline storage in a class type. Results in fewer thunks.
+#if FABLE_COMPILER
+type InlineDelayInit<'T when 'T : not struct>(f: unit -> 'T) = 
+    let store = lazy(f())
+    member x.Value = store.Force()
+#else
 [<Struct>]
 type InlineDelayInit<'T when 'T: not struct> =
     new(f: unit -> 'T) =
@@ -137,6 +148,7 @@ type InlineDelayInit<'T when 'T: not struct> =
             let res = LazyInitializer.EnsureInitialized(&x.store, x.func)
             x.func <- Unchecked.defaultof<_>
             res
+#endif //!FABLE_COMPILER
 
 //-------------------------------------------------------------------------
 // Library: projections
@@ -397,7 +409,9 @@ module List =
         | _ -> true
 
     let mapq (f: 'T -> 'T) inp =
+#if !FABLE_COMPILER
         assert not typeof<'T>.IsValueType
+#endif
 
         match inp with
         | [] -> inp
@@ -609,7 +623,11 @@ module ResizeArray =
     /// This is done to help prevent a stop-the-world collection of the single large array, instead allowing for a greater
     /// probability of smaller collections. Stop-the-world is still possible, just less likely.
     let mapToSmallArrayChunks f (inp: ResizeArray<'t>) =
+#if FABLE_COMPILER
+        let itemSizeBytes = 8
+#else
         let itemSizeBytes = sizeof<'t>
+#endif
         // rounding down here is good because it ensures we don't go over
         let maxArrayItemCount = LOH_SIZE_THRESHOLD_BYTES / itemSizeBytes
 
@@ -710,12 +728,15 @@ module String =
         elif value.StartsWithOrdinal pattern then Some()
         else None
 
-    let (|Contains|_|) pattern value =
+    let (|Contains|_|) (pattern: string) (value: string) =
         if String.IsNullOrWhiteSpace value then None
         elif value.Contains pattern then Some()
         else None
 
     let getLines (str: string) =
+#if FABLE_COMPILER
+        System.Text.RegularExpressions.Regex.Split(str, "\r\n|\r|\n");
+#else
         use reader = new StringReader(str)
 
         [|
@@ -730,6 +751,7 @@ module String =
                 // http://stackoverflow.com/questions/19365404/stringreader-omits-trailing-linebreak
                 yield String.Empty
         |]
+#endif //!FABLE_COMPILER
 
 module Dictionary =
     let inline newWithSize (size: int) =
@@ -808,12 +830,14 @@ module internal LockAutoOpens =
 
     let AssumeLockWithoutEvidence<'LockTokenType when 'LockTokenType :> LockToken> () = Unchecked.defaultof<'LockTokenType>
 
+#if !FABLE_COMPILER
 /// Encapsulates a lock associated with a particular token-type representing the acquisition of that lock.
 type Lock<'LockTokenType when 'LockTokenType :> LockToken>() =
     let lockObj = obj ()
 
     member _.AcquireLock f =
         lock lockObj (fun () -> f (AssumeLockWithoutEvidence<'LockTokenType>()))
+#endif
 
 //---------------------------------------------------
 // Misc
@@ -966,7 +990,7 @@ type CancellableBuilder() =
                 | Choice2Of2 err -> Cancellable.run ct (handler err)
             | ValueOrCancelled.Cancelled err1 -> ValueOrCancelled.Cancelled err1)
 
-    member inline _.Using(resource, [<InlineIfLambda>] comp) =
+    member inline _.Using(resource: #IDisposable, [<InlineIfLambda>] comp) =
         Cancellable(fun ct ->
 #if !FSHARPCORE_USE_PACKAGE
             __debugPoint ""
@@ -983,7 +1007,13 @@ type CancellableBuilder() =
 
             match compRes with
             | ValueOrCancelled.Value res ->
+#if FABLE_COMPILER
+                match box resource with
+                | null -> ()
+                | _ -> resource.Dispose()
+#else
                 Microsoft.FSharp.Core.LanguagePrimitives.IntrinsicFunctions.Dispose resource
+#endif
 
                 match res with
                 | Choice1Of2 r -> ValueOrCancelled.Value r
@@ -1035,7 +1065,11 @@ type UniqueStampGenerator<'T when 'T: equality>() =
     member _.Encode str =
         encodeTable.GetOrAdd(str, computeFunc).Value
 
+#if FABLE_COMPILER
+    member _.Table = encodeTable.Keys :> ICollection<'T>
+#else
     member _.Table = encodeTable.Keys
+#endif
 
 /// memoize tables (all entries cached, never collected)
 type MemoizationTable<'T, 'U>(compute: 'T -> 'U, keyComparer: IEqualityComparer<'T>, ?canMemoize) =
@@ -1069,7 +1103,11 @@ type internal StampedDictionary<'T, 'U>(keyComparer: IEqualityComparer<'T>) =
 
             match valueReplaceFunc oldVal with
             | None -> ()
+#if FABLE_COMPILER
+            | Some newVal -> table[key] <- lazy (stamp, newVal)
+#else
             | Some newVal -> table.TryUpdate(key, lazy (stamp, newVal), v) |> ignore<bool>
+#endif
         | _ -> ()
 
     member _.GetAll() =
@@ -1131,6 +1169,9 @@ type LazyWithContext<'T, 'Ctxt> =
         match x.funcOrException with
         | null -> x.value
         | _ ->
+#if FABLE_COMPILER
+            x.UnsynchronizedForce(ctxt)
+#else
             // Enter the lock in case another thread is in the process of evaluating the result
             Monitor.Enter x
 
@@ -1138,6 +1179,7 @@ type LazyWithContext<'T, 'Ctxt> =
                 x.UnsynchronizedForce ctxt
             finally
                 Monitor.Exit x
+#endif
 
     member x.UnsynchronizedForce ctxt =
         match x.funcOrException with

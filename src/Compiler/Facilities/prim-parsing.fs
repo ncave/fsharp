@@ -7,7 +7,9 @@ namespace Internal.Utilities.Text.Parsing
 open Internal.Utilities.Text.Lexing
 
 open System
+#if !FABLE_COMPILER
 open System.Buffers
+#endif
 
 exception RecoverableParseError
 exception Accept of obj
@@ -19,7 +21,7 @@ type internal IParseState
         ruleEndPoss: Position[],
         lhsPos: Position[],
         ruleValues: obj[],
-        lexbuf: LexBuffer<char>
+        lexbuf: LexBuffer<LexBufferChar>
     ) =
     member _.LexBuffer = lexbuf
 
@@ -281,6 +283,10 @@ module internal Implementation =
         let cacheSize = 7919 // the 1000'th prime
         // Use a simpler hash table with faster lookup, but only one
         // hash bucket per key.
+#if FABLE_COMPILER
+        let actionTableCache = Array.zeroCreate<int> (cacheSize * 2)
+        let gotoTableCache = Array.zeroCreate<int> (cacheSize * 2)
+#else
         let actionTableCache = ArrayPool<int>.Shared.Rent (cacheSize * 2)
         let gotoTableCache = ArrayPool<int>.Shared.Rent (cacheSize * 2)
         // Clear the arrays since ArrayPool does not
@@ -293,6 +299,7 @@ module internal Implementation =
                     ArrayPool<int>.Shared.Return actionTableCache
                     ArrayPool<int>.Shared.Return gotoTableCache
             }
+#endif //!FABLE_COMPILER
 
         let actionTable =
             AssocTable(tables.actionTableElements, tables.actionTableRowOffsets, actionTableCache, cacheSize)
