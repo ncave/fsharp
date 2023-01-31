@@ -1656,7 +1656,7 @@ module InfoMemberPrinting =
             let layout = layoutXmlDocOfMethInfo denv infoReader minfo layout
 
             let paramsL =
-                let paramDatas = minfo.GetParamDatas(amap, m, minst)
+                let paramDatas = minfo.GetParamDatas(amap, m, minst) |> List.map (List.map fst)
                 if List.forall isNil paramDatas then
                     WordL.structUnit
                 else
@@ -1708,6 +1708,7 @@ module InfoMemberPrinting =
                     |> PrintTypes.layoutCsharpCodeAnalysisIlAttributes denv mi.RawMetadata.Return.CustomAttrs (squareAngleReturn >> (@@))
                 let paramLayouts = 
                     minfo.GetParamDatas (amap, m, minst)
+                    |> List.map (List.map fst)
                     |> List.head
                     |> List.zip mi.ParamMetadata
                     |> List.map(fun (ilParams,paramData) -> 
@@ -1718,6 +1719,7 @@ module InfoMemberPrinting =
             | _ ->
                 layout,
                 minfo.GetParamDatas (amap, m, minst) 
+                |> List.map (List.map fst)
                 |> List.concat 
                 |> List.map (layoutParamData denv)
 
