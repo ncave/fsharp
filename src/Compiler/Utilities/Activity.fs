@@ -43,6 +43,18 @@ module internal Activity =
     let private activitySourceName = "fsc"
     let private profiledSourceName = "fsc_with_env_stats"
 
+#if FABLE_COMPILER
+    let start (name: string) (tags: (string * string) seq) : IDisposable =
+        ignore name
+        ignore tags
+        null
+
+    let startNoTags (name: string) : IDisposable =
+        ignore name
+        null
+
+#else //!FABLE_COMPILER
+
     type System.Diagnostics.Activity with
 
         member this.RootId =
@@ -239,3 +251,5 @@ module internal Activity =
                     (msgQueue :> IDisposable).Dispose() // Wait for the msg queue to be written out
                     sw.Dispose() // Only then flush the messages and close the file
             }
+
+#endif //!FABLE_COMPILER

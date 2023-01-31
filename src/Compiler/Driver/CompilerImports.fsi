@@ -10,7 +10,9 @@ open FSharp.Compiler
 open FSharp.Compiler.AbstractIL.IL
 open FSharp.Compiler.CheckBasics
 open FSharp.Compiler.CompilerConfig
+#if !FABLE_COMPILER
 open FSharp.Compiler.DependencyManager
+#endif
 open FSharp.Compiler.DiagnosticsLogger
 open FSharp.Compiler.Optimizer
 open FSharp.Compiler.TypedTree
@@ -44,6 +46,9 @@ val IsOptimizationDataResource: ILResource -> bool
 val IsReflectedDefinitionsResource: ILResource -> bool
 
 val GetResourceNameAndSignatureDataFunc: ILResource -> string * (unit -> ReadOnlyByteMemory)
+val GetResourceNameAndOptimizationDataFunc: ILResource -> string * (unit -> ReadOnlyByteMemory)
+
+#if !FABLE_COMPILER
 
 /// Encode the F# interface data into a set of IL attributes and resources
 val EncodeSignatureData:
@@ -63,6 +68,8 @@ val EncodeOptimizationData:
     (CcuThunk * #CcuOptimizationInfo) *
     isIncrementalBuild: bool ->
         ILResource list
+
+#endif //!FABLE_COMPILER
 
 [<RequireQualifiedAccess>]
 type ResolveAssemblyReferenceMode =
@@ -117,6 +124,22 @@ type ImportedAssembly =
       mutable TypeProviders: Tainted<ITypeProvider> list
 #endif
       FSharpOptimizationData: Lazy<LazyModuleInfo option> }
+
+#if FABLE_COMPILER
+
+/// trimmed-down version of TcImports
+[<Sealed>] 
+type TcImports =
+    internal new: unit -> TcImports
+    member FindCcu: range * string -> CcuThunk option
+    member SetTcGlobals: TcGlobals -> unit
+    member GetTcGlobals: unit -> TcGlobals
+    member SetCcuMap: Map<string, ImportedAssembly> -> unit
+    member GetImportedAssemblies: unit -> ImportedAssembly list
+    member GetImportMap: unit -> Import.ImportMap
+    member GetCcusExcludingBase: unit -> CcuThunk list
+
+#else //!FABLE_COMPILER
 
 /// Tables of assembly resolutions
 [<Sealed>]
@@ -217,3 +240,5 @@ val RequireReferences:
     thisAssemblyName: string *
     resolutions: AssemblyResolution list ->
         TcEnv * ImportedAssembly list
+
+#endif //!FABLE_COMPILER

@@ -34,7 +34,7 @@ type internal IParseState =
     member RaiseError<'b> : unit -> 'b 
 
     /// Return the LexBuffer for this parser instance.
-    member LexBuffer : LexBuffer<char>
+    member LexBuffer : LexBuffer<LexBufferChar>
 
 
 /// The context provided when a parse error occurs.
@@ -115,7 +115,7 @@ type internal Tables<'Token> =
 
     /// Interpret the parser table taking input from the given lexer, using the given lex buffer, and the given start state.
     /// Returns an object indicating the final synthesized value for the parse.
-    member Interpret :  lexer:(LexBuffer<char> -> 'Token) * lexbuf:LexBuffer<char> * initialState:int -> obj 
+    member Interpret :  lexer:(LexBuffer<LexBufferChar> -> 'Token) * lexbuf:LexBuffer<LexBufferChar> * initialState:int -> obj 
 
 /// Indicates an accept action has occurred.
 exception internal Accept of obj
