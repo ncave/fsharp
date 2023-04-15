@@ -1,41 +1,92 @@
 open System.IO
+open System.Text.RegularExpressions
 open FSharp.Compiler
 open FSharp.Compiler.CodeAnalysis
 open FSharp.Compiler.SourceCodeServices
 open FSharp.Compiler.EditorServices
+open Buildalyzer
 
-let getProjectOptions (folder: string) (projectFile: string) =
-    let runProcess (workingDir: string) (exePath: string) (args: string) =
-        let psi = System.Diagnostics.ProcessStartInfo()
-        psi.FileName <- exePath
-        psi.WorkingDirectory <- workingDir
-        psi.RedirectStandardOutput <- false
-        psi.RedirectStandardError <- false
-        psi.Arguments <- args
-        psi.CreateNoWindow <- true
-        psi.UseShellExecute <- false
+let getProjectOptionsFromProjectFile (isMain: bool) (projFile: string) =
 
-        use p = new System.Diagnostics.Process()
-        p.StartInfo <- psi
-        p.Start() |> ignore
-        p.WaitForExit()
+    let tryGetResult (isMain: bool) (manager: AnalyzerManager) (maybeCsprojFile: string) =
 
-        let exitCode = p.ExitCode
-        exitCode, ()
+        let analyzer = manager.GetProject(maybeCsprojFile)
+        let env = analyzer.EnvironmentFactory.GetBuildEnvironment(Environment.EnvironmentOptions(DesignTime=true,Restore=false))
+        // If System.the project targets multiple frameworks, multiple results will be returned
+        // For now we just take the first one with non-empty command
+        let results = analyzer.Build(env)
+        results
+        |> Seq.tryFind (fun r -> System.String.IsNullOrEmpty(r.Command) |> not)
 
-    let runCmd exePath args = runProcess folder exePath (args |> String.concat " ")
-    let msbuildExec = Dotnet.ProjInfo.Inspect.dotnetMsbuild runCmd
-    let result = Dotnet.ProjInfo.Inspect.getProjectInfo ignore msbuildExec Dotnet.ProjInfo.Inspect.getFscArgs projectFile
-    match result with
-    | Ok (Dotnet.ProjInfo.Inspect.GetResult.FscArgs x) -> x
-    | _ -> []
+    let manager =
+        let log = new StringWriter()
+        let options = AnalyzerManagerOptions(LogWriter = log)
+        let m = AnalyzerManager(options)
+        m
+
+    // Because Buildalyzer works better with .csproj, we first "dress up" the project as if it were a C# one
+    // and try to adapt the results. If it doesn't work, we try again to analyze the .fsproj directly
+    let csprojResult =
+        let csprojFile = projFile.Replace(".fsproj", ".csproj")
+        if File.Exists(csprojFile) then
+            None
+        else
+            try
+                File.Copy(projFile, csprojFile)
+                tryGetResult isMain manager csprojFile
+                |> Option.map (fun (r: IAnalyzerResult) ->
+                    // Careful, options for .csproj start with / but so do root paths in unix
+                    let reg = Regex(@"^\/[^\/]+?(:?:|$)")
+                    let comArgs =
+                        r.CompilerArguments
+                        |> Array.map (fun line ->
+                            if reg.IsMatch(line) then
+                                if line.StartsWith("/reference") then "-r" + line.Substring(10)
+                                else "--" + line.Substring(1)
+                            else line)
+                    let comArgs =
+                        match r.Properties.TryGetValue("OtherFlags") with
+                        | false, _ -> comArgs
+                        | true, otherFlags ->
+                            let otherFlags = otherFlags.Split(' ', System.StringSplitOptions.RemoveEmptyEntries)
+                            Array.append otherFlags comArgs
+                    comArgs, r)
+            finally
+                File.Delete(csprojFile)
+
+    let compilerArgs, result =
+        csprojResult
+        |> Option.orElseWith (fun () ->
+            tryGetResult isMain manager projFile
+            |> Option.map (fun r ->
+                // result.CompilerArguments doesn't seem to work well in Linux
+                let comArgs = Regex.Split(r.Command, @"\r?\n")
+                comArgs, r))
+        |> function
+            | Some result -> result
+            // TODO: Get Buildalyzer errors from the log
+            | None -> failwith $"Cannot parse {projFile}"
+
+    let projDir = Path.GetDirectoryName(projFile)
+    let projOpts =
+        compilerArgs
+        |> Array.skipWhile (fun line -> not(line.StartsWith("-")))
+        |> Array.map (fun f ->
+            if f.EndsWith(".fs") || f.EndsWith(".fsi") then
+                if Path.IsPathRooted f then f else Path.Combine(projDir, f)
+            else f)
+    projOpts,
+    Seq.toArray result.ProjectReferences,
+    result.Properties,
+    result.TargetFramework
 
 let mkStandardProjectReferences () = 
-    let projFile = "fcs-test.fsproj"
+    let fileName = "fcs-test.fsproj"
     let projDir = __SOURCE_DIRECTORY__
-    getProjectOptions projDir projFile
-    |> List.filter (fun s -> s.StartsWith("-r:"))
-    |> List.map (fun s -> s.Replace("-r:", ""))
+    let projFile = Path.Combine(projDir, fileName)
+    let (args, _, _, _) = getProjectOptionsFromProjectFile true projFile
+    args
+    |> Array.filter (fun s -> s.StartsWith("-r:"))
 
 let mkProjectCommandLineArgsForScript (dllName, fileNames) = 
     [|  yield "--simpleresolution" 
@@ -53,7 +104,7 @@ let mkProjectCommandLineArgsForScript (dllName, fileNames) =
             yield x
         let references = mkStandardProjectReferences ()
         for r in references do
-            yield "-r:" + r
+            yield r
      |]
 
 let getProjectOptionsFromCommandLineArgs(projName, argv): FSharpProjectOptions = 
