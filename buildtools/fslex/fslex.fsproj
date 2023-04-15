@@ -5,7 +5,6 @@
     <TargetFramework>$(FSharpNetCoreProductTargetFramework)</TargetFramework>
     <TargetFramework>net8.0</TargetFramework>
     <TargetFramework>net7.0</TargetFramework>
-    <TargetFramework>net6.0</TargetFramework>
     <DefineConstants>INTERNALIZED_FSLEXYACC_RUNTIME;$(DefineConstants)</DefineConstants>
     <DisableImplicitFSharpCoreReference>true</DisableImplicitFSharpCoreReference>
     <RollForward Condition="'$(BUILDING_USING_DOTNET)' == 'true'">LatestMajor</RollForward>

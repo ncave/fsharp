@@ -90,6 +90,7 @@ module internal ParseAndCheck =
 
     let userOpName = "Unknown"
     let suggestNamesForErrors = true
+    let captureIdentifiersWhenParsing = false
 
     let measureTime (f: unit -> 'a) =
         let sw = Diagnostics.Stopwatch.StartNew()
@@ -192,7 +193,7 @@ module internal ParseAndCheck =
         compilerState.parseCache.GetOrAdd(parseCacheKey, fun _ ->
             ClearStaleCache(fileName, parsingOptions, compilerState)
             let sourceText = SourceText.ofString source.Value
-            let parseErrors, parseTreeOpt, anyErrors = ParseAndCheckFile.parseFile (sourceText, fileName, parsingOptions, userOpName, suggestNamesForErrors)
+            let parseErrors, parseTreeOpt, anyErrors = ParseAndCheckFile.parseFile (sourceText, fileName, parsingOptions, userOpName, suggestNamesForErrors, captureIdentifiersWhenParsing)
             let dependencyFiles = [||] // interactions have no dependencies
             FSharpParseFileResults (parseErrors, parseTreeOpt, anyErrors, dependencyFiles) )
 
@@ -208,7 +209,7 @@ module internal ParseAndCheck =
 
         let input, moduleNamesDict = input |> DeduplicateParsedInputModuleName moduleNamesDict
         let tcResult, tcState =
-            CheckOneInput (checkForErrors, compilerState.tcConfig, compilerState.tcImports, compilerState.tcGlobals, prefixPathOpt, tcSink, tcState, input, false)
+            CheckOneInput (checkForErrors, compilerState.tcConfig, compilerState.tcImports, compilerState.tcGlobals, prefixPathOpt, tcSink, tcState, input)
             |> Cancellable.runWithoutCancellation
 
         let fileName = parseResults.FileName
