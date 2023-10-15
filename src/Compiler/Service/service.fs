@@ -157,6 +157,7 @@ module CompileHelpers =
 
         diagnostics.ToArray(), result
 
+#if !FABLE_CLI
     let setOutputStreams execute =
         // Set the output streams, if requested
         match execute with
@@ -164,6 +165,7 @@ module CompileHelpers =
             Console.SetOut writer
             Console.SetError error
         | None -> ()
+#endif
 
 type SourceTextHash = int64
 type CacheStamp = int64

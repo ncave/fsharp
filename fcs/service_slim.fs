@@ -188,12 +188,14 @@ module internal ParseAndCheck =
         // restore all cached typecheck entries above file
         cachedAbove |> Array.iter (fun (key, value) -> compilerState.checkCache.TryAdd(key, value) |> ignore)
 
-    let ParseFile (fileName: string, sourceHash: int, source: Lazy<string>, parsingOptions: FSharpParsingOptions, compilerState) =
+    let ParseFile (fileName: string, sourceHash: int, source: Lazy<string>, parsingOptions: FSharpParsingOptions, compilerState, ct) =
         let parseCacheKey = fileName, sourceHash
         compilerState.parseCache.GetOrAdd(parseCacheKey, fun _ ->
             ClearStaleCache(fileName, parsingOptions, compilerState)
             let sourceText = SourceText.ofString source.Value
-            let parseErrors, parseTreeOpt, anyErrors = ParseAndCheckFile.parseFile (sourceText, fileName, parsingOptions, userOpName, suggestNamesForErrors, captureIdentifiersWhenParsing)
+            let flatErrors = compilerState.tcConfig.flatErrors
+            let parseErrors, parseTreeOpt, anyErrors =
+                ParseAndCheckFile.parseFile (sourceText, fileName, parsingOptions, userOpName, suggestNamesForErrors, flatErrors, captureIdentifiersWhenParsing, ct)
             let dependencyFiles = [||] // interactions have no dependencies
             FSharpParseFileResults (parseErrors, parseTreeOpt, anyErrors, dependencyFiles) )
 
@@ -213,7 +215,9 @@ module internal ParseAndCheck =
             |> Cancellable.runWithoutCancellation
 
         let fileName = parseResults.FileName
-        let tcErrors = DiagnosticHelpers.CreateDiagnostics (diagnosticsOptions, false, fileName, (capturingLogger.GetDiagnostics()), suggestNamesForErrors)
+        let flatErrors = compilerState.tcConfig.flatErrors
+        let parseDiagnostics = capturingLogger.GetDiagnostics()
+        let tcErrors = DiagnosticHelpers.CreateDiagnostics (diagnosticsOptions, false, fileName, parseDiagnostics, suggestNamesForErrors, flatErrors, None)
         (tcResult, tcErrors), (tcState, moduleNamesDict)
 
     let CheckFile (projectFileName: string, parseResults: FSharpParseFileResults, tcState: TcState, moduleNamesDict: ModuleNamesDict, compilerState) =
@@ -295,17 +299,19 @@ type InteractiveChecker internal (compilerStateCache) =
     /// Compile project to file. If project has already been type checked,
     /// check results will be taken from the cache.
     member _.Compile(fileNames: string[], sourceReader: string -> int * Lazy<string>, outFile: string) = async {
+        let! ct = Async.CancellationToken
         let! compilerState = compilerStateCache.Get()
         let parsingOptions = FSharpParsingOptions.FromTcConfig(compilerState.tcConfig, fileNames, false)
         let parseResults = fileNames |> Array.map (fun fileName ->
             let sourceHash, source = sourceReader fileName
-            ParseFile(fileName, sourceHash, source, parsingOptions, compilerState))
+            ParseFile(fileName, sourceHash, source, parsingOptions, compilerState, ct))
 
         let (tcState, topAttrs, tcImplFiles, _tcEnvAtEnd, _moduleNamesDict, _tcErrors) =
             TypeCheckClosedInputSet (parseResults, compilerState.tcInitialState, compilerState, None)
 
         let ctok = CompilationThreadToken()
-        let errors, diagnosticsLogger, _loggerProvider = CompileHelpers.mkCompilationDiagnosticsHandlers()
+        let flatErrors = compilerState.tcConfig.flatErrors
+        let errors, diagnosticsLogger, _loggerProvider = CompileHelpers.mkCompilationDiagnosticsHandlers(flatErrors)
         let exitCode =
             CompileHelpers.tryCompile diagnosticsLogger (fun exiter ->
                 CompileFromTypedAst (ctok, compilerState.tcGlobals, compilerState.tcImports, tcState.Ccu,
@@ -319,6 +325,7 @@ type InteractiveChecker internal (compilerStateCache) =
     /// Already parsed files will be cached so subsequent compilations will be faster.
     member _.ParseAndCheckProject (projectFileName: string, fileNames: string[], sourceReader: string -> int * Lazy<string>,
                                     ?lastFile: string, ?subscriber: FSharpImplementationFileContents -> unit) = async {
+        let! ct = Async.CancellationToken
         let! compilerState = compilerStateCache.Get()
         // parse files
         let parsingOptions = FSharpParsingOptions.FromTcConfig(compilerState.tcConfig, fileNames, false)
@@ -332,7 +339,7 @@ type InteractiveChecker internal (compilerStateCache) =
 
             let parseFile fileName =
                 let sourceHash, source = sourceReader fileName
-                ParseFile(fileName, sourceHash, source, parsingOptions, compilerState)
+                ParseFile(fileName, sourceHash, source, parsingOptions, compilerState, ct)
 
             // Don't parallelize if we have cached files, as it would create issues with invalidation
             if compilerState.parseCache.Count = 0 then
@@ -358,6 +365,7 @@ type InteractiveChecker internal (compilerStateCache) =
     /// up to and including the file requested. Returns parse and typecheck results containing
     /// name resolutions and symbol uses for the file requested only, so intellisense etc. works.
     member _.ParseAndCheckFileInProject (projectFileName: string, fileNames: string[], sourceReader: string -> int * Lazy<string>, fileName: string) = async {
+        let! ct = Async.CancellationToken
         let! compilerState = compilerStateCache.Get()
 
         // get files before file
@@ -368,7 +376,7 @@ type InteractiveChecker internal (compilerStateCache) =
         let parsingOptions = FSharpParsingOptions.FromTcConfig(compilerState.tcConfig, fileNames, false)
         let parseFile fileName =
             let sourceHash, source = sourceReader fileName
-            ParseFile (fileName, sourceHash, source, parsingOptions, compilerState)
+            ParseFile (fileName, sourceHash, source, parsingOptions, compilerState, ct)
         let parseResults = fileNamesBeforeFile |> Array.map parseFile
 
         // type check files before file
