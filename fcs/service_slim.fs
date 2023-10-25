@@ -40,6 +40,7 @@ open FSharp.Compiler.TypedTree
 open FSharp.Compiler.TypedTreeBasics
 open FSharp.Compiler.TypedTreeOps
 open FSharp.Compiler.BuildGraph
+open FSharp.Compiler.GraphChecking
 
 //-------------------------------------------------------------------------
 // InteractiveChecker
@@ -402,4 +403,51 @@ type InteractiveChecker internal (compilerStateCache) =
         let projectResults = MakeProjectResults (projectFileName, parseResults, tcState, errors, Some topAttrs, Some tcImplFiles, compilerState)
 
         return (parseFileResults, checkFileResults, projectResults)
+    }
+
+    /// Find the dependent files of the current file based on the untyped syntax tree
+    member _.GetDependentFiles(currentFileName: string, fileNames: string[], sourceReader: string -> int * Lazy<string>) = async {
+        // parse files
+        let! ct = Async.CancellationToken
+        let! compilerState = compilerStateCache.Get()
+        // parse files
+        let parsingOptions = FSharpParsingOptions.FromTcConfig(compilerState.tcConfig, fileNames, false)
+        let parseFile fileName =
+            let sourceHash, source = sourceReader fileName
+            ParseFile (fileName, sourceHash, source, parsingOptions, compilerState, ct)
+
+        // TODO: not sure if parse cache issues still applies
+        let parseResults = fileNames |> Array.Parallel.map parseFile
+        let sourceFiles: FileInProject array =
+            parseResults
+            |> Array.mapi (fun idx (parseResults: FSharpParseFileResults) ->
+                let input = parseResults.ParseTree
+                {
+                    Idx = idx
+                    FileName = input.FileName
+                    ParsedInput = input
+                })
+
+        let currentFileIdx = Array.IndexOf(fileNames, currentFileName)
+
+        let filePairs = FilePairMap(sourceFiles)
+        let graph, _trie = DependencyResolution.mkGraph filePairs sourceFiles
+        
+        let dependentFiles =
+            graph.Keys
+            |> Seq.choose (fun fileIndex ->
+                let isDependency =
+                    // Only files that came after the current file are relevant
+                    fileIndex > currentFileIdx
+                    &&
+                    // The current file is listed as a dependency 
+                    Array.contains currentFileIdx graph.[fileIndex]
+                if not isDependency then
+                    None
+                else
+                    Some(Array.item fileIndex fileNames)
+                )
+            |> Seq.toArray
+
+        return dependentFiles
     }
