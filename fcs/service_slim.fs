@@ -432,24 +432,35 @@ type InteractiveChecker internal (compilerStateCache) =
 
         let filePairs = FilePairMap(sourceFiles)
         let graph, _trie = DependencyResolution.mkGraph filePairs sourceFiles        
-        let findTransitiveDependencies (startNode : FileIndex) : FileIndex array =
+        let findTransitiveDependentFiles (startNode : FileIndex) : FileIndex array =
             let rec dfs (node : FileIndex) (visited : Set<FileIndex>) (acc : FileIndex array) : FileIndex array =
                 if (Set.contains node visited) then
                     acc
                 else
-                    let neighbors = graph.[node]
-                    let visited' = Set.add node visited
+                    let newVisited = Set.add node visited
 
-                    let acc' =
-                        Array.fold (fun innerAcc neighbor -> dfs neighbor visited' innerAcc) acc neighbors
+                    let consumers =
+                        // Last node in the project cannot have 
+                        if node = graph.Count - 1 then
+                            acc
+                        else
+                            // Look if the next nodes depend on the current node
+                            [| (node + 1) .. (graph.Count - 1) |]
+                            |> Array.fold
+                                (fun innerAcc nextIdx ->
+                                    if not (Array.contains node graph.[nextIdx]) then
+                                        innerAcc
+                                    else
+                                        dfs nextIdx newVisited innerAcc)
+                                acc
 
-                    [| yield! acc' ; yield node |]
+                    [| yield node; yield! consumers |]
 
             dfs startNode Set.empty Array.empty
             |> Array.sort
 
         let dependentFiles =
-            findTransitiveDependencies currentFileIdx
+            findTransitiveDependentFiles currentFileIdx
             |> Array.sort
             |> Array.map (fun idx -> Array.item idx fileNames)
 
