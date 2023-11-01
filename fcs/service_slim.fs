@@ -405,7 +405,7 @@ type InteractiveChecker internal (compilerStateCache) =
         return (parseFileResults, checkFileResults, projectResults)
     }
 
-    /// Find the dependent files of the current file based on the untyped syntax tree
+    /// Find the transitive dependent files of the current file based on the untyped syntax tree.
     member _.GetDependentFiles(currentFileName: string, fileNames: string[], sourceReader: string -> int * Lazy<string>) = async {
         // parse files
         let! ct = Async.CancellationToken
@@ -431,23 +431,27 @@ type InteractiveChecker internal (compilerStateCache) =
         let currentFileIdx = Array.IndexOf(fileNames, currentFileName)
 
         let filePairs = FilePairMap(sourceFiles)
-        let graph, _trie = DependencyResolution.mkGraph filePairs sourceFiles
-        
-        let dependentFiles =
-            graph.Keys
-            |> Seq.choose (fun fileIndex ->
-                let isDependency =
-                    // Only files that came after the current file are relevant
-                    fileIndex > currentFileIdx
-                    &&
-                    // The current file is listed as a dependency 
-                    Array.contains currentFileIdx graph.[fileIndex]
-                if not isDependency then
-                    None
+        let graph, _trie = DependencyResolution.mkGraph filePairs sourceFiles        
+        let findTransitiveDependencies (startNode : FileIndex) : FileIndex array =
+            let rec dfs (node : FileIndex) (visited : Set<FileIndex>) (acc : FileIndex array) : FileIndex array =
+                if (Set.contains node visited) then
+                    acc
                 else
-                    Some(Array.item fileIndex fileNames)
-                )
-            |> Seq.toArray
+                    let neighbors = graph.[node]
+                    let visited' = Set.add node visited
+
+                    let acc' =
+                        Array.fold (fun innerAcc neighbor -> dfs neighbor visited' innerAcc) acc neighbors
+
+                    [| yield! acc' ; yield node |]
+
+            dfs startNode Set.empty Array.empty
+            |> Array.sort
+
+        let dependentFiles =
+            findTransitiveDependencies currentFileIdx
+            |> Array.sort
+            |> Array.map (fun idx -> Array.item idx fileNames)
 
         return dependentFiles
     }
