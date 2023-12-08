@@ -73,11 +73,15 @@ module Cancellable =
         if ct.IsCancellationRequested then
             ValueOrCancelled.Cancelled(OperationCanceledException ct)
         else
+#if FABLE_COMPILER
+            oper ct
+#else
             try
                 oper ct
             with
             | :? OperationCanceledException as e when ct.IsCancellationRequested -> ValueOrCancelled.Cancelled e
             | :? OperationCanceledException as e -> InvalidOperationException("Wrong cancellation token", e) |> raise
+#endif
 
     let fold f acc seq =
         Cancellable(fun ct ->
@@ -167,7 +171,11 @@ type CancellableBuilder() =
                 | Choice2Of2 err -> Cancellable.run ct (handler err)
             | ValueOrCancelled.Cancelled err1 -> ValueOrCancelled.Cancelled err1)
 
+#if FABLE_COMPILER
+    member inline _.Using(resource: 'Resource when 'Resource :> IDisposable, [<InlineIfLambda>] comp) =
+#else
     member inline _.Using(resource: _ MaybeNull, [<InlineIfLambda>] comp) =
+#endif
         Cancellable(fun ct ->
 
             __debugPoint ""
