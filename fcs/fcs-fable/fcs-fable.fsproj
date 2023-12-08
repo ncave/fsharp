@@ -93,8 +93,8 @@
     <!-- <Compile Include="$(FSharpSourcesRoot)/Facilities/CompilerLocation.fs" /> -->
     <Compile Include="$(FSharpSourcesRoot)/Facilities/BuildGraph.fsi" />
     <Compile Include="$(FSharpSourcesRoot)/Facilities/BuildGraph.fs" />
-    <Compile Include="$(FSharpSourcesRoot)/Utilities/ReadOnlySpan.fsi" />
-    <Compile Include="$(FSharpSourcesRoot)/Utilities/ReadOnlySpan.fs" />
+    <!-- <Compile Include="$(FSharpSourcesRoot)/Utilities/ReadOnlySpan.fsi" /> -->
+    <!-- <Compile Include="$(FSharpSourcesRoot)/Utilities/ReadOnlySpan.fs" /> -->
     <!-- <FsLex Include="$(FSharpSourcesRoot)/AbstractIL/illex.fsl" /> -->
     <!-- <None Include="$(FSharpSourcesRoot)/AbstractIL/illex.fsl" /> -->
     <!-- <FsYacc Include="$(FSharpSourcesRoot)/AbstractIL/ilpars.fsy" /> -->
