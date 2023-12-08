@@ -1219,19 +1219,14 @@ type ISeekReadIndexedRowReader<'RowT, 'KeyT, 'T when 'RowT: struct> =
     abstract CompareKey: 'KeyT -> int
     abstract ConvertRow: ref<'RowT> -> 'T
 
-#if FABLE_COMPILER
 [<Struct>]
 type CustomAttributeRow =
     val mutable parentIndex: TaggedIndex<HasCustomAttributeTag>
     val mutable typeIndex: TaggedIndex<CustomAttributeTypeTag>
     val mutable valueIndex: int
 
-let seekReadIndexedRowsRange numRows binaryChop (reader: ISeekReadIndexedRowReader<CustomAttributeRow, 'KeyT, 'T>) =
+let seekReadIndexedRowsRange numRows binaryChop (reader: ISeekReadIndexedRowReader<CustomAttributeRow, _, _>) =
     let mutable row = ref Unchecked.defaultof<CustomAttributeRow>
-#else
-let seekReadIndexedRowsRange numRows binaryChop (reader: ISeekReadIndexedRowReader<'RowT, _, _>) =
-    let mutable row = Unchecked.defaultof<'RowT>
-#endif
 
     let mutable startRid = -1
     let mutable endRid = -1
@@ -1310,9 +1305,9 @@ let seekReadIndexedRowsRange numRows binaryChop (reader: ISeekReadIndexedRowRead
         let mutable fin = false
 
         while rid <= numRows && not fin do
-            reader.GetRow(rid, &row)
+            reader.GetRow(rid, row)
 
-            if reader.CompareKey(reader.GetKey(&row)) = 0 then
+            if reader.CompareKey(reader.GetKey(row)) = 0 then
                 endRid <- rid
             else
                 fin <- true
@@ -1321,7 +1316,7 @@ let seekReadIndexedRowsRange numRows binaryChop (reader: ISeekReadIndexedRowRead
 
     startRid, endRid
 
-let seekReadIndexedRowsByInterface numRows binaryChop (reader: ISeekReadIndexedRowReader<'RowT, _, _>) =
+let seekReadIndexedRowsByInterface numRows binaryChop (reader: ISeekReadIndexedRowReader<CustomAttributeRow, _, _>) =
     let startRid, endRid = seekReadIndexedRowsRange numRows binaryChop reader
 
     if startRid <= 0 || endRid < startRid then
@@ -1329,9 +1324,9 @@ let seekReadIndexedRowsByInterface numRows binaryChop (reader: ISeekReadIndexedR
     else
 
         Array.init (endRid - startRid + 1) (fun i ->
-            let mutable row = Unchecked.defaultof<'RowT>
-            reader.GetRow(startRid + i, &row)
-            reader.ConvertRow(&row))
+            let mutable row = ref Unchecked.defaultof<CustomAttributeRow>
+            reader.GetRow(startRid + i, row)
+            reader.ConvertRow(row))
 
 let inline rowAddr (ctxt: ILMetadataReader) (tn: TableName) (idx: int) =
     ref (ctxt.rowAddr tn idx)

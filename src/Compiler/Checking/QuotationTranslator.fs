@@ -718,13 +718,9 @@ and private ConvExprCore cenv (env : QuotationTranslationEnv) (expr: Expr) : QP.
             let witnessArgInfo = 
                 if g.generateWitnesses && inWitnessPassingScope then 
                     let witnessInfo = traitInfo.GetWitnessInfo()
-#if FABLE_COMPILER
-                    env.witnessesInScope.TryFind witnessInfo
-#else
                     match env.witnessesInScope.TryGetValue witnessInfo with 
                     | true, storage -> Some storage
                     | _ -> None
-#endif
                 else
                     None
 

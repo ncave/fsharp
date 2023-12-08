@@ -10293,23 +10293,6 @@ let CombineCcuContentFragments l =
 /// An immutable mappping from witnesses to some data.
 ///
 /// Note: this uses an immutable HashMap/Dictionary with an IEqualityComparer that captures TcGlobals, see EmptyTraitWitnessInfoHashMap
-#if FABLE_COMPILER
-type TraitWitnessInfoHashMap<'T> = Internal.Utilities.Collections.Tagged.Map<TraitWitnessInfo, 'T>
-
-/// Create an empty immutable mapping from witnesses to some data
-let EmptyTraitWitnessInfoHashMap g : TraitWitnessInfoHashMap<'T> =
-    let comparer =
-        { new IComparer<TraitWitnessInfo> with
-            member _.Compare(x, y) =
-                let xhash = hash x
-                let yhash = hash y
-                let equals x y = traitKeysAEquiv g TypeEquivEnv.Empty x y
-                if xhash = yhash
-                then if equals x y then 0 else -1
-                else if xhash < yhash then -1 else 1
-        }
-    Internal.Utilities.Collections.Tagged.Map<_,_>.FromList(comparer, [])
-#else //!FABLE_COMPILER
 type TraitWitnessInfoHashMap<'T> = ImmutableDictionary<TraitWitnessInfo, 'T>
 
 /// Create an empty immutable mapping from witnesses to some data
@@ -10319,7 +10302,6 @@ let EmptyTraitWitnessInfoHashMap g : TraitWitnessInfoHashMap<'T> =
             member _.Equals(a, b) = traitKeysAEquiv g TypeEquivEnv.Empty a b
             member _.GetHashCode(a) = hash a.MemberName
         })
-#endif //!FABLE_COMPILER
 
 let (|WhileExpr|_|) expr = 
     match expr with 
