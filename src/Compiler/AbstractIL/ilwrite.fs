@@ -2,6 +2,10 @@
 
 module internal FSharp.Compiler.AbstractIL.ILBinaryWriter
 
+#if EXPORT_METADATA
+#nowarn "1182"
+#endif
+
 open System
 open System.Collections.Generic
 open System.IO
@@ -1102,9 +1106,11 @@ let FindMethodDefIdx cenv mdkey =
                 else sofar) None) with
           | Some x -> x
           | None -> raise MethodDefNotFound
+#if !EXPORT_METADATA
       let (TdKey (tenc, tname)) = typeNameOfIdx mdkey.TypeIdx
       dprintn ("The local method '"+(String.concat "." (tenc@[tname]))+"'::'"+mdkey.Name+"' was referenced but not declared")
       dprintn ("generic arity: "+string mdkey.GenericArity)
+#endif
       cenv.methodDefIdxsByKey.dict |> Seq.iter (fun (KeyValue(mdkey2, _)) ->
           if mdkey2.TypeIdx = mdkey.TypeIdx && mdkey.Name = mdkey2.Name then
               let (TdKey (tenc2, tname2)) = typeNameOfIdx mdkey2.TypeIdx
@@ -2617,6 +2623,9 @@ let GenMethodDefAsRow cenv env midx (mdef: ILMethodDef) =
         if cenv.entrypoint <> None then failwith "duplicate entrypoint"
         else cenv.entrypoint <- Some (true, midx)
     let codeAddr =
+#if EXPORT_METADATA
+        0x0000
+#else
       (match mdef.Body with
       | MethodBody.IL ilmbodyLazy ->
           let ilmbody =
@@ -2667,6 +2676,7 @@ let GenMethodDefAsRow cenv env midx (mdef: ILMethodDef) =
       | MethodBody.Native ->
           failwith "cannot write body of native method - Abstract IL cannot roundtrip mixed native/managed binaries"
       | _ -> 0x0000)
+#endif
 
     UnsharedRow
        [| ULong codeAddr
@@ -3823,6 +3833,7 @@ let writeBinaryAux (stream: Stream, options: options, modul, normalizeAssemblyRe
         match options.signer, modul.Manifest with
         | Some _, _ -> options.signer
         | _, None -> options.signer
+#if !EXPORT_METADATA
         | None, Some {PublicKey=Some pubkey} ->
             (dprintn "Note: The output assembly will be delay-signed using the original public"
              dprintn "Note: key. In order to load it you will need to either sign it with"
@@ -3832,6 +3843,7 @@ let writeBinaryAux (stream: Stream, options: options, modul, normalizeAssemblyRe
              dprintn "Note: private key when converting the assembly, assuming you have access to"
              dprintn "Note: it."
              Some (ILStrongNameSigner.OpenPublicKey pubkey))
+#endif
         | _ -> options.signer
 
     let modul =
@@ -3843,11 +3855,13 @@ let writeBinaryAux (stream: Stream, options: options, modul, normalizeAssemblyRe
              with exn ->
                failwith ("A call to StrongNameGetPublicKey failed (" + exn.Message + ")")
                None
+#if !EXPORT_METADATA
         match modul.Manifest with
         | None -> ()
         | Some m ->
            if m.PublicKey <> None && m.PublicKey <> pubkey then
              dprintn "Warning: The output assembly is being signed or delay-signed with a strong name that is different to the original."
+#endif
         { modul with Manifest = match modul.Manifest with None -> None | Some m -> Some {m with PublicKey = pubkey} }
 
     let pdbData, pdbInfoOpt, debugDirectoryChunk, debugDataChunk, debugChecksumPdbChunk, debugEmbeddedPdbChunk, debugDeterministicPdbChunk, textV2P, mappings =
