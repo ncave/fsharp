@@ -1354,13 +1354,9 @@ let ComputeGenerateWitnesses (g: TcGlobals) eenv =
     && not eenv.suppressWitnesses
 
 let TryStorageForWitness (_g: TcGlobals) eenv (w: TraitWitnessInfo) =
-#if FABLE_COMPILER
-    eenv.witnessesInScope.TryFind w
-#else
     match eenv.witnessesInScope.TryGetValue w with
     | true, storage -> Some storage
     | _ -> None
-#endif
 
 let IsValRefIsDllImport g (vref: ValRef) =
     vref.Attribs |> HasFSharpAttributeOpt g g.attrib_DllImportAttribute
