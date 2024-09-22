@@ -1,8 +1,9 @@
-open System
-open Fable.Import
+module Lib
 
-let foo() =
-    let msg = String.Concat("Hello"," ","world")
-    let len = msg.Length
-    let canvas = Browser.document.createElement_canvas ()
-    canvas.width <- 1000.
+type HTMLAttr =
+    | Href of string
+    | Custom
+
+let a = Custom
+let b = a.IsCustom
+printfn $"IsCustom = {b}"

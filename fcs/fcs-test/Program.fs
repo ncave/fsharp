@@ -4,6 +4,8 @@ open FSharp.Compiler
 open FSharp.Compiler.CodeAnalysis
 open FSharp.Compiler.SourceCodeServices
 open FSharp.Compiler.EditorServices
+open FSharp.Compiler.Symbols
+// open FSharp.Compiler.Text
 open Buildalyzer
 
 let getProjectOptionsFromProjectFile (isMain: bool) (projFile: string) =
@@ -100,6 +102,7 @@ let mkProjectCommandLineArgsForScript (dllName, fileNames) =
         yield "--fullpaths" 
         yield "--flaterrors" 
         yield "--target:library" 
+        yield "--langversion:preview" 
         for x in fileNames do 
             yield x
         let references = mkStandardProjectReferences ()
@@ -143,36 +146,72 @@ let main argv =
     let checker = InteractiveChecker.Create(projectOptions)
     let sourceReader _fileName = (hash source, lazy source)
 
-    // parse and typecheck a project
-    let projectResults =
-        checker.ParseAndCheckProject(projName, fileNames, sourceReader)
-        |> Async.RunSynchronously
-    projectResults.Diagnostics |> Array.iter (fun e -> printfn "%A: %A" (e.Severity) e)
-    printAst "ParseAndCheckProject" projectResults
+    // // parse and typecheck a project
+    // let projectResults =
+    //     checker.ParseAndCheckProject(projName, fileNames, sourceReader)
+    //     |> Async.RunSynchronously
+    // projectResults.Diagnostics |> Array.iter (fun e -> printfn "%A: %A" (e.Severity) e)
+    // printAst "ParseAndCheckProject" projectResults
 
     // or just parse and typecheck a file in project
     let (parseResults, typeCheckResults, projectResults) =
         checker.ParseAndCheckFileInProject(projName, fileNames, sourceReader, fileName)
         |> Async.RunSynchronously
     projectResults.Diagnostics |> Array.iter (fun e -> printfn "%A: %A" (e.Severity) e)
-
-    printAst "ParseAndCheckFileInProject" projectResults
+    // printAst "ParseAndCheckFileInProject" projectResults
 
     let inputLines = source.Split('\n')
 
-    // Get tool tip at the specified location
-    let tip = typeCheckResults.GetToolTip(4, 7, inputLines.[3], ["foo"], Tokenization.FSharpTokenTag.IDENT)
-    (sprintf "%A" tip).Replace("\n","") |> printfn "\n---> ToolTip Text = %A" // should print "FSharpToolTipText [...]"
+    let isCustomSymbolUse =
+        typeCheckResults.GetSymbolUseAtLocation(8, 18, inputLines.[7], [ "IsCustom" ])
+    match isCustomSymbolUse with
+    | Some v ->
+        match v.Symbol with
+        | :? FSharpMemberOrFunctionOrValue as mfv ->
+            printfn $"""
+--- Using GetSymbolUseAtLocation ---
+{mfv.CompiledName}:
+    IsProperty = {mfv.IsProperty}
+    IsUnionCaseTester = {mfv.IsUnionCaseTester}
+    IsMethod = {mfv.IsMethod}
+    IsFunction = {mfv.IsFunction}
+    IsPropertyGetterMethod = {mfv.IsPropertyGetterMethod}
+    IsValue = {mfv.IsValue}"""
+        | _ -> printfn "Expected FSharpMemberOrFunctionOrValue"
+    | _ -> printfn "Expected Symbol"
 
-    // Get declarations (autocomplete) for msg
-    let partialName = { QualifyingIdents = []; PartialIdent = "msg"; EndColumn = 17; LastDotPos = None }
-    let decls = typeCheckResults.GetDeclarationListInfo(Some parseResults, 6, inputLines.[5], partialName, (fun _ -> []))
-    [ for item in decls.Items -> item.NameInList ] |> printfn "\n---> msg AutoComplete = %A" // should print string methods
+    for impl_file in projectResults.AssemblyContents.ImplementationFiles do
+        for file_decl in impl_file.Declarations do
+            match file_decl with
+            | FSharpImplementationFileDeclaration.Entity (ent, ent_decls) ->
+                for ent_decl in ent_decls do
+                    match ent_decl with
+                    | FSharpImplementationFileDeclaration.MemberOrFunctionOrValue (mfv, args, body) ->
+                        if mfv.CompiledName.StartsWith("get_Is") then
+                            printfn $"""
+--- when enumerating declarations ---
+{mfv.CompiledName}:
+    IsProperty = {mfv.IsProperty}
+    IsMethod = {mfv.IsMethod}
+    IsFunction = {mfv.IsFunction}
+    IsPropertyGetterMethod = {mfv.IsPropertyGetterMethod}
+    IsValue = {mfv.IsValue}"""
+                    | _ -> ()
+            | _ -> ()
 
-    // Get declarations (autocomplete) for canvas
-    let partialName = { QualifyingIdents = []; PartialIdent = "canvas"; EndColumn = 10; LastDotPos = None }
-    let decls = typeCheckResults.GetDeclarationListInfo(Some parseResults, 8, inputLines.[7], partialName, (fun _ -> []))
-    [ for item in decls.Items -> item.NameInList ] |> printfn "\n---> canvas AutoComplete = %A"
+    // // Get tool tip at the specified location
+    // let tip = typeCheckResults.GetToolTip(4, 7, inputLines.[3], ["foo"], Tokenization.FSharpTokenTag.IDENT)
+    // (sprintf "%A" tip).Replace("\n","") |> printfn "\n---> ToolTip Text = %A" // should print "FSharpToolTipText [...]"
+
+    // // Get declarations (autocomplete) for msg
+    // let partialName = { QualifyingIdents = []; PartialIdent = "msg"; EndColumn = 17; LastDotPos = None }
+    // let decls = typeCheckResults.GetDeclarationListInfo(Some parseResults, 6, inputLines.[5], partialName, (fun _ -> []))
+    // [ for item in decls.Items -> item.NameInList ] |> printfn "\n---> msg AutoComplete = %A" // should print string methods
+
+    // // Get declarations (autocomplete) for canvas
+    // let partialName = { QualifyingIdents = []; PartialIdent = "canvas"; EndColumn = 10; LastDotPos = None }
+    // let decls = typeCheckResults.GetDeclarationListInfo(Some parseResults, 8, inputLines.[7], partialName, (fun _ -> []))
+    // [ for item in decls.Items -> item.NameInList ] |> printfn "\n---> canvas AutoComplete = %A"
 
     printfn "Done."
     0
