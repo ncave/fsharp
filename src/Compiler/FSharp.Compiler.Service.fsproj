@@ -13,6 +13,7 @@
     <NoWarn>$(NoWarn);64;1204</NoWarn>         <!--Temporary fix for sourcebuild -->
     <AssemblyName>FSharp.Compiler.Service</AssemblyName>
     <AllowCrossTargeting>true</AllowCrossTargeting>
+    <DefineConstants>$(DefineConstants);EXPORT_METADATA</DefineConstants>
     <DefineConstants>$(DefineConstants);COMPILER</DefineConstants>
 	<Nullable>enable</Nullable>
 	<!-- Nullness checking against ns20 base class libraries is very weak, the APIs were not updated with annotations.
