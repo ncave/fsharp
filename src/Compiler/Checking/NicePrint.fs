@@ -1694,6 +1694,7 @@ module InfoMemberPrinting =
                     |> PrintTypes.layoutCsharpCodeAnalysisIlAttributes denv (mi.RawMetadata.Return.CustomAttrs) (squareAngleReturn >> (@@))
                 let paramLayouts = 
                     minfo.GetParamDatas (amap, m, minst)
+                    |> List.map (List.map fst)
                     |> List.head
                     |> List.zip (mi.ParamMetadata)
                     |> List.map(fun (ilParams,paramData) -> 

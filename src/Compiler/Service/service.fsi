@@ -23,7 +23,7 @@ open FSharp.Compiler.Driver
 
 module internal CompileHelpers =
     val mkCompilationDiagnosticsHandlers: bool -> ResizeArray<FSharpDiagnostic> * DiagnosticsLogger * IDiagnosticsLoggerProvider
-    val tryCompile: DiagnosticsLogger -> (StopProcessingExiter -> unit) -> int 
+    val tryCompile: DiagnosticsLogger -> (StopProcessingExiter -> unit) -> exn option 
 
 /// Used to parse and check F# source code.
 [<Sealed; AutoSerializable(false)>]
