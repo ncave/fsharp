@@ -1273,14 +1273,14 @@ let CompileFromTypedAst
         typedImplFiles,
         topAttrs,
         tcConfig: TcConfig,
-        outfile,
+        outfile: string,
         diagnosticsLogger,
         exiter: Exiter
     ) =
 
     let tcImportsCapture = None
     let dynamicAssemblyCreator = None
-    let assemblyName = Path.GetFileNameWithoutExtension(outfile)
+    let assemblyName = !! Path.GetFileNameWithoutExtension(outfile)
     // Doubling here tcImports as frameworkTcImports, seems to work...
     let frameworkTcImports = tcImports
     let pdbfile = None

@@ -116,7 +116,7 @@ module internal ParseAndCheck =
                     SimulatedMSBuildReferenceResolver.getResolver(),
                     defaultFSharpBinariesDir = FSharpCheckerResultsSettings.defaultFSharpBinariesDir,
                     reduceMemoryUsage = ReduceMemoryFlag.Yes,
-                    implicitIncludeDir = Path.GetDirectoryName(projectOptions.ProjectFileName),
+                    implicitIncludeDir = !! Path.GetDirectoryName(projectOptions.ProjectFileName),
                     isInteractive = false,
                     isInvalidationSupported = true,
                     defaultCopyFSharpCore = CopyFSharpCoreFlag.No,
@@ -134,7 +134,6 @@ module internal ParseAndCheck =
         let dependencyProvider = new DependencyProvider()
         let! tcGlobals, tcImports =
             TcImports.BuildTcImports (tcConfigP, dependencyProvider)
-            |> Async.AwaitNodeCode
 
         // Handle type provider invalidation by resetting compiler state
         tcImports.GetCcusExcludingBase()
@@ -142,7 +141,7 @@ module internal ParseAndCheck =
             ccu.Deref.InvalidateEvent.Add(fun _ -> reset())
         )
 
-        let assemblyName = projectOptions.ProjectFileName |> Path.GetFileNameWithoutExtension
+        let assemblyName = !! Path.GetFileNameWithoutExtension(projectOptions.ProjectFileName)
         let tcInitial, openDecls0 = GetInitialTcEnv (assemblyName, rangeStartup, tcConfig, tcImports, tcGlobals)
         let tcInitialState = GetInitialTcState (rangeStartup, assemblyName, tcConfig, tcGlobals, tcImports, tcInitial, openDecls0)
 
@@ -166,7 +165,7 @@ module internal ParseAndCheck =
                             topAttrsOpt: TopAttribs option, tcImplFilesOpt: CheckedImplFile list option, compilerState) =
         let assemblyRef = mkSimpleAssemblyRef "stdin"
         let access = tcState.TcEnvFromImpls.AccessRights
-        let symbolUses = Choice2Of2 TcSymbolUses.Empty
+        let symbolUses = Choice2Of2 (async { return seq { } })
         let dependencyFiles = parseResults |> Seq.map (fun x -> x.DependencyFiles) |> Array.concat
         let getAssemblyData () = None
         let details = (compilerState.tcGlobals, compilerState.tcImports, tcState.Ccu, tcState.CcuSig, symbolUses, topAttrsOpt,
@@ -313,12 +312,12 @@ type InteractiveChecker internal (compilerStateCache) =
         let ctok = CompilationThreadToken()
         let flatErrors = compilerState.tcConfig.flatErrors
         let errors, diagnosticsLogger, _loggerProvider = CompileHelpers.mkCompilationDiagnosticsHandlers(flatErrors)
-        let exitCode =
+        let exnOpt =
             CompileHelpers.tryCompile diagnosticsLogger (fun exiter ->
                 CompileFromTypedAst (ctok, compilerState.tcGlobals, compilerState.tcImports, tcState.Ccu,
                     tcImplFiles, topAttrs, compilerState.tcConfig, outFile, diagnosticsLogger, exiter))
 
-        return errors.ToArray(), exitCode
+        return errors.ToArray(), exnOpt
     }
 
     /// Parses and checks the whole project, good for compilers (Fable etc.)
