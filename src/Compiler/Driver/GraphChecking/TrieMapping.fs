@@ -374,7 +374,9 @@ let serializeToMermaid (path: string) (filesInProject: FileInProject array) (tri
 
     appendLine "```"
 
+#if !FABLE_COMPILER
     use out =
         FileSystem.OpenFileForWriteShim(path, fileMode = System.IO.FileMode.Create)
 
     out.WriteAllText(sb.ToString())
+#endif

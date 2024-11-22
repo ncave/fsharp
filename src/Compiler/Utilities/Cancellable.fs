@@ -45,11 +45,15 @@ module Cancellable =
         if ct.IsCancellationRequested then
             ValueOrCancelled.Cancelled(OperationCanceledException ct)
         else
+#if FABLE_COMPILER
+            oper ct
+#else
             try
                 use _ = Cancellable.UsingToken(ct)
                 oper ct
             with :? OperationCanceledException as e ->
                 ValueOrCancelled.Cancelled(OperationCanceledException e.CancellationToken)
+#endif
 
     let fold f acc seq =
         Cancellable(fun ct ->
@@ -141,7 +145,11 @@ type CancellableBuilder() =
                 | Choice2Of2 err -> Cancellable.run ct (handler err)
             | ValueOrCancelled.Cancelled err1 -> ValueOrCancelled.Cancelled err1)
 
+#if FABLE_COMPILER
+    member inline _.Using(resource: 'Resource when 'Resource :> IDisposable, [<InlineIfLambda>] comp) =
+#else
     member inline _.Using(resource, [<InlineIfLambda>] comp) =
+#endif
         Cancellable(fun ct ->
 #if !FSHARPCORE_USE_PACKAGE
             __debugPoint ""
@@ -158,7 +166,13 @@ type CancellableBuilder() =
 
             match compRes with
             | ValueOrCancelled.Value res ->
+#if FABLE_COMPILER
+                match box resource with
+                | null -> ()
+                | _ -> resource.Dispose()
+#else
                 Microsoft.FSharp.Core.LanguagePrimitives.IntrinsicFunctions.Dispose resource
+#endif
 
                 match res with
                 | Choice1Of2 r -> ValueOrCancelled.Value r

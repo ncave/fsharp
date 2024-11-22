@@ -11,6 +11,9 @@ open FSharp.Compiler.TypedTree
 /// Represents the definitional contents of an assembly, as seen by the F# language
 type public FSharpAssemblyContents =
 
+#if FABLE_COMPILER
+    internal new : cenv: SymbolEnv * mimpls: CheckedImplFile list -> FSharpAssemblyContents
+#endif
     internal new:
         tcGlobals: TcGlobals *
         thisCcu: CcuThunk *

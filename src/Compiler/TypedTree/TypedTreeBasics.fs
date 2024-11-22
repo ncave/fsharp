@@ -13,7 +13,7 @@ open FSharp.Compiler.Text
 open FSharp.Compiler.Syntax
 open FSharp.Compiler.TypedTree
 
-#if DEBUG
+#if DEBUG && !FABLE_COMPILER
 assert (sizeof<ValFlags> = 8)
 assert (sizeof<EntityFlags> = 8)
 assert (sizeof<TyparFlags> = 4)
@@ -556,4 +556,3 @@ let combineAccess access1 access2 =
 
 exception Duplicate of string * string * range
 exception NameClash of string * string * string * range * string * string * range
-

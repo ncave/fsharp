@@ -60,7 +60,9 @@ type internal HashMultiMap<'Key, 'Value
     /// Apply the given function to each binding in the hash table.
     member Iterate: ('Key -> 'Value -> unit) -> unit
 
+#if !FABLE_COMPILER
     interface IDictionary<'Key, 'Value>
+#endif
     interface ICollection<KeyValuePair<'Key, 'Value>>
     interface IEnumerable<KeyValuePair<'Key, 'Value>>
     interface System.Collections.IEnumerable

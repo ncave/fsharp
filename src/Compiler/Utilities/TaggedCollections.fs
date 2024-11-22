@@ -659,10 +659,14 @@ type internal Set<'T, 'ComparerTag> when 'ComparerTag :> IComparer<'T>(comparer:
     member s.ToArray() = SetTree.toArray tree
 
     override this.Equals(that) =
+#if FABLE_COMPILER
+            ((this :> System.IComparable).CompareTo(that) = 0)
+#else
         match that with
         // Cast to the exact same type as this, otherwise not equal.
         | :? Set<'T, 'ComparerTag> as that -> ((this :> System.IComparable).CompareTo(that) = 0)
         | _ -> false
+#endif
 
     interface System.IComparable with
         // Cast s2 to the exact same type as s1, see 4884.
@@ -821,7 +825,16 @@ module MapTree =
                 true
             else
                 match m with
+#if FABLE_COMPILER
+                | :? MapTreeNode<'Key, 'Value> as mn ->
+                    // Temporary workaround for Fable issue with passing byref
+                    let mutable t = v
+                    let res = tryGetValue comparer k &t (if c < 0 then mn.Left else mn.Right)
+                    v <- t
+                    res
+#else
                 | :? MapTreeNode<'Key, 'Value> as mn -> tryGetValue comparer k &v (if c < 0 then mn.Left else mn.Right)
+#endif
                 | _ -> false
 
     let find (comparer: IComparer<'Key>) (k: 'Key) (m: MapTree<'Key, 'Value>) =
@@ -1233,10 +1246,14 @@ type internal Map<'Key, 'T, 'ComparerTag> when 'ComparerTag :> IComparer<'Key>(c
             (MapTree.toSeq tree :> System.Collections.IEnumerator)
 
     override this.Equals(that) =
+#if FABLE_COMPILER
+            ((this :> System.IComparable).CompareTo(that) = 0)
+#else
         match that with
         // Cast to the exact same type as this, otherwise not equal.
         | :? Map<'Key, 'T, 'ComparerTag> as that -> ((this :> System.IComparable).CompareTo(that) = 0)
         | _ -> false
+#endif
 
     interface System.IComparable with
         member m1.CompareTo(m2: objnull) =

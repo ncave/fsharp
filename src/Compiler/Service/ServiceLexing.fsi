@@ -7,6 +7,7 @@ open System.Threading
 open FSharp.Compiler
 open FSharp.Compiler.Text
 open FSharp.Compiler.Features
+open Internal.Utilities.Text.Lexing
 
 #nowarn "57"
 
@@ -337,7 +338,7 @@ type FSharpSourceTokenizer =
     member CreateLineTokenizer: lineText: string -> FSharpLineTokenizer
 
     /// Create a tokenizer for a line of this source file using a buffer filler
-    member CreateBufferTokenizer: bufferFiller: (char[] * int * int -> int) -> FSharpLineTokenizer
+    member CreateBufferTokenizer: bufferFiller: (LexBufferChar[] * int * int -> int) -> FSharpLineTokenizer
 
 module internal TestExpose =
     val TokenInfo: Parser.token -> FSharpTokenColorKind * FSharpTokenCharKind * FSharpTokenTriggerClass

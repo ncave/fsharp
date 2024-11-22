@@ -20,6 +20,8 @@ open FSharp.Compiler.IO
 open FSharp.Compiler.TypedTree
 open FSharp.Compiler.TypedTreeOps
 
+#if !FABLE_COMPILER
+
 let mutable showTermFileCount = 0
 
 let PrintWholeAssemblyImplementation (tcConfig: TcConfig) outfile header expr =
@@ -38,6 +40,8 @@ let PrintWholeAssemblyImplementation (tcConfig: TcConfig) outfile header expr =
             dprintf "\n------------------\nshowTerm: %s:\n" header
             LayoutRender.outL stderr (Display.squashTo 192 (DebugPrint.implFilesL expr))
             dprintf "\n------------------\n"
+
+#endif //!FABLE_COMPILER
 
 let AddExternalCcuToOptimizationEnv tcGlobals optEnv (ccuinfo: ImportedAssembly) =
     match ccuinfo.FSharpOptimizationData.Force() with
@@ -132,6 +136,7 @@ module private ParallelOptimization =
 
         finalFileResults, lastFileFirstLoopEnv
 
+#if !FABLE_COMPILER
     let optimizeFilesInParallel
         (env0: IncrementalOptimizationEnv)
         (phases: PhaseInfo[])
@@ -249,6 +254,7 @@ module private ParallelOptimization =
                 raise ex.InnerExceptions[0]
 
         collectFinalResults lastPhaseResults
+#endif //!FABLE_COMPILER
 
 let optimizeFilesSequentially optEnv (phases: PhaseInfo[]) implFiles =
     let results, (optEnvFirstLoop, _, _, _) =
@@ -322,6 +328,9 @@ let ApplyAllOptimizations
     // Always optimize once - the results of this step give the x-module optimization
     // info.  Subsequent optimization steps choose representations etc. which we don't
     // want to save in the x-module info (i.e. x-module info is currently "high level").
+#if FABLE_COMPILER
+    ignore<string> outfile
+#else //!FABLE_COMPILER
     PrintWholeAssemblyImplementation tcConfig outfile "pass-start" implFiles
 #if DEBUG
     if tcConfig.showOptimizationData then
@@ -330,8 +339,11 @@ let ApplyAllOptimizations
     if tcConfig.showOptimizationData then
         dprintf "CCU prior to optimization:\n%s\n" (LayoutRender.showL (Display.squashTo 192 (DebugPrint.entityL ccu.Contents)))
 #endif
+#endif //!FABLE_COMPILER
 
+#if !FABLE_COMPILER
     ReportTime tcConfig "Optimizations"
+#endif
 
     let firstLoopSettings =
         { tcConfig.optSettings with
@@ -522,12 +534,14 @@ let ApplyAllOptimizations
 
     let results, optEnvFirstLoop =
         match tcConfig.optSettings.processingMode with
+#if !FABLE_COMPILER
         // Parallel optimization breaks determinism - turn it off in deterministic builds.
         | Optimizer.OptimizationProcessingMode.Parallel when (not tcConfig.deterministic) ->
             let results, optEnvFirstPhase =
                 ParallelOptimization.optimizeFilesInParallel optEnv phases implFiles
 
             results |> Array.toList, optEnvFirstPhase
+#endif
         | Optimizer.OptimizationProcessingMode.Parallel
         | Optimizer.OptimizationProcessingMode.Sequential -> optimizeFilesSequentially optEnv phases implFiles
 
@@ -537,7 +551,11 @@ let ApplyAllOptimizations
         |> List.map snd
         |> List.iter (fun implFileOptData ->
             let str =
+#if FABLE_COMPILER
+                (LayoutRender.showL (Optimizer.moduleInfoL tcGlobals implFileOptData))
+#else
                 (LayoutRender.showL (Display.squashTo 192 (Optimizer.moduleInfoL tcGlobals implFileOptData)))
+#endif
 
             dprintf $"Optimization implFileOptData:\n{str}\n")
 #endif
@@ -545,9 +563,13 @@ let ApplyAllOptimizations
     let implFiles, implFileOptDatas = List.unzip results
     let assemblyOptData = Optimizer.UnionOptimizationInfos implFileOptDatas
     let tassembly = CheckedAssemblyAfterOptimization implFiles
+#if !FABLE_COMPILER
     PrintWholeAssemblyImplementation tcConfig outfile "pass-end" (implFiles |> List.map (fun implFile -> implFile.ImplFile))
     ReportTime tcConfig "Ending Optimizations"
+#endif
     tassembly, assemblyOptData, optEnvFirstLoop
+
+#if !FABLE_COMPILER
 
 //----------------------------------------------------------------------------
 // ILX generation
@@ -618,6 +640,8 @@ let NormalizeAssemblyRefs (ctok, ilGlobals: ILGlobals, tcImports: TcImports) sco
     | ILScopeRef.Module _ -> scoref
     | ILScopeRef.PrimaryAssembly -> normalizeAssemblyRefByName ilGlobals.primaryAssemblyName
     | ILScopeRef.Assembly aref -> normalizeAssemblyRefByName aref.Name
+
+#endif //!FABLE_COMPILER
 
 let GetGeneratedILModuleName (t: CompilerTarget) (s: string) =
     // return the name of the file as a module name

@@ -221,6 +221,12 @@ module internal SymbolHelpers =
     let fileNameOfItem (g: TcGlobals) qualProjectDir (m: range) h =
         let file = m.FileName 
         if verbose then dprintf "file stored in metadata is '%s'\n" file
+#if FABLE_COMPILER
+        ignore<TcGlobals> g
+        ignore<string option> qualProjectDir
+        ignore<Item> h
+        file
+#else
         if not (FileSystem.IsPathRootedShim file) then 
             match ccuOfItem g h with 
             | Some ccu -> 
@@ -230,6 +236,7 @@ module internal SymbolHelpers =
                 | None     -> file
                 | Some dir -> Path.Combine(dir, file)
          else file
+#endif
 
     let ParamNameAndTypesOfUnaryCustomOperation g minfo = 
         match minfo with 

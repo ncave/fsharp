@@ -1,0 +1,15 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build-test": "dotnet build -c Release",
+    "build-bench": "dotnet build -c Release bench",
+    "build-node": "fable fcs-fable-test.fsproj out-test",
+    "test": "dotnet run -c Release",
+    "test-node": "node out-test/test",
+    "bench": "dotnet run -c Release --project bench ../fcs-fable.fsproj"
+  },
+  "devDependencies": {
+    "fable-compiler-js": "^3.0.0"
+  }
+}

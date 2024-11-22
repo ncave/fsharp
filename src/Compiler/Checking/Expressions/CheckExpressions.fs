@@ -171,7 +171,11 @@ let (|HasFormatSpecifier|_|) (s: string) =
 // Removes trailing "%s" unless it was escaped by another '%' (checks for odd sequence of '%' before final "%s")
 let (|WithTrailingStringSpecifierRemoved|) (s: string) =
     if s.EndsWith "%s" then
+#if FABLE_COMPILER
+        let i = s[..(s.Length - 3)].TrimEnd('%').Length - 1
+#else
         let i = s.AsSpan(0, s.Length - 2).LastIndexOfAnyExcept '%'
+#endif
         let diff = s.Length - 2 - i
         if diff &&& 1 <> 0 then
             s[..i]
@@ -4188,7 +4192,7 @@ and TcPseudoMemberSpec cenv newOk env synTypes tpenv synMemberSig m =
             let logicalCompiledName = ComputeLogicalName id memberFlags
             for argInfos in curriedArgInfos do
                 for argInfo in argInfos do
-                    let info = CrackParamAttribsInfo g argInfo
+                    let info, _ = CrackParamAttribsInfo g argInfo
                     let (ParamAttribs(isParamArrayArg, isInArg, isOutArg, optArgInfo, callerInfo, reflArgInfo)) = info
                     if isParamArrayArg || isInArg || isOutArg || optArgInfo.IsOptional || callerInfo <> CallerInfo.NoCallerInfo || reflArgInfo <> ReflectedArgInfo.None then
                         if g.langVersion.SupportsFeature(LanguageFeature.InterfacesWithAbstractStaticMembers) then
@@ -9779,6 +9783,7 @@ and GenerateMatchingSimpleArgumentTypes (cenv: cenv) (calledMeth: MethInfo) mIte
     let g = cenv.g
     let curriedMethodArgAttribs = calledMeth.GetParamAttribs(cenv.amap, mItem)
     curriedMethodArgAttribs
+    |> List.map (List.map fst)
     |> List.map (List.filter isSimpleFormalArg >> NewInferenceTypes g)
 
 and UnifyMatchingSimpleArgumentTypes (cenv: cenv) (env: TcEnv) exprTy (calledMeth: MethInfo) mMethExpr mItem =
@@ -9832,7 +9837,7 @@ and TcMethodApplication_SplitSynArguments
         let singleMethodCurriedArgs =
             match candidates with
             | [calledMeth] when List.forall isNil namedCurriedCallerArgs  ->
-                let curriedCalledArgs = calledMeth.GetParamAttribs(cenv.amap, mItem)
+                let curriedCalledArgs = calledMeth.GetParamAttribs(cenv.amap, mItem) |> List.map (List.map fst)
                 match curriedCalledArgs with
                 | [arg :: _] when isSimpleFormalArg arg -> Some(curriedCalledArgs)
                 | _ -> None
@@ -10077,7 +10082,7 @@ and TcAdhocChecksOnLibraryMethods (cenv: cenv) (env: TcEnv) isInstance (finalCal
     if HasHeadType g g.tcref_System_Collections_Generic_Dictionary finalCalledMethInfo.ApparentEnclosingType &&
         finalCalledMethInfo.IsConstructor &&
         not (finalCalledMethInfo.GetParamDatas(cenv.amap, mItem, finalCalledMeth.CalledTyArgs)
-            |> List.existsSquared (fun (ParamData(_, _, _, _, _, _, _, ty)) ->
+            |> List.existsSquared (fun (ParamData(_, _, _, _, _, _, _, ty), _) ->
                 HasHeadType g g.tcref_System_Collections_Generic_IEqualityComparer ty)) then
 
         match argsOfAppTy g finalCalledMethInfo.ApparentEnclosingType with
