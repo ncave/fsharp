@@ -4,7 +4,9 @@
 cd $(dirname $0)/..
 
 # build fslex/fsyacc tools
-dotnet build -c Release buildtools
+dotnet build -c Release buildtools/fslex
+dotnet build -c Release buildtools/fsyacc
+
 # build FSharp.Compiler.Service (to make sure it's not broken)
 dotnet build -c Release src/Compiler
 

@@ -803,7 +803,11 @@ let pickleObjWithDanglingCcus inMem file g scope p x =
         st2
     
     // The B stream should be empty in the second phase
+#if FABLE_COMPILER
+    let phase2bytesB = st2.osB.Close()
+#else
     let phase2bytesB = st2.osB.AsMemory()
+#endif
     if phase2bytesB.Length <> 0 then failwith "expected phase2bytesB.Length = 0"
     (st2.osB :> System.IDisposable).Dispose()
     st2.os

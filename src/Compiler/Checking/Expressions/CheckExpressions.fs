@@ -171,7 +171,11 @@ let (|HasFormatSpecifier|_|) (s: string) =
 // Removes trailing "%s" unless it was escaped by another '%' (checks for odd sequence of '%' before final "%s")
 let (|WithTrailingStringSpecifierRemoved|) (s: string) =
     if s.EndsWith "%s" then
+#if FABLE_COMPILER
+        let i = s[..(s.Length - 3)].TrimEnd('%').Length - 1
+#else
         let i = s.AsSpan(0, s.Length - 2).LastIndexOfAnyExcept '%'
+#endif
         let diff = s.Length - 2 - i
         if diff &&& 1 <> 0 then
             s[..i]

@@ -251,8 +251,12 @@ module SynExpr =
         // Trim any leading dots or question marks from the given symbolic operator.
         // Leading dots or question marks have no effect on operator precedence or associativity
         // with the exception of &, &&, and ||.
+#if FABLE_COMPILER
+        let trimmed = originalNotation.TrimStart([|'.'; '?'|])
+#else
         let ignoredLeadingChars = ".?".AsSpan()
         let trimmed = originalNotation.AsSpan().TrimStart ignoredLeadingChars
+#endif
         assert (trimmed.Length > 0)
 
         match trimmed[0], originalNotation with
@@ -525,7 +529,13 @@ module SynExpr =
 
                     match offsides with
                     | ValueNone ->
+#if FABLE_COMPILER
+                        let slice = line[startCol..]
+                        let mutable i = -1
+                        let i = if slice |> String.forall (fun c -> i <- i + 1; c = ' ' || c = ')') then -1 else i
+#else
                         let i = line.AsSpan(startCol).IndexOfAnyExcept(' ', ')')
+#endif
 
                         if i >= 0 then
                             let newOffsides = i + startCol
@@ -536,11 +546,20 @@ module SynExpr =
                             loop offsides (lineNo + 1) 0
 
                     | ValueSome offsidesCol ->
+#if FABLE_COMPILER
+                        let mutable i = -1
+                        let i = if line |> String.forall (fun c -> i <- i + 1; i < offsidesCol && (c = ' ' || c = ')')) then -1 else i
+                        if i >= 0 && i < offsidesCol then
+                            let slice = line[i .. (min (offsidesCol - i) (line.Length - i)) - 1]
+                            let mutable j = -1
+                            let j = if slice |> String.forall (fun c -> j <- j + 1; "*/%-+:^@><=!|0$.?".Contains(string c)) then -1 else j
+#else
                         let i = line.AsSpan(0, min offsidesCol line.Length).IndexOfAnyExcept(' ', ')')
 
                         if i >= 0 && i < offsidesCol then
                             let slice = line.AsSpan(i, min (offsidesCol - i) (line.Length - i))
                             let j = slice.IndexOfAnyExcept("*/%-+:^@><=!|0$.?".AsSpan())
+#endif
 
                             let lo = i + (if j >= 0 && slice[j] = ' ' then j else 0)
 
@@ -608,9 +627,13 @@ module SynExpr =
             /// 1l, 1d, 0b1, 0x1, 0o1, 1e10…
             let (|TextContainsLetter|_|) (m: range) =
                 let line = getSourceLineStr m.StartLine
+#if FABLE_COMPILER
+                let span = line[m.StartColumn .. (m.EndColumn - m.StartColumn - 1)]
+                if span |> String.exists (fun c -> c >= 'A' && c <= 'z') then
+#else
                 let span = line.AsSpan(m.StartColumn, m.EndColumn - m.StartColumn)
-
                 if span.LastIndexOfAnyInRange('A', 'z') >= 0 then
+#endif
                     Some TextContainsLetter
                 else
                     None
@@ -618,9 +641,13 @@ module SynExpr =
             // 1.0…
             let (|TextEndsWithNumber|_|) (m: range) =
                 let line = getSourceLineStr m.StartLine
+#if FABLE_COMPILER
+                if Char.IsDigit line[m.EndColumn - 1] then
+#else
                 let span = line.AsSpan(m.StartColumn, m.EndColumn - m.StartColumn)
 
                 if Char.IsDigit span[span.Length - 1] then
+#endif
                     Some TextEndsWithNumber
                 else
                     None

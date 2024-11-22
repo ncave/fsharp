@@ -54,6 +54,9 @@ val IsReflectedDefinitionsResource: ILResource -> bool
 val GetResourceNameAndSignatureDataFuncs:
     ILResource list -> (string * ((unit -> ReadOnlyByteMemory) * (unit -> ReadOnlyByteMemory) option)) list
 
+val GetResourceNameAndOptimizationDataFuncs:
+    ILResource list -> (string * ((unit -> ReadOnlyByteMemory) * (unit -> ReadOnlyByteMemory) option)) list
+
 #if !FABLE_COMPILER
 
 /// Encode the F# interface data into a set of IL attributes and resources
