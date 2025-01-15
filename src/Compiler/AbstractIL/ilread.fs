@@ -1199,8 +1199,8 @@ type CustomAttributeRow =
     val mutable typeIndex: TaggedIndex<CustomAttributeTypeTag>
     val mutable valueIndex: int
 
-let seekReadIndexedRowsRange numRows binaryChop (reader: ISeekReadIndexedRowReader<CustomAttributeRow, _, _>) =
-    let mutable row = ref Unchecked.defaultof<CustomAttributeRow>
+let seekReadIndexedRowsRange numRows binaryChop (reader: ISeekReadIndexedRowReader<_, _, _>) =
+    let mutable row = ref Unchecked.defaultof<_>
 
     let mutable startRid = -1
     let mutable endRid = -1
@@ -1290,7 +1290,7 @@ let seekReadIndexedRowsRange numRows binaryChop (reader: ISeekReadIndexedRowRead
 
     startRid, endRid
 
-let seekReadIndexedRowsByInterface numRows binaryChop (reader: ISeekReadIndexedRowReader<CustomAttributeRow, _, _>) =
+let seekReadIndexedRowsByInterface numRows binaryChop (reader: ISeekReadIndexedRowReader<_, _, _>) =
     let startRid, endRid = seekReadIndexedRowsRange numRows binaryChop reader
 
     if startRid <= 0 || endRid < startRid then
@@ -1298,7 +1298,7 @@ let seekReadIndexedRowsByInterface numRows binaryChop (reader: ISeekReadIndexedR
     else
 
         Array.init (endRid - startRid + 1) (fun i ->
-            let mutable row = ref Unchecked.defaultof<CustomAttributeRow>
+            let mutable row = ref Unchecked.defaultof<_>
             reader.GetRow(startRid + i, row)
             reader.ConvertRow(row))
 
@@ -2144,10 +2144,10 @@ and typeDefReader ctxtH : ILTypeDefStored =
             else
                 let extendsName =
                     if extendsTag = tdor_TypeDef then
-                        let mutable addr = ctxt.rowAddr TableNames.TypeDef extendsIdx
-                        let _ = seekReadInt32Adv mdv &addr
-                        let nameIdx = seekReadStringIdx ctxt mdv &addr
-                        let namespaceIdx = seekReadStringIdx ctxt mdv &addr
+                        let mutable addr = rowAddr ctxt TableNames.TypeDef extendsIdx
+                        let _ = seekReadInt32Adv mdv addr
+                        let nameIdx = seekReadStringIdx ctxt mdv addr
+                        let namespaceIdx = seekReadStringIdx ctxt mdv addr
                         readBlobHeapAsTypeName ctxt (nameIdx, namespaceIdx)
                     elif extendsTag = tdor_TypeRef then
                         let _, nameIdx, namespaceIdx = seekReadTypeRefRow ctxt mdv extendsIdx
@@ -2171,8 +2171,8 @@ and typeDefReader ctxtH : ILTypeDefStored =
 
             let attributesSearcher =
                 { new ISeekReadIndexedRowReader<int, int, int> with
-                    member _.GetRow(i, rowIndex) = rowIndex <- i
-                    member _.GetKey(rowIndex) = rowIndex
+                    member _.GetRow(i, rowIndex) = rowIndex.Value <- i
+                    member _.GetKey(rowIndex) = rowIndex.Value
 
                     member _.CompareKey(rowIndex) =
                         let mutable addr = rowAddr ctxt TableNames.CustomAttribute rowIndex
@@ -2180,7 +2180,7 @@ and typeDefReader ctxtH : ILTypeDefStored =
                         let key = seekReadHasCustomAttributeIdx ctxt mdv addr
                         hcaCompare searchedKey key
 
-                    member _.ConvertRow(i) = i
+                    member _.ConvertRow(i) = i.Value
                 }
 
             let attrsStartIdx, attrsEndIdx =
@@ -3336,8 +3336,8 @@ and customAttrsReader ctxtH tag : ILAttributesStored =
 
         let reader =
             { new ISeekReadIndexedRowReader<int, int, ILAttribute> with
-                member _.GetRow(i, rowIndex) = rowIndex <- i
-                member _.GetKey(rowIndex) = rowIndex
+                member _.GetRow(i, rowIndex) = rowIndex.Value <- i
+                member _.GetKey(rowIndex) = rowIndex.Value
 
                 member _.CompareKey(rowIndex) =
                     let mutable addr = rowAddr ctxt TableNames.CustomAttribute rowIndex
@@ -3347,7 +3347,7 @@ and customAttrsReader ctxtH tag : ILAttributesStored =
 
                 member _.ConvertRow(rowIndex) =
                     let mutable attrRow = ref Unchecked.defaultof<_>
-                    seekReadCustomAttributeRow ctxt mdv rowIndex attrRow
+                    seekReadCustomAttributeRow ctxt mdv rowIndex.Value attrRow
                     seekReadCustomAttr ctxt (attrRow.Value.typeIndex, attrRow.Value.valueIndex)
             }
 

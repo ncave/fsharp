@@ -3931,7 +3931,7 @@ type FSharpCheckProjectResults
             | Choice1Of2 builder ->
 #if FABLE_COMPILER
                 ignore builder
-                [||]
+                seq {}
 #else
                 builder.SourceFiles
                 |> Array.ofList
@@ -3980,7 +3980,7 @@ type FSharpCheckProjectResults
             | Choice1Of2 builder ->
 #if FABLE_COMPILER
                 ignore builder
-                [||]
+                seq {}
 #else
                 builder.SourceFiles
                 |> Array.ofList

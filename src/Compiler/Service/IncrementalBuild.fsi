@@ -24,6 +24,16 @@ open FSharp.Compiler.Text
 open FSharp.Compiler.TypedTree
 open Internal.Utilities.Collections
 
+#if FABLE_COMPILER
+// stub
+[<Class>]
+type internal IncrementalBuilder = 
+      member IncrementUsageCount : unit -> IDisposable
+      member IsAlive : bool
+      static member KeepBuilderAlive : IncrementalBuilder option -> IDisposable
+
+#else //!FABLE_COMPILER
+
 type internal FrameworkImportsCacheKey =
     | FrameworkImportsCacheKey of
         resolvedpath: string list *
@@ -34,16 +44,6 @@ type internal FrameworkImportsCacheKey =
         checkNulls: bool
 
     interface ICacheKey<string, FrameworkImportsCacheKey>
-
-#if FABLE_COMPILER
-// stub
-[<Class>]
-type internal IncrementalBuilder = 
-      member IncrementUsageCount : unit -> IDisposable
-      member IsAlive : bool
-      static member KeepBuilderAlive : IncrementalBuilder option -> IDisposable
-
-#else //!FABLE_COMPILER
 
 /// Lookup the global static cache for building the FrameworkTcImports
 type internal FrameworkImportsCache =

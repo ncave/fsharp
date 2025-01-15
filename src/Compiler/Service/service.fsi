@@ -7,7 +7,9 @@ namespace FSharp.Compiler.CodeAnalysis
 open System
 open FSharp.Compiler.AbstractIL.ILBinaryReader
 open FSharp.Compiler.CodeAnalysis
+#if !FABLE_COMPILER
 open FSharp.Compiler.CodeAnalysis.TransparentCompiler
+#endif
 open FSharp.Compiler.Diagnostics
 open FSharp.Compiler.EditorServices
 open FSharp.Compiler.Symbols

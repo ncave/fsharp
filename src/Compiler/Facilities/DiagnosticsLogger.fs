@@ -1012,6 +1012,7 @@ type StackGuard(name: string) =
     member x.GuardCancellable(original: Cancellable<'T>) =
         Cancellable(fun ct -> x.Guard(fun () -> Cancellable.run ct original))
 
+#if !FABLE_COMPILER
 // UseMultipleDiagnosticLoggers in ParseAndCheckProject.fs provides similar functionality.
 // We should probably adapt and reuse that code.
 module MultipleDiagnosticsLoggers =
@@ -1077,3 +1078,4 @@ module MultipleDiagnosticsLoggers =
 
             return results.ToArray()
         }
+#endif //!FABLE_COMPILER

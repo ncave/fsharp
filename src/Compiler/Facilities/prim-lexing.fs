@@ -9,7 +9,9 @@ open System.IO
 open System.Collections.Immutable
 open Internal.Utilities.Library
 
+#if !FABLE_COMPILER
 open Internal.Utilities.Hashing
+#endif
 
 type ISourceText =
 
@@ -167,7 +169,11 @@ type StringText(str: string) =
 
         member _.GetChecksum() =
             str
+#if FABLE_COMPILER
+            |> fun s -> BitConverter.GetBytes(hash s)
+#else
             |> Md5Hasher.hashString
+#endif
             |> fun byteArray -> ImmutableArray.Create<byte>(byteArray, 0, byteArray.Length)
 
 module SourceText =
@@ -204,7 +210,11 @@ module SourceTextNew =
             member _.GetChecksum() =
                 // TODO: something better...
                 !!sourceText.ToString()
+#if FABLE_COMPILER
+                |> fun s -> BitConverter.GetBytes(hash s)
+#else
                 |> Md5Hasher.hashString
+#endif
                 |> fun byteArray -> ImmutableArray.Create<byte>(byteArray, 0, byteArray.Length)
         }
 
