@@ -14,7 +14,7 @@
   <PropertyGroup>
     <NoOptimizationData>true</NoOptimizationData>
     <NoInterfaceData>false</NoInterfaceData>
-    <CompressMetadata>true</CompressMetadata>
+    <CompressMetadata>false</CompressMetadata>
   </PropertyGroup>
 
   <!-- If building FCS solution directly, set paths explicitly -->
