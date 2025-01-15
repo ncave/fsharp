@@ -46,7 +46,7 @@
   <PropertyGroup Condition="'$(Configuration)' != 'Proto'">
     <NoOptimizationData>false</NoOptimizationData>
     <NoInterfaceData>false</NoInterfaceData>
-    <CompressMetadata>true</CompressMetadata>
+    <CompressMetadata>false</CompressMetadata>
   </PropertyGroup>
 
   <PropertyGroup>
