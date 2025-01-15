@@ -43,6 +43,7 @@ open FSharp.Compiler.UnicodeLexing
 ///
 /// In order to deal correctly with the `ArtificialImplFile` logic, we need to transform the resolved graph to contain the additional pair nodes.
 /// After we have type-checked the graph, we exclude the ArtificialImplFile nodes as they are not actual physical files in our project.
+#if !FABLE_COMPILER
 [<RequireQualifiedAccess>]
 type NodeToTypeCheck =
     /// A real physical file in the current project.
@@ -52,6 +53,7 @@ type NodeToTypeCheck =
     /// Dependents on this type of node will perceive that a file is known in both TcEnvFromSignatures and TcEnvFromImpls.
     /// Even though the actual implementation file was not type-checked.
     | ArtificialImplFile of signatureFileIndex: FileIndex
+#endif //!FABLE_COMPILER
 
 val IsScript: string -> bool
 
@@ -195,6 +197,7 @@ val CheckOneInput:
     input: ParsedInput ->
         Cancellable<(TcEnv * TopAttribs * CheckedImplFile option * ModuleOrNamespaceType) * TcState>
 
+#if !FABLE_COMPILER
 val CheckOneInputWithCallback:
     node: NodeToTypeCheck ->
     checkForErrors: (unit -> bool) *
@@ -207,6 +210,7 @@ val CheckOneInputWithCallback:
     input: ParsedInput *
     _skipImplIfSigExists: bool ->
         Cancellable<Finisher<NodeToTypeCheck, TcState, PartialResult>>
+#endif //!FABLE_COMPILER
 
 val AddCheckResultsToTcState:
     tcGlobals: TcGlobals *
@@ -220,6 +224,7 @@ val AddCheckResultsToTcState:
         tcState: TcState ->
             ModuleOrNamespaceType * TcState
 
+#if !FABLE_COMPILER
 val AddSignatureResultToTcImplEnv:
     tcImports: TcImports *
     tcGlobals: TcGlobals *
@@ -230,6 +235,7 @@ val AddSignatureResultToTcImplEnv:
         (TcState -> PartialResult * TcState)
 
 val TransformDependencyGraph: graph: Graph<FileIndex> * filePairs: FilePairMap -> Graph<NodeToTypeCheck>
+#endif //!FABLE_COMPILER
 
 /// Finish the checking of multiple inputs
 val CheckMultipleInputsFinish:

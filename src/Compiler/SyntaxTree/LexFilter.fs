@@ -514,6 +514,20 @@ type TokenTupPool() =
 // Utilities for the tokenizer that are needed in other places
 //--------------------------------------------------------------------------*)
 
+#if FABLE_COMPILER
+
+[<return: Struct>]
+let (|Equals|_|) (s: string) (span: string) =
+    if span.Equals(s) then ValueSome Equals
+    else ValueNone
+
+[<return: Struct>]
+let (|StartsWith|_|) (s: string) (span: string) =
+    if span.StartsWith(s) then ValueSome StartsWith
+    else ValueNone
+
+#else
+
 [<return: Struct>]
 let (|Equals|_|) (s: string) (span: ReadOnlySpan<char>) =
     if span.SequenceEqual(s.AsSpan()) then ValueSome Equals
@@ -524,6 +538,8 @@ let (|StartsWith|_|) (s: string) (span: ReadOnlySpan<char>) =
     if span.StartsWith(s.AsSpan()) then ValueSome StartsWith
     else ValueNone
 
+#endif
+
 // Strip a bunch of leading '>' of a token, at the end of a typar application
 // Note: this is used in the 'service.fs' to do limited postprocessing
 [<return: Struct>]
@@ -531,10 +547,18 @@ let (|TyparsCloseOp|_|) (txt: string) =
     if not (txt.StartsWith ">") then
         ValueNone
     else
+#if FABLE_COMPILER
+        let afterAngles = txt.TrimStart('>')
+        let angles = txt.Length - afterAngles.Length
+        if afterAngles.Length = 0 then
+            ValueSome(struct (Array.init txt.Length (fun _ -> GREATER), ValueNone))
+        else
+#else
         match txt.AsSpan().IndexOfAnyExcept '>' with
         | -1 -> ValueSome(struct (Array.init txt.Length (fun _ -> GREATER), ValueNone))
         | angles ->
             let afterAngles = txt.AsSpan angles
+#endif
 
             let afterOp =
                 match afterAngles with
