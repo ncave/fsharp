@@ -33,7 +33,7 @@
   <PropertyGroup>
     <NoOptimizationData>true</NoOptimizationData>
     <NoInterfaceData>true</NoInterfaceData>
-    <CompressMetadata>true</CompressMetadata>
+    <CompressMetadata>false</CompressMetadata>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(FsiJsonRpcServer)' == 'true'">
