@@ -15,7 +15,7 @@
   <PropertyGroup>
     <NoOptimizationData>false</NoOptimizationData>
     <NoInterfaceData>false</NoInterfaceData>
-    <CompressMetadata>true</CompressMetadata>
+    <CompressMetadata>false</CompressMetadata>
     <ServerGarbageCollection>true</ServerGarbageCollection>
   </PropertyGroup>
 
