@@ -19,7 +19,9 @@ open FSharp.Compiler.AbstractIL.ILBinaryReader
 open FSharp.Compiler.AbstractIL.ILDynamicAssemblyWriter
 #endif
 open FSharp.Compiler.CodeAnalysis
+#if !FABLE_COMPILER
 open FSharp.Compiler.CodeAnalysis.TransparentCompiler
+#endif
 open FSharp.Compiler.CompilerConfig
 open FSharp.Compiler.CompilerDiagnostics
 open FSharp.Compiler.CompilerImports

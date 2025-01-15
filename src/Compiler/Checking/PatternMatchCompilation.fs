@@ -1126,7 +1126,9 @@ let CompilePatternBasic
 
     // The main recursive loop of the pattern match compiler.
     let rec InvestigateFrontiers refuted frontiers =
+#if !FABLE_COMPILER
         Cancellable.CheckAndThrow()
+#endif
 
         match frontiers with
         | [] -> failwith "CompilePattern: compile - empty clauses: at least the final clause should always succeed"

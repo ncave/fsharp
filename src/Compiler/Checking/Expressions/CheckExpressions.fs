@@ -156,6 +156,16 @@ let (|HasFormatSpecifier|_|) (s: string) =
         Regex.IsMatch(
             s,
             // Regex pattern for something like: %[flags][width][.precision][type]
+#if FABLE_COMPILER
+            @"(^|[^%])" +              // Start with beginning of string or any char other than '%'
+            @"(%%)*%" +                // followed by an odd number of '%' chars
+            @"[+-0 ]{0,3}" +           // optionally followed by flags
+            @"(\d+)?" +                // optionally followed by width
+            @"(\.\d+)?" +              // optionally followed by .precision
+            @"[bscdiuxXoBeEfFgGMOAat]" // and then a char that determines specifier's type
+            ,
+            RegexOptions.Compiled)
+#else
             """
             (^|[^%])                # Start with beginning of string or any char other than '%'
             (%%)*%                  # followed by an odd number of '%' chars
@@ -165,6 +175,7 @@ let (|HasFormatSpecifier|_|) (s: string) =
             [bscdiuxXoBeEfFgGMOAat] # and then a char that determines specifier's type
             """,
             RegexOptions.Compiled ||| RegexOptions.IgnorePatternWhitespace)
+#endif
     then
         ValueSome HasFormatSpecifier
     else
@@ -173,7 +184,11 @@ let (|HasFormatSpecifier|_|) (s: string) =
 // Removes trailing "%s" unless it was escaped by another '%' (checks for odd sequence of '%' before final "%s")
 let (|WithTrailingStringSpecifierRemoved|) (s: string) =
     if s.EndsWith "%s" then
+#if FABLE_COMPILER
+        let i = s[..(s.Length - 3)].TrimEnd('%').Length - 1
+#else
         let i = s.AsSpan(0, s.Length - 2).LastIndexOfAnyExcept '%'
+#endif
         let diff = s.Length - 2 - i
         if diff &&& 1 <> 0 then
             s[..s.Length - 3]

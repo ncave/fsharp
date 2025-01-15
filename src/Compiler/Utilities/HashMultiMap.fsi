@@ -20,6 +20,7 @@ type internal HashMultiMap<'Key, 'Value when 'Key: not null> =
     new:
         entries: seq<'Key * 'Value> * comparer: IEqualityComparer<'Key> * ?useConcurrentDictionary: bool ->
             HashMultiMap<'Key, 'Value>
+#endif
 
     /// Make a shallow copy of the collection.
     member Copy: unit -> HashMultiMap<'Key, 'Value>

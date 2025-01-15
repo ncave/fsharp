@@ -57,7 +57,9 @@ open Internal.Utilities.Collections
 open FSharp.Compiler.AbstractIL.ILBinaryReader
 open System.Threading.Tasks
 open System.Runtime.CompilerServices
+#if !FABLE_COMPILER
 open Internal.Utilities.Hashing
+#endif
 
 type FSharpUnresolvedReferencesSet = FSharpUnresolvedReferencesSet of UnresolvedAssemblyReference list
 
@@ -3879,7 +3881,7 @@ type FSharpCheckProjectResults
             | Choice1Of2 builder ->
 #if FABLE_COMPILER
                 ignore builder
-                [||]
+                seq {}
 #else
                 builder.SourceFiles
                 |> Array.ofList
@@ -3928,7 +3930,7 @@ type FSharpCheckProjectResults
             | Choice1Of2 builder ->
 #if FABLE_COMPILER
                 ignore builder
-                [||]
+                seq {}
 #else
                 builder.SourceFiles
                 |> Array.ofList

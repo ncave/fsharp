@@ -702,10 +702,10 @@ type Exception with
 
             let t1, _t2, _cxs = NicePrint.minimalStringsOfTwoTypes denv ty1 ty2
 
-            os.Append(ConstraintSolverNullnessWarningEquivWithTypesE().Format t1) |> ignore
+            os.AppendString(ConstraintSolverNullnessWarningEquivWithTypesE().Format t1) |> ignore
 
             if m.StartLine <> m2.StartLine then
-                os.Append(SeeAlsoE().Format(stringOfRange m)) |> ignore
+                os.AppendString(SeeAlsoE().Format(stringOfRange m)) |> ignore
 
         | ConstraintSolverNullnessWarningWithTypes(denv, ty1, ty2, _nullness1, _nullness2, m, m2) ->
 
@@ -717,10 +717,10 @@ type Exception with
 
             let t1, t2, _cxs = NicePrint.minimalStringsOfTwoTypes denv ty1 ty2
 
-            os.Append(ConstraintSolverNullnessWarningWithTypesE().Format t1 t2) |> ignore
+            os.AppendString(ConstraintSolverNullnessWarningWithTypesE().Format t1 t2) |> ignore
 
             if m.StartLine <> m2.StartLine then
-                os.Append(SeeAlsoE().Format(stringOfRange m)) |> ignore
+                os.AppendString(SeeAlsoE().Format(stringOfRange m)) |> ignore
 
         | ConstraintSolverNullnessWarningWithType(denv, ty, _, m, m2) ->
 
@@ -731,13 +731,13 @@ type Exception with
                 }
 
             let t = NicePrint.minimalStringOfType denv ty
-            os.Append(ConstraintSolverNullnessWarningWithTypeE().Format(t)) |> ignore
+            os.AppendString(ConstraintSolverNullnessWarningWithTypeE().Format(t)) |> ignore
 
             if m.StartLine <> m2.StartLine then
-                os.Append(SeeAlsoE().Format(stringOfRange m)) |> ignore
+                os.AppendString(SeeAlsoE().Format(stringOfRange m)) |> ignore
 
         | ConstraintSolverNullnessWarning(msg, m, m2) ->
-            os.Append(ConstraintSolverNullnessWarningE().Format(msg)) |> ignore
+            os.AppendString(ConstraintSolverNullnessWarningE().Format(msg)) |> ignore
 
             if m.StartLine <> m2.StartLine then
                 os.AppendString(SeeAlsoE().Format(stringOfRange m2))
