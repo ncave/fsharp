@@ -27,9 +27,11 @@ type internal HashMultiMap<'Key, 'Value when 'Key: not null>(size: int, comparer
     new(comparer: IEqualityComparer<'Key>, ?useConcurrentDictionary: bool) =
         HashMultiMap<'Key, 'Value>(11, comparer, defaultArg useConcurrentDictionary false)
 
+#if !FABLE_COMPILER
     new(entries: seq<'Key * 'Value>, comparer: IEqualityComparer<'Key>, ?useConcurrentDictionary: bool) as this =
         HashMultiMap<'Key, 'Value>(11, comparer, defaultArg useConcurrentDictionary false)
         then entries |> Seq.iter (fun (k, v) -> this.Add(k, v))
+#endif
 
     member _.GetRest(k) =
         match rest.TryGetValue k with
