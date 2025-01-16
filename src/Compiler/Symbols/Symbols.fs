@@ -1596,6 +1596,11 @@ type FSharpGenericParameterConstraint(cenv, cx: TyparConstraint) =
         | TyparConstraint.IsDelegate(ty1, ty2, _) ->  FSharpGenericParameterDelegateConstraint(cenv, ty1, ty2) 
         | _ -> invalidOp "not a delegate constraint"
 
+    member _.IsAllowsRefStructConstraint = 
+        match cx with 
+        | TyparConstraint.AllowsRefStruct _ -> true 
+        | _ -> false
+
     override x.ToString() = "<type constraint>"
 
 type FSharpInlineAnnotation = 
@@ -2120,10 +2125,8 @@ type FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
         | M m | C m -> 
             [ for argTys in m.GetParamDatas(cenv.amap, range0, m.FormalMethodInst) do 
                  yield
-                   [ for ParamData(isParamArrayArg, isInArg, isOutArg, optArgInfo, _callerInfo, nmOpt, _reflArgInfo, pty) in argTys do 
-                // INCOMPLETENESS: Attribs is empty here, so we can't look at attributes for
-                // either .NET or F# parameters
-                        let argInfo: ArgReprInfo = { Name=nmOpt; Attribs=[]; OtherRange=None }
+                   [ for ParamData(isParamArrayArg, isInArg, isOutArg, optArgInfo, _callerInfo, nmOpt, _reflArgInfo, pty), attribs in argTys do 
+                        let argInfo: ArgReprInfo = { Name=nmOpt; Attribs=attribs; OtherRange=None }
                         let m =
                             match nmOpt with
                             | Some v -> v.idRange
