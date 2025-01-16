@@ -460,7 +460,7 @@ let tryGetArgAttribsForCustomOperator ceenv (nm: Ident) =
                  _joinConditionWord,
                  methInfo) ->
                 match methInfo.GetParamAttribs(ceenv.cenv.amap, ceenv.mWhole) with
-                | [ curriedArgInfo ] -> Some curriedArgInfo // one for the actual argument group
+                | [ curriedArgInfo ] -> Some (List.map fst curriedArgInfo) // one for the actual argument group
                 | _ -> None)
         |> Some
     | _ -> None

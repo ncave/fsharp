@@ -516,6 +516,9 @@ module FSharpExprConvert =
                 //    let inline HashChar (x:char) = (# "or" (# "shl" x 16 : int #) x : int #)
                 // in FSharp.Core. 
                 | ErrorResult _  when vref.LogicalName = "op_LeftShift" && List.isSingleton tyargs -> []
+#if FABLE_COMPILER
+                | ErrorResult (warns, err) -> ReportWarnings (err::warns); [] // temporary, ignores the error
+#endif
                 | res -> CommitOperationResult res
             let env = { env with suppressWitnesses = true }
             witnessExprs |> List.map (fun arg -> 

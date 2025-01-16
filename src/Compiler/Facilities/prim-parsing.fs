@@ -7,14 +7,20 @@ namespace Internal.Utilities.Text.Parsing
 open Internal.Utilities.Text.Lexing
 
 open System
+#if !FABLE_COMPILER
 open System.Buffers
+#endif
 
 exception RecoverableParseError
 exception Accept of obj
 
 [<Sealed>]
 type internal IParseState
+#if FABLE_COMPILER
+    (ruleStartPoss: Position[], ruleEndPoss: Position[], lhsPos: Position[], ruleValues: objnull[], lexbuf: LexBuffer<LexBufferChar>) =
+#else
     (ruleStartPoss: Position[], ruleEndPoss: Position[], lhsPos: Position[], ruleValues: objnull[], lexbuf: LexBuffer<char>) =
+#endif
     member _.LexBuffer = lexbuf
 
     member _.InputRange index =
@@ -276,6 +282,10 @@ module internal Implementation =
         let lhsPos = (Array.zeroCreate 2: Position[])
         let reductions = tables.reductions
         let cacheSize = 7919 // the 1000'th prime
+#if FABLE_COMPILER
+        let actionTableCache = Array.zeroCreate<int> (cacheSize * 2)
+        let gotoTableCache = Array.zeroCreate<int> (cacheSize * 2)
+#else
         let actionTableCache = ArrayPool<int>.Shared.Rent(cacheSize * 2)
         let gotoTableCache = ArrayPool<int>.Shared.Rent(cacheSize * 2)
 
@@ -285,6 +295,7 @@ module internal Implementation =
                     ArrayPool<int>.Shared.Return actionTableCache
                     ArrayPool<int>.Shared.Return gotoTableCache
             }
+#endif //!FABLE_COMPILER
 
         let actionTable =
             AssocTable(tables.actionTableElements, tables.actionTableRowOffsets, actionTableCache)

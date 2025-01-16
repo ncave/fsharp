@@ -39,8 +39,12 @@ let lexeme (lexbuf : UnicodeLexing.Lexbuf) = UnicodeLexing.Lexbuf.LexemeString l
 
 /// Trim n chars from both sides of lexbuf, return string
 let lexemeTrimBoth  (lexbuf : UnicodeLexing.Lexbuf) (n:int) (m:int) =
+#if FABLE_COMPILER
+    LexBuffer<_>.LexemeString(lexbuf).Substring(n, lexbuf.LexemeLength - (n+m))
+#else
     let s = lexbuf.LexemeView
     s.Slice(n, s.Length - (n+m)).ToString()
+#endif
 
 /// Trim n chars from the right of lexbuf, return string
 let lexemeTrimRight  lexbuf n = lexemeTrimBoth lexbuf 0 n
@@ -62,10 +66,17 @@ let fail args (lexbuf:UnicodeLexing.Lexbuf) msg dflt =
 // version of the F# core library parsing code with the call to "Trim"
 // removed, which appears in profiling runs as a small but significant cost.
 
+#if FABLE_COMPILER
+let getSign32 (s:string) (p:int) l = 
+    if (l >= p + 1 && s.[p] = '-') 
+    then -1, p + 1
+    else 1, p 
+#else
 let getSign32 (s:string) (p:byref<int>) l =
     if (l >= p + 1 && s.[p] = '-')
     then p <- p + 1; -1
     else 1
+#endif
 
 let isOXB c =
     let c = Char.ToLowerInvariant c
@@ -74,10 +85,17 @@ let isOXB c =
 let is0OXB (s:string) p l =
     l >= p + 2 && s.[p] = '0' && isOXB s.[p+1]
 
+#if FABLE_COMPILER
+let get0OXB (s:string) (p:int) l = 
+    if is0OXB s p l
+    then let r = Char.ToLowerInvariant s.[p+1] in r, p + 2
+    else 'd', p
+#else
 let get0OXB (s:string) (p:byref<int>)  l =
     if is0OXB s p l
     then let r = Char.ToLowerInvariant s.[p+1] in p <- p + 2; r
     else 'd'
+#endif
 
 let parseBinaryUInt64 (s:string) =
     Convert.ToUInt64(s, 2)
@@ -91,6 +109,16 @@ let removeUnderscores (s:string) =
 let parseInt32 (s:string) =
     let s = removeUnderscores s
     let l = s.Length
+#if FABLE_COMPILER
+    let p = 0 
+    let sign, p = getSign32 s p l 
+    let specifier, p = get0OXB s p l 
+    match Char.ToLowerInvariant(specifier) with 
+    | 'x' -> sign * Convert.ToInt32(s.Substring(p), 16)
+    | 'b' -> sign * (int32 (Convert.ToUInt32(parseBinaryUInt64 (s.Substring(p)))))
+    | 'o' -> sign * (int32 (Convert.ToUInt32(parseOctalUInt64  (s.Substring(p)))))
+    | _ -> Convert.ToInt32(s)
+#else
     let mutable p = 0
     let sign = getSign32 s &p l
     let specifier = get0OXB s &p l
@@ -99,6 +127,7 @@ let parseInt32 (s:string) =
     | 'b' -> sign * (int32 (Convert.ToUInt32(parseBinaryUInt64 (s.Substring(p)))))
     | 'o' -> sign * (int32 (Convert.ToUInt32(parseOctalUInt64  (s.Substring(p)))))
     | _ -> Int32.Parse(s, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture)
+#endif
 
 let lexemeTrimRightToInt32 args lexbuf n =
     try parseInt32 (lexemeTrimRight lexbuf n)
@@ -108,13 +137,24 @@ let lexemeTrimRightToInt32 args lexbuf n =
 // Checks
 
 let checkExprOp (lexbuf:UnicodeLexing.Lexbuf) =
+#if FABLE_COMPILER
+    if lexbuf.LexemeContains (uint16 ':') then 
+        deprecatedWithError (FSComp.SR.lexCharNotAllowedInOperatorNames(":")) lexbuf.LexemeRange
+    if lexbuf.LexemeContains (uint16 '$') then 
+        deprecatedWithError (FSComp.SR.lexCharNotAllowedInOperatorNames("$")) lexbuf.LexemeRange 
+#else
     if lexbuf.LexemeContains ':' then
         deprecatedWithError (FSComp.SR.lexCharNotAllowedInOperatorNames(":")) lexbuf.LexemeRange
     if lexbuf.LexemeContains '$' then
         deprecatedWithError (FSComp.SR.lexCharNotAllowedInOperatorNames("$")) lexbuf.LexemeRange
+#endif
         
 let checkExprGreaterColonOp (lexbuf:UnicodeLexing.Lexbuf) =
+#if FABLE_COMPILER
+    if lexbuf.LexemeContains (uint16 '$') then
+#else
     if lexbuf.LexemeContains '$' then
+#endif
         deprecatedWithError (FSComp.SR.lexCharNotAllowedInOperatorNames("$")) lexbuf.LexemeRange
 
 let unexpectedChar lexbuf =
@@ -180,7 +220,11 @@ let startString args (lexbuf: UnicodeLexing.Lexbuf) =
 
 // Utility functions for processing XML documentation
 
+#if FABLE_COMPILER
+let trySaveXmlDoc (lexbuf: LexBuffer<_>) (buff: (range * StringBuilder) option) =
+#else
 let trySaveXmlDoc (lexbuf: LexBuffer<char>) (buff: (range * StringBuilder) option) =
+#endif
     match buff with
     | None -> ()
     | Some (start, sb) ->
@@ -202,7 +246,11 @@ let shouldStartFile args lexbuf (m:range) err tok =
     else tok
 
 let evalIfDefExpression startPos reportLibraryOnlyFeatures langVersion strictIndentation args (lookup: string -> bool) (lexed: string) =
+#if FABLE_COMPILER
+    let lexbuf          = LexBuffer<_>.FromString (reportLibraryOnlyFeatures, langVersion, strictIndentation, lexed)
+#else
     let lexbuf          = LexBuffer<char>.FromChars (reportLibraryOnlyFeatures, langVersion, strictIndentation, lexed.ToCharArray ())
+#endif
     lexbuf.StartPos     <- startPos
     lexbuf.EndPos       <- startPos
     let tokenStream     = FSharp.Compiler.PPLexer.tokenstream args
@@ -497,16 +545,26 @@ rule token (args: LexArgs) (skip: bool) = parse
      }
  | xieee32
      {
+#if FABLE_COMPILER
+       fail args lexbuf (FSComp.SR.lexInvalidFloat()) (IEEE32 0.0f)
+#else
        let s = removeUnderscores (lexemeTrimRight lexbuf 2)
        // Even though the intermediate step is an int64, display the "invalid float" message, since it will be less confusing to the user
        let n64 = (try (int64 s) with _ -> fail args lexbuf (FSComp.SR.lexInvalidFloat()) 0L)
        if n64 > 0xFFFFFFFFL || n64 < 0L then fail args lexbuf (FSComp.SR.lexOutsideThirtyTwoBitFloat()) (IEEE32 0.0f) else
-       IEEE32 (System.BitConverter.ToSingle(System.BitConverter.GetBytes(int32 (uint32 (uint64 n64))),0)) }
+       IEEE32 (System.BitConverter.ToSingle(System.BitConverter.GetBytes(int32 (uint32 (uint64 n64))),0))
+#endif
+     }
 
  | xieee64
      {
+#if FABLE_COMPILER
+       fail args lexbuf (FSComp.SR.lexInvalidFloat()) (IEEE64 0.0)
+#else
        let n64 = (try int64 (removeUnderscores (lexemeTrimRight lexbuf 2)) with _ -> fail args lexbuf (FSComp.SR.lexInvalidFloat()) 0L)
-       IEEE64 (System.BitConverter.Int64BitsToDouble(n64)) }
+       IEEE64 (System.BitConverter.Int64BitsToDouble(n64))
+#endif
+     }
 
  | bignum
        { let s = lexeme lexbuf

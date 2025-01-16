@@ -11,8 +11,10 @@ open FSharp.Compiler
 open FSharp.Compiler.Xml
 open FSharp.Compiler.AbstractIL.IL
 open FSharp.Compiler.AbstractIL.ILBinaryReader
+#if !FABLE_COMPILER
 open FSharp.Compiler.AbstractIL.ILPdbWriter
 open FSharp.Compiler.DependencyManager
+#endif
 open FSharp.Compiler.Diagnostics
 open FSharp.Compiler.DiagnosticsLogger
 open FSharp.Compiler.Features
@@ -24,6 +26,12 @@ open FSharp.Compiler.BuildGraph
 exception FileNameNotResolved of searchedLocations: string * fileName: string * range: range
 
 exception LoadedSourceNotFoundIgnoring of fileName: string * range: range
+
+#if FABLE_COMPILER
+type HashAlgorithm =
+    | Sha1
+    | Sha256
+#endif
 
 /// Represents a reference to an F# assembly. May be backed by a real assembly on disk (read by Abstract IL), or a cross-project
 /// reference in FSharp.Compiler.Service.
@@ -543,7 +551,9 @@ type TcConfigBuilder =
         rangeForErrors: range ->
             TcConfigBuilder
 
+#if !FABLE_COMPILER
     member DecideNames: string list -> string * string option * string
+#endif
 
     member TurnWarningOff: range * string -> unit
 
@@ -568,8 +578,10 @@ type TcConfigBuilder =
     // Directories to start probing in for native DLLs for FSI dynamic loading
     member GetNativeProbingRoots: unit -> seq<string>
 
+#if !FABLE_COMPILER
     member AddReferenceDirective:
         dependencyProvider: DependencyProvider * m: range * path: string * directive: Directive -> unit
+#endif
 
     member AddLoadedSource: m: range * originalPath: string * pathLoadedFrom: string -> unit
 
@@ -825,6 +837,8 @@ type TcConfig =
 
     member ComputeIndentationAwareSyntaxInitialStatus: string -> bool
 
+#if !FABLE_COMPILER
+
     member GetTargetFrameworkDirectories: unit -> string list
 
     /// Get the loaded sources that exist and issue a warning for the ones that don't
@@ -837,6 +851,8 @@ type TcConfig =
 
     /// File system query based on TcConfig settings
     member MakePathAbsolute: string -> string
+
+#endif //!FABLE_COMPILER
 
     member resolutionEnvironment: LegacyResolutionEnvironment
 
@@ -875,6 +891,8 @@ type TcConfig =
     /// if true - 'let mutable x = Span.Empty', the value 'x' is a stack referring span. Used for internal testing purposes only until we get true stack spans.
     member internalTestSpanStackReferring: bool
 
+#if !FABLE_COMPILER
+
     member GetSearchPathsForLibraryFiles: unit -> string list
 
     member IsSystemAssembly: string -> bool
@@ -895,6 +913,8 @@ type TcConfig =
     /// Check if the primary assembly is mscorlib
     member assumeDotNetFramework: bool
 
+#endif //!FABLE_COMPILER
+
     member exiter: Exiter
 
     member parallelReferenceResolution: ParallelReferenceResolution
@@ -908,6 +928,8 @@ type TcConfig =
     member realsig: bool
 
     member compilationMode: TcGlobals.CompilationMode
+
+#if !FABLE_COMPILER
 
 /// Represents a computation to return a TcConfig. Normally this is just a constant immutable TcConfig,
 /// but for F# Interactive it may be based on an underlying mutable TcConfigBuilder.
@@ -926,6 +948,8 @@ type TcConfigProvider =
 val TryResolveFileUsingPaths: paths: string seq * m: range * fileName: string -> string option
 
 val ResolveFileUsingPaths: paths: string seq * m: range * fileName: string -> string
+
+#endif //!FABLE_COMPILER
 
 [<RequireQualifiedAccess>]
 type WarningNumberSource =

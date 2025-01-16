@@ -155,7 +155,11 @@ type ValInfos(entries) =
                 if dict.ContainsKey vkey then 
                     failwithf "dictionary already contains key %A" vkey
                 dict.Add(vkey, p)
+#if FABLE_COMPILER
+            dict), id)
+#else
             ReadOnlyDictionary dict), id)
+#endif
 
     member x.Entries = valInfoTable.Force().Values
 
@@ -663,6 +667,11 @@ let GetInfoForNonLocalVal cenv env (vref: ValRef) =
 
     if vref.IsDispatchSlot then 
         UnknownValInfo
+#if FABLE_COMPILER
+    // no inlining for FSharp.Core
+    elif vref.ToString().StartsWith("Microsoft.FSharp.") then 
+        UnknownValInfo
+#endif
     // REVIEW: optionally turn x-module on/off on per-module basis or  
     elif cenv.settings.crossAssemblyOpt () || vref.ShouldInline then 
         match TryGetInfoForNonLocalEntityRef env vref.nlr.EnclosingEntity.nlr with
@@ -1740,6 +1749,9 @@ let TryEliminateBinding cenv _env bind e2 _m =
          // Immediate consumption of value by a pattern match 'let x = e in match x with ...'
          | Expr.Match (spMatch, _exprm, TDSwitch(DebugPoints(Expr.Val (VRefLocal vspec2, _, _), recreate1), cases, dflt, _), targets, m, ty2)
              when (valEq vspec1 vspec2 &&
+#if FABLE_COMPILER
+                   not (ExprHasEffect cenv.g e1) &&
+#endif
                    let fvs = accFreeInTargets CollectLocals targets (accFreeInSwitchCases CollectLocals cases dflt emptyFreeVars)
                    not (Zset.contains vspec1 fvs.FreeLocals)) -> 
 
@@ -3136,7 +3148,12 @@ and OptimizeVal cenv env expr (v: ValRef, m) =
            e, AddValEqualityInfo g m v einfo 
 
     | None ->
+#if FABLE_COMPILER
+       // no inlining for FSharp.Core
+       if v.ShouldInline && not (v.ToString().StartsWith("Microsoft.FSharp.")) then
+#else
        if v.ShouldInline then
+#endif
             match valInfoForVal.ValExprInfo with
             | UnknownValue -> error(Error(FSComp.SR.optFailedToInlineValue(v.DisplayName), m))
             | _ -> warning(Error(FSComp.SR.optFailedToInlineValue(v.DisplayName), m))

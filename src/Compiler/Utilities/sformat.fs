@@ -416,6 +416,8 @@ module Layout =
     let unfoldL selector folder state count =
         boundedUnfoldL selector folder (fun _ -> false) state count
 
+#if !FABLE_COMPILER
+
 /// These are a typical set of options used to control structured formatting.
 [<NoEquality; NoComparison>]
 type FormatOptions =
@@ -1646,3 +1648,5 @@ module Display =
         let formatter = ObjectGraphFormatter(options, bindingFlags)
         formatter.Format(ShowAll, value, typValue) |> layout_to_string options
 #endif
+
+#endif //!FABLE_COMPILER

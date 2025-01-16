@@ -6,7 +6,9 @@ module internal FSharp.Compiler.CompilerDiagnostics
 open System
 open System.Diagnostics
 open System.IO
+#if !FABLE_COMPILER
 open System.Reflection
+#endif
 open System.Text
 
 open Internal.Utilities.Library.Extras
@@ -209,8 +211,10 @@ type Exception with
         | AssemblyNotResolved(_, m)
         | HashLoadedSourceHasIssues(_, _, _, m)
         | HashLoadedScriptConsideredSource m -> Some m
+#if !FABLE_COMPILER
         // Strip TargetInvocationException wrappers
         | :? System.Reflection.TargetInvocationException as e when isNotNull e.InnerException -> (!!e.InnerException).DiagnosticRange
+#endif
 #if !NO_TYPEPROVIDERS
         | :? TypeProviderError as e -> e.Range |> Some
 #endif
@@ -337,8 +341,10 @@ type Exception with
         | DefinitionsInSigAndImplNotCompatibleAbbreviationsDiffer _ -> 318
         | ArgumentsInSigAndImplMismatch _ -> 3218
 
+#if !FABLE_COMPILER
         // Strip TargetInvocationException wrappers
         | :? TargetInvocationException as e when isNotNull e.InnerException -> (!!e.InnerException).DiagnosticNumber
+#endif
         | WrappedError(e, _) -> e.DiagnosticNumber
         | DiagnosticWithText(n, _, _) -> n
         | DiagnosticWithSuggestions(n, _, _, _, _) -> n
@@ -433,7 +439,9 @@ type PhasedDiagnostic with
 module OldStyleMessages =
     let Message (name, format) = DeclareResourceString(name, format)
 
+#if !FABLE_COMPILER
     do FSComp.SR.RunStartupValidation()
+#endif
     let SeeAlsoE () = Message("SeeAlso", "%s")
     let ConstraintSolverTupleDiffLengthsE () = Message("ConstraintSolverTupleDiffLengths", "%d%d")
     let ConstraintSolverInfiniteTypesE () = Message("ConstraintSolverInfiniteTypes", "%s%s")
@@ -612,6 +620,13 @@ let (|InvalidArgument|_|) (exn: exn) =
     | :? ArgumentException as e -> ValueSome e.Message
     | _ -> ValueNone
 
+#if FABLE_COMPILER
+module Printf =
+    let bprintf (sb: StringBuilder) =
+        let f (s: string) = sb.AppendString(s)
+        Printf.kprintf f
+#endif
+
 let OutputNameSuggestions (os: StringBuilder) suggestNames suggestionsF idText =
     if suggestNames then
         let buffer = DiagnosticResolutionHints.SuggestionBuffer idText
@@ -678,10 +693,10 @@ type Exception with
 
             let t1, t2, _cxs = NicePrint.minimalStringsOfTwoTypes denv ty1 ty2
 
-            os.Append(ConstraintSolverNullnessWarningEquivWithTypesE().Format t1) |> ignore
+            os.AppendString(ConstraintSolverNullnessWarningEquivWithTypesE().Format t1) |> ignore
 
             if m.StartLine <> m2.StartLine then
-                os.Append(SeeAlsoE().Format(stringOfRange m)) |> ignore
+                os.AppendString(SeeAlsoE().Format(stringOfRange m)) |> ignore
 
         | ConstraintSolverNullnessWarningWithTypes(denv, ty1, ty2, _nullness1, _nullness2, m, m2) ->
 
@@ -693,10 +708,10 @@ type Exception with
 
             let t1, t2, _cxs = NicePrint.minimalStringsOfTwoTypes denv ty1 ty2
 
-            os.Append(ConstraintSolverNullnessWarningWithTypesE().Format t1 t2) |> ignore
+            os.AppendString(ConstraintSolverNullnessWarningWithTypesE().Format t1 t2) |> ignore
 
             if m.StartLine <> m2.StartLine then
-                os.Append(SeeAlsoE().Format(stringOfRange m)) |> ignore
+                os.AppendString(SeeAlsoE().Format(stringOfRange m)) |> ignore
 
         | ConstraintSolverNullnessWarningWithType(denv, ty, _, m, m2) ->
 
@@ -707,13 +722,13 @@ type Exception with
                 }
 
             let t = NicePrint.minimalStringOfType denv ty
-            os.Append(ConstraintSolverNullnessWarningWithTypeE().Format(t)) |> ignore
+            os.AppendString(ConstraintSolverNullnessWarningWithTypeE().Format(t)) |> ignore
 
             if m.StartLine <> m2.StartLine then
-                os.Append(SeeAlsoE().Format(stringOfRange m)) |> ignore
+                os.AppendString(SeeAlsoE().Format(stringOfRange m)) |> ignore
 
         | ConstraintSolverNullnessWarning(msg, m, m2) ->
-            os.Append(ConstraintSolverNullnessWarningE().Format(msg)) |> ignore
+            os.AppendString(ConstraintSolverNullnessWarningE().Format(msg)) |> ignore
 
             if m.StartLine <> m2.StartLine then
                 os.AppendString(SeeAlsoE().Format(stringOfRange m2))
@@ -1921,6 +1936,7 @@ type Exception with
                     s2
             )
 
+#if !FABLE_COMPILER
         // Strip TargetInvocationException wrappers
         | :? TargetInvocationException as e when isNotNull e.InnerException -> (!!e.InnerException).Output(os, suggestNames)
 
@@ -1935,6 +1951,7 @@ type Exception with
         | :? IOException as exn -> Printf.bprintf os "%s" exn.Message
 
         | :? UnauthorizedAccessException as exn -> Printf.bprintf os "%s" exn.Message
+#endif //!FABLE_COMPILER
 
         | :? InvalidOperationException as exn when exn.Message.Contains "ControlledExecution.Run" -> Printf.bprintf os "%s" exn.Message
 
@@ -1997,6 +2014,8 @@ let SanitizeFileName fileName implicitIncludeDir =
             fullPath.Replace(currentDir + "\\", "")
     with _ ->
         fileName
+
+#if !FABLE_COMPILER
 
 [<RequireQualifiedAccess>]
 type FormattedDiagnosticLocation =
@@ -2271,6 +2290,8 @@ type PhasedDiagnostic with
         writeViaBuffer os (fun buf ->
             diagnostic.OutputContext(buf, prefix, fileLineFunction)
             diagnostic.Output(buf, tcConfig, severity))
+
+#endif //!FABLE_COMPILER
 
 //----------------------------------------------------------------------------
 // Scoped #nowarn pragmas
