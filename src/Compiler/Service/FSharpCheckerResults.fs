@@ -3895,6 +3895,9 @@ type FSharpCheckProjectResults
                 |> Array.toSeq
 #endif //!FABLE_COMPILER
             | Choice2Of2 task ->
+#if FABLE_COMPILER
+                seq {}
+#else
                 Async.RunSynchronously(
                     async {
                         let! tcSymbolUses = task
@@ -3907,6 +3910,7 @@ type FSharpCheckProjectResults
                     },
                     ?cancellationToken = cancellationToken
                 )
+#endif //!FABLE_COMPILER
 
         results
         |> Seq.filter (fun symbolUse -> symbolUse.ItemOccurrence <> ItemOccurrence.RelatedText)
@@ -3925,7 +3929,7 @@ type FSharpCheckProjectResults
 
         let cenv = SymbolEnv(tcGlobals, thisCcu, Some ccuSig, tcImports)
 
-        let tcSymbolUses =
+        let tcSymbolUses : TcSymbolUses seq =
             match builderOrSymbolUses with
             | Choice1Of2 builder ->
 #if FABLE_COMPILER
@@ -3943,7 +3947,12 @@ type FSharpCheckProjectResults
                     | _ -> TcSymbolUses.Empty)
                 |> Array.toSeq
 #endif //!FABLE_COMPILER
-            | Choice2Of2 tcSymbolUses -> Async.RunSynchronously(tcSymbolUses, ?cancellationToken = cancellationToken)
+            | Choice2Of2 tcSymbolUses ->
+#if FABLE_COMPILER
+                seq {}
+#else
+                Async.RunSynchronously(tcSymbolUses, ?cancellationToken = cancellationToken)
+#endif //!FABLE_COMPILER
 
         [|
             for r in tcSymbolUses do
