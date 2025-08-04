@@ -119,6 +119,6 @@ type SuggestionBuffer(idText: string) =
     interface IEnumerable with
         member this.GetEnumerator() =
             if this.IsEmpty then
-                Seq.empty.GetEnumerator() :> IEnumerator
+                Seq.empty<objnull>.GetEnumerator() :> IEnumerator
             else
                 new SuggestionBufferEnumerator(tail, data) :> IEnumerator
