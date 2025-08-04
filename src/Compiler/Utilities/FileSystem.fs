@@ -496,8 +496,8 @@ type FileSystem =
             String.IsNullOrEmpty p || p.IndexOfAny(Path.GetInvalidPathChars()) <> -1
         let isInvalidFilename(p: string) =
             String.IsNullOrEmpty p || p.IndexOfAny(Path.GetInvalidFileNameChars()) <> -1
-        let isInvalidDirectory(d: string) =
-            d=null || d.IndexOfAny(Path.GetInvalidPathChars()) <> -1
+        let isInvalidDirectory(p: string) =
+            String.IsNullOrEmpty p || p.IndexOfAny(Path.GetInvalidPathChars()) <> -1
         isInvalidPath path ||
         let directory = Path.GetDirectoryName path
         let filename = Path.GetFileName path

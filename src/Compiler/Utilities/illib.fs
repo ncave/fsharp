@@ -42,7 +42,7 @@ type InterruptibleLazy<'T> private (value, valueFactory: unit -> 'T) =
                 | _ ->
 
                     value <- (valueFactory |> unbox<unit -> 'T>) ()
-                    valueFactory <- Unchecked.defaultof<_>
+                    valueFactory <- Unchecked.defaultof<'T>
             finally
                 Monitor.Exit(syncObj)
 
@@ -1051,7 +1051,7 @@ type LazyWithContext<'T, 'Ctxt> =
     static member NotLazy(x: 'T) : LazyWithContext<'T, 'Ctxt> =
         {
             value = x
-            funcOrException = null
+            funcOrException = (null: objnull)
             findOriginalException = id
         }
 
@@ -1094,7 +1094,7 @@ type LazyWithContext<'T, 'Ctxt> =
             try
                 let res = f ctxt
                 x.value <- res
-                x.funcOrException <- null
+                x.funcOrException <- (null: objnull)
                 res
             with RecoverableException exn ->
                 x.funcOrException <- box (LazyWithContextFailure(exn))
@@ -1153,7 +1153,7 @@ module IPartialEqualityComparer =
                 if dict.ContainsKey key then
                     false
                 else
-                    (dict[key] <- null
+                    (dict[key] <- (null: objnull)
                      true)
             else
                 true)

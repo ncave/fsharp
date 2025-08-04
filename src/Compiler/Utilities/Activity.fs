@@ -122,11 +122,15 @@ module internal Activity =
     let start (name: string) (tags: (string * string) seq) : IDisposable =
         ignore name
         ignore tags
-        null
+        { new IDisposable with
+            member _.Dispose() = ()
+        }
 
     let startNoTags (name: string) : IDisposable =
         ignore name
-        null
+        { new IDisposable with
+            member _.Dispose() = ()
+        }
 
     let addEvent (name: string) =
         ignore name

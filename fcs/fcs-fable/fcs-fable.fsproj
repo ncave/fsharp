@@ -14,10 +14,14 @@
     <DefineConstants>$(DefineConstants);NO_INLINE_IL_PARSER</DefineConstants>
     <DefineConstants>$(DefineConstants);FSHARPCORE_USE_PACKAGE</DefineConstants>
     <OtherFlags>$(OtherFlags) --nowarn:57</OtherFlags>
+    <!-- <Nullable>enable</Nullable> -->
+    <!-- <WarningsAsErrors>FS3261</WarningsAsErrors> -->
+    <!-- <WarningsAsErrors>FS3559</WarningsAsErrors> -->
     <!-- <DisableImplicitFSharpCoreReference>true</DisableImplicitFSharpCoreReference> -->
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="Fable.Core.fs" />
     <!-- BCL shims -->
     <Compile Include="System.fs" />
     <Compile Include="System.Collections.Immutable.fs" />

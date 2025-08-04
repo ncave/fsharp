@@ -218,7 +218,7 @@ type StopProcessingExiter() =
     interface Exiter with
         member exiter.Exit n =
             exiter.ExitCode <- n
-            raise StopProcessing
+            raise StopProcessing<unit>
 
 /// Closed enumeration of build phases.
 [<RequireQualifiedAccess>]
