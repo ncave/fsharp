@@ -5,7 +5,7 @@ open Buildalyzer
 
 let getProjectOptionsFromProjectFile (isMain: bool) (projFile: string) =
 
-    let tryGetResult (isMain: bool) (manager: AnalyzerManager) (maybeCsprojFile: string) =
+    let tryGetResult (_isMain: bool) (manager: AnalyzerManager) (maybeCsprojFile: string) =
 
         let analyzer = manager.GetProject(maybeCsprojFile)
         let env = analyzer.EnvironmentFactory.GetBuildEnvironment(Environment.EnvironmentOptions(DesignTime=true,Restore=false))
@@ -132,6 +132,6 @@ let main argv =
     let input = "let a = 42"
     let sourceText = FSharp.Compiler.Text.SourceText.ofString input
     // parse script just to export metadata
-    let parseRes, typedRes = parseAndCheckScript(file, sourceText)
+    let _parseRes, _typedRes = parseAndCheckScript(file, sourceText)
     printfn "Exporting is done. Binaries can be found in ./temp/metadata/"
     0
