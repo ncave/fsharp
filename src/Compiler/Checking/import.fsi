@@ -5,7 +5,9 @@ module internal FSharp.Compiler.Import
 
 open Internal.Utilities.Library
 open FSharp.Compiler.AbstractIL.IL
+#if !FABLE_COMPILER
 open FSharp.Compiler.Caches
+#endif
 open FSharp.Compiler.TcGlobals
 open FSharp.Compiler.Text
 open FSharp.Compiler.Xml

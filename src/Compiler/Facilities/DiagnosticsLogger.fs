@@ -888,6 +888,7 @@ let internal languageFeatureNotSupportedInLibraryError (langFeature: LanguageFea
     let suggestedVersionStr = LanguageVersion.GetFeatureVersionString langFeature
     error (Error(FSComp.SR.chkFeatureNotSupportedInLibrary (featureStr, suggestedVersionStr), m))
 
+#if !FABLE_COMPILER
 module StackGuardMetrics =
 
     let meter = FSharp.Compiler.Diagnostics.Metrics.Meter
@@ -954,6 +955,7 @@ module StackGuardMetrics =
                 listener.Dispose()
                 StatsToString() |> printfn "%s"
         }
+#endif
 
 /// Guard against depth of expression nesting, by moving to new stack when a maximum depth is reached
 type StackGuard(name: string) =
@@ -984,7 +986,6 @@ type StackGuard(name: string) =
         ) =
 #if FABLE_COMPILER
         ignore depth
-        ignore maxDepth
         ignore name
         f ()
 #else //!FABLE_COMPILER
