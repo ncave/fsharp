@@ -3,5 +3,5 @@
 dotnet build -c Release buildtools/fslex
 dotnet build -c Release buildtools/fsyacc
 dotnet build -c Release src/Compiler
-dotnet run -c Release --project fcs/fcs-test
+dotnet run -c Release --project fcs/fcs-test/fcs-test.fsproj
 echo "Binaries can be found here: /artifacts/bin/FSharp.Compiler.Service/Release/netstandard2.0/"
