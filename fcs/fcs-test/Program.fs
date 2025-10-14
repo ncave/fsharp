@@ -8,7 +8,7 @@ open Buildalyzer
 
 let getProjectOptionsFromProjectFile (isMain: bool) (projFile: string) =
 
-    let tryGetResult (isMain: bool) (manager: AnalyzerManager) (maybeCsprojFile: string) =
+    let tryGetResult (_isMain: bool) (manager: AnalyzerManager) (maybeCsprojFile: string) =
 
         let analyzer = manager.GetProject(maybeCsprojFile)
         let env = analyzer.EnvironmentFactory.GetBuildEnvironment(Environment.EnvironmentOptions(DesignTime=true,Restore=false))
@@ -129,7 +129,7 @@ let printAst title (projectResults: FSharpCheckProjectResults) =
     decls |> printfn "%s"
 
 [<EntryPoint>]
-let main argv = 
+let main _argv = 
     let projName = "Project.fsproj"
     let fileName = __SOURCE_DIRECTORY__ + "/test_script.fsx"
     let fileNames = [| fileName |]
