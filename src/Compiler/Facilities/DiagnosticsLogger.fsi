@@ -459,10 +459,12 @@ val tryLanguageFeatureErrorOption:
 
 val languageFeatureNotSupportedInLibraryError: langFeature: LanguageFeature -> m: range -> 'T
 
+#if !FABLE_COMPILER
 module internal StackGuardMetrics =
     val Listen: unit -> IDisposable
     val StatsToString: unit -> string
     val CaptureStatsAndWriteToConsole: unit -> IDisposable
+#endif
 
 type StackGuard =
     new: name: string -> StackGuard
@@ -492,6 +494,7 @@ type CompilationGlobalsScope =
 
     member BuildPhase: BuildPhase
 
+#if !FABLE_COMPILER
 module MultipleDiagnosticsLoggers =
 
     /// Run computations using Async.Parallel.
@@ -501,3 +504,4 @@ module MultipleDiagnosticsLoggers =
 
     /// Run computations sequentially starting immediately on the current thread.
     val Sequential: computations: Async<'T> seq -> Async<'T array>
+#endif //!FABLE_COMPILER

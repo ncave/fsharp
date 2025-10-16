@@ -185,12 +185,16 @@ let rec AttachRange m (exn: exn) =
         exn
     else
         match exn with
+#if !FABLE_COMPILER
         // Strip TargetInvocationException wrappers
         | :? TargetInvocationException as e when isNotNull e.InnerException -> AttachRange m !!exn.InnerException
+#endif
         | UnresolvedReferenceNoRange a -> UnresolvedReferenceError(a, m)
         | UnresolvedPathReferenceNoRange(a, p) -> UnresolvedPathReference(a, p, m)
+#if !FABLE_COMPILER
         | :? NotSupportedException -> exn
         | :? SystemException -> InternalException(exn, exn.Message, m)
+#endif
         | _ -> exn
 
 type Exiter =
@@ -199,10 +203,12 @@ type Exiter =
 let QuitProcessExiter =
     { new Exiter with
         member _.Exit n =
+#if !FABLE_COMPILER
             try
                 Environment.Exit n
             with _ ->
                 ()
+#endif
 
             failwith (FSComp.SR.elSysEnvExitDidntExit ())
     }
@@ -214,7 +220,7 @@ type StopProcessingExiter() =
     interface Exiter with
         member exiter.Exit n =
             exiter.ExitCode <- n
-            raise StopProcessing
+            raise StopProcessing<unit>
 
 /// Closed enumeration of build phases.
 [<RequireQualifiedAccess>]
@@ -425,14 +431,22 @@ module DiagnosticsLoggerExtensions =
     // Dev15.0 shipped with a bug in diasymreader in the portable pdb symbol reader which causes an AV
     // This uses a simple heuristic to detect it (the vsversion is < 16.0)
     let tryAndDetectDev15 =
+#if FABLE_COMPILER
+        false
+#else
         let vsVersion = Environment.GetEnvironmentVariable("VisualStudioVersion")
 
         match Double.TryParse vsVersion with
         | true, v -> v < 16.0
         | _ -> false
+#endif
 
     /// Instruct the exception not to reset itself when thrown again.
     let PreserveStackTrace exn =
+#if FABLE_COMPILER
+        ignore exn
+        ()
+#else
         try
             if not tryAndDetectDev15 then
                 let preserveStackTrace =
@@ -443,16 +457,19 @@ module DiagnosticsLoggerExtensions =
             // This is probably only the mono case.
             Debug.Assert(false, "Could not preserve stack trace for watson exception.")
             ()
+#endif
 
     type DiagnosticsLogger with
 
         member x.EmitDiagnostic(exn, severity) =
 
+#if !FABLE_COMPILER
             match exn with
             | InternalError(s, _)
             | InternalException(_, s, _)
             | Failure s as exn -> Debug.Assert(false, sprintf "Unexpected exception raised in compiler: %s\n%s" s (exn.ToString()))
             | _ -> ()
+#endif
 
             match exn with
             | StopProcessing
@@ -482,9 +499,11 @@ module DiagnosticsLoggerExtensions =
             // Never throws ReportedError.
             // Throws StopProcessing and exceptions raised by the DiagnosticSink(exn) handler.
             match exn with
+#if !FABLE_COMPILER
             // Don't send ThreadAbortException down the error channel
             | :? System.Threading.ThreadAbortException
             | WrappedError(:? System.Threading.ThreadAbortException, _) -> ()
+#endif
             | ReportedError _
             | WrappedError(ReportedError _, _) -> ()
             | StopProcessing
@@ -869,6 +888,7 @@ let internal languageFeatureNotSupportedInLibraryError (langFeature: LanguageFea
     let suggestedVersionStr = LanguageVersion.GetFeatureVersionString langFeature
     error (Error(FSComp.SR.chkFeatureNotSupportedInLibrary (featureStr, suggestedVersionStr), m))
 
+#if !FABLE_COMPILER
 module StackGuardMetrics =
 
     let meter = FSharp.Compiler.Diagnostics.Metrics.Meter
@@ -935,6 +955,7 @@ module StackGuardMetrics =
                 listener.Dispose()
                 StatsToString() |> printfn "%s"
         }
+#endif
 
 /// Guard against depth of expression nesting, by moving to new stack when a maximum depth is reached
 type StackGuard(name: string) =
@@ -963,6 +984,11 @@ type StackGuard(name: string) =
             [<CallerFilePath; Optional; DefaultParameterValue("")>] path: string,
             [<CallerLineNumber; Optional; DefaultParameterValue(0)>] line: int
         ) =
+#if FABLE_COMPILER
+        ignore depth
+        ignore name
+        f ()
+#else //!FABLE_COMPILER
 
         depth.Value <- depth.Value + 1
 
@@ -983,11 +1009,13 @@ type StackGuard(name: string) =
                 |> Async.RunImmediate
         finally
             depth.Value <- depth.Value - 1
+#endif //!FABLE_COMPILER
 
     [<DebuggerHidden; DebuggerStepThrough>]
     member x.GuardCancellable(original: Cancellable<'T>) =
         Cancellable(fun ct -> x.Guard(fun () -> Cancellable.run ct original))
 
+#if !FABLE_COMPILER
 // UseMultipleDiagnosticLoggers in ParseAndCheckProject.fs provides similar functionality.
 // We should probably adapt and reuse that code.
 module MultipleDiagnosticsLoggers =
@@ -1053,3 +1081,4 @@ module MultipleDiagnosticsLoggers =
 
             return results.ToArray()
         }
+#endif //!FABLE_COMPILER

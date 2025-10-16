@@ -57,7 +57,9 @@ open System
 open System.Threading
 open FSharp.Compiler
 
+#if !FABLE_COMPILER
 open FSharp.Core.CompilerServices.StateMachineHelpers
+#endif
 
 [<RequireQualifiedAccess; Struct>]
 type ValueOrCancelled<'TResult> =
@@ -73,11 +75,15 @@ module Cancellable =
         if ct.IsCancellationRequested then
             ValueOrCancelled.Cancelled(OperationCanceledException ct)
         else
+#if FABLE_COMPILER
+            oper ct
+#else
             try
                 oper ct
             with
             | :? OperationCanceledException as e when ct.IsCancellationRequested -> ValueOrCancelled.Cancelled e
             | :? OperationCanceledException as e -> InvalidOperationException("Wrong cancellation token", e) |> raise
+#endif
 
     let fold f acc seq =
         Cancellable(fun ct ->
@@ -123,7 +129,9 @@ type CancellableBuilder() =
     member inline _.Bind(comp, [<InlineIfLambda>] k) =
         Cancellable(fun ct ->
 
+#if !FABLE_COMPILER
             __debugPoint ""
+#endif
 
             match Cancellable.run ct comp with
             | ValueOrCancelled.Value v1 -> Cancellable.run ct (k v1)
@@ -132,7 +140,9 @@ type CancellableBuilder() =
     member inline _.BindReturn(comp, [<InlineIfLambda>] k) =
         Cancellable(fun ct ->
 
+#if !FABLE_COMPILER
             __debugPoint ""
+#endif
 
             match Cancellable.run ct comp with
             | ValueOrCancelled.Value v1 -> ValueOrCancelled.Value(k v1)
@@ -141,7 +151,9 @@ type CancellableBuilder() =
     member inline _.Combine(comp1, comp2) =
         Cancellable(fun ct ->
 
+#if !FABLE_COMPILER
             __debugPoint ""
+#endif
 
             match Cancellable.run ct comp1 with
             | ValueOrCancelled.Value() -> Cancellable.run ct comp2
@@ -150,7 +162,9 @@ type CancellableBuilder() =
     member inline _.TryWith(comp, [<InlineIfLambda>] handler) =
         Cancellable(fun ct ->
 
+#if !FABLE_COMPILER
             __debugPoint ""
+#endif
 
             let compRes =
                 try
@@ -167,10 +181,16 @@ type CancellableBuilder() =
                 | Choice2Of2 err -> Cancellable.run ct (handler err)
             | ValueOrCancelled.Cancelled err1 -> ValueOrCancelled.Cancelled err1)
 
+#if FABLE_COMPILER
+    member inline _.Using(resource: ('R :> IDisposable), [<InlineIfLambda>] comp) =
+#else
     member inline _.Using(resource: _ MaybeNull, [<InlineIfLambda>] comp) =
+#endif
         Cancellable(fun ct ->
 
+#if !FABLE_COMPILER
             __debugPoint ""
+#endif
 
             let body = comp resource
 
@@ -184,7 +204,13 @@ type CancellableBuilder() =
 
             match compRes with
             | ValueOrCancelled.Value res ->
+#if FABLE_COMPILER
+                match box resource with
+                | null -> ()
+                | _ -> resource.Dispose()
+#else
                 Microsoft.FSharp.Core.LanguagePrimitives.IntrinsicFunctions.Dispose resource
+#endif
 
                 match res with
                 | Choice1Of2 r -> ValueOrCancelled.Value r
@@ -194,7 +220,9 @@ type CancellableBuilder() =
     member inline _.TryFinally(comp, [<InlineIfLambda>] compensation) =
         Cancellable(fun ct ->
 
+#if !FABLE_COMPILER
             __debugPoint ""
+#endif
 
             let compRes =
                 try

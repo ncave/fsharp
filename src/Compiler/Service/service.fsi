@@ -10,7 +10,9 @@ open System.Threading
 open System.Threading.Tasks
 open FSharp.Compiler.AbstractIL.ILBinaryReader
 open FSharp.Compiler.CodeAnalysis
+#if !FABLE_COMPILER
 open FSharp.Compiler.CodeAnalysis.TransparentCompiler
+#endif
 open FSharp.Compiler.CompilerConfig
 open FSharp.Compiler.Diagnostics
 open FSharp.Compiler.EditorServices
@@ -18,6 +20,8 @@ open FSharp.Compiler.Symbols
 open FSharp.Compiler.Syntax
 open FSharp.Compiler.Text
 open FSharp.Compiler.Tokenization
+
+#if !FABLE_COMPILER
 
 /// Used to parse and check F# source code.
 [<Sealed; AutoSerializable(false)>]
@@ -551,3 +555,5 @@ type public CompilerEnvironment =
 
     /// Whether or not this file should be a single-file project
     static member MustBeSingleFileProject: string -> bool
+
+#endif //!FABLE_COMPILER
