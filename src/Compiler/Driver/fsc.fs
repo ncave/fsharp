@@ -1244,3 +1244,47 @@ let CompileFromCommandLineArguments
     |> main4 (tcImportsCapture, dynamicAssemblyCreator)
     |> main5
     |> main6 dynamicAssemblyCreator
+
+let CompileFromTypedAst
+    (
+        ctok,
+        tcGlobals,
+        tcImports: TcImports,
+        generatedCcu: CcuThunk,
+        typedImplFiles,
+        topAttrs,
+        tcConfig: TcConfig,
+        outfile: string,
+        diagnosticsLogger,
+        exiter: Exiter
+    ) =
+
+    let tcImportsCapture = None
+    let dynamicAssemblyCreator = None
+    let assemblyName = !! Path.GetFileNameWithoutExtension(outfile)
+    // Doubling here tcImports as frameworkTcImports, seems to work...
+    let frameworkTcImports = tcImports
+    let pdbfile = None
+    let ilSourceDocs = []
+
+    Args (
+        ctok,
+        tcGlobals,
+        tcImports,
+        frameworkTcImports,
+        generatedCcu,
+        typedImplFiles,
+        topAttrs,
+        tcConfig,
+        outfile,
+        pdbfile,
+        assemblyName,
+        diagnosticsLogger,
+        exiter,
+        ilSourceDocs
+    )
+    |> main2
+    |> main3
+    |> main4 (tcImportsCapture, dynamicAssemblyCreator)
+    |> main5
+    |> main6 dynamicAssemblyCreator
