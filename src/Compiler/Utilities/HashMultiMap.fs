@@ -27,9 +27,11 @@ type internal HashMultiMap<'Key, 'Value when 'Key: not null>(size: int, comparer
     new(comparer: IEqualityComparer<'Key>, ?useConcurrentDictionary: bool) =
         HashMultiMap<'Key, 'Value>(11, comparer, defaultArg useConcurrentDictionary false)
 
+#if !FABLE_COMPILER
     new(entries: seq<'Key * 'Value>, comparer: IEqualityComparer<'Key>, ?useConcurrentDictionary: bool) as this =
         HashMultiMap<'Key, 'Value>(11, comparer, defaultArg useConcurrentDictionary false)
         then entries |> Seq.iter (fun (k, v) -> this.Add(k, v))
+#endif
 
     member _.GetRest(k) =
         match rest.TryGetValue k with
@@ -129,6 +131,22 @@ type internal HashMultiMap<'Key, 'Value when 'Key: not null>(size: int, comparer
 
     member _.Count = firstEntries.Count
 
+#if FABLE_COMPILER
+    interface System.Collections.IEnumerable with
+        member s.GetEnumerator() = ((s :> IEnumerable<KeyValuePair<'Key, 'Value>>).GetEnumerator() :> System.Collections.IEnumerator)
+
+    interface IEnumerable<KeyValuePair<'Key, 'Value>> with
+        member s.GetEnumerator() = 
+            let elems = seq {
+                for kvp in firstEntries do
+                    yield kvp
+                    for z in s.GetRest(kvp.Key) do
+                        yield KeyValuePair(kvp.Key, z)
+            }
+            elems.GetEnumerator()
+
+#else //!FABLE_COMPILER
+
     interface IEnumerable<KeyValuePair<'Key, 'Value>> with
 
         member s.GetEnumerator() =
@@ -172,6 +190,8 @@ type internal HashMultiMap<'Key, 'Value when 'Key: not null>(size: int, comparer
             let res = s.ContainsKey(k) in
             s.Remove(k)
             res
+
+#endif //!FABLE_COMPILER
 
     interface ICollection<KeyValuePair<'Key, 'Value>> with
 

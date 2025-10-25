@@ -24,7 +24,9 @@ open FSharp.Compiler.TypedTree
 open FSharp.Compiler.TypedTreeBasics
 open FSharp.Compiler.TypedTreeOps
 open FSharp.Compiler.TcGlobals
+#if !FABLE_COMPILER
 open FSharp.Compiler.Caches
+#endif
 
 #if !NO_TYPEPROVIDERS
 open FSharp.Compiler.TypeProviders

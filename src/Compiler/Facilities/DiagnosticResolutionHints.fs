@@ -41,7 +41,7 @@ type SuggestionBufferEnumerator(tail: int, data: KeyValuePair<float, string>[]) 
 
     interface IEnumerator<string> with
         member _.Current =
-            let kvpr = &data[current]
+            let kvpr = data[current]
             kvpr.Value
 
     interface IEnumerator with
@@ -66,11 +66,11 @@ type SuggestionBuffer(idText: string) =
     let insert (k, v) =
         let mutable pos = tail
 
-        while pos < maxSuggestions && (let kv = &data[pos] in kv.Key < k) do
+        while pos < maxSuggestions && (let kv = data[pos] in kv.Key < k) do
             pos <- pos + 1
 
         if pos > 0 then
-            if pos >= maxSuggestions || (let kv = &data[pos] in k <> kv.Key || v <> kv.Value) then
+            if pos >= maxSuggestions || (let kv = data[pos] in k <> kv.Key || v <> kv.Value) then
                 if tail < pos - 1 then
                     for i = tail to pos - 2 do
                         data[i] <- data[i + 1]
@@ -119,6 +119,6 @@ type SuggestionBuffer(idText: string) =
     interface IEnumerable with
         member this.GetEnumerator() =
             if this.IsEmpty then
-                Seq.empty.GetEnumerator() :> IEnumerator
+                Seq.empty<objnull>.GetEnumerator() :> IEnumerator
             else
                 new SuggestionBufferEnumerator(tail, data) :> IEnumerator

@@ -348,6 +348,8 @@ module internal Layout =
         count: int ->
             Layout list
 
+#if !FABLE_COMPILER
+
 /// A record of options to control structural formatting.
 /// For F# Interactive properties matching those of this value can be accessed via the 'fsi'
 /// value.
@@ -409,3 +411,5 @@ module internal Display =
 #if COMPILER
     val fsi_any_to_layout: options: FormatOptions -> value: 'T * typValue: Type -> Layout
 #endif
+
+#endif //!FABLE_COMPILER
