@@ -99,7 +99,7 @@
       <CompressMetadata>false</CompressMetadata>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)' != 'Proto' and '$(CompressAllMetadata)' == 'true'">
-      <CompressMetadata>true</CompressMetadata>
+      <CompressMetadata>false</CompressMetadata>
   </PropertyGroup>
 
   <!-- SDK targets override -->
