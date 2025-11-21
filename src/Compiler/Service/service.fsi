@@ -13,6 +13,12 @@ open FSharp.Compiler.EditorServices
 open FSharp.Compiler.Symbols
 open FSharp.Compiler.Text
 open FSharp.Compiler.Tokenization
+open FSharp.Compiler.DiagnosticsLogger
+open FSharp.Compiler.Driver
+
+module internal CompileHelpers =
+    val mkCompilationDiagnosticsHandlers: bool -> ResizeArray<FSharpDiagnostic> * DiagnosticsLogger * IDiagnosticsLoggerProvider
+    val tryCompile: DiagnosticsLogger -> (StopProcessingExiter -> unit) -> exn option 
 
 /// Used to parse and check F# source code.
 [<Sealed; AutoSerializable(false)>]
