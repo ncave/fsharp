@@ -523,9 +523,11 @@ let ApplyAllOptimizations
 
     let results, optEnvFirstLoop =
         match tcConfig.optSettings.processingMode with
-#if !FABLE_COMPILER
         // Parallel optimization breaks determinism - turn it off in deterministic builds.
         | Optimizer.OptimizationProcessingMode.Parallel ->
+#if FABLE_COMPILER
+            optimizeFilesSequentially optEnv phases implFiles
+#else
             let results, optEnvFirstPhase =
                 ParallelOptimization.optimizeFilesInParallel optEnv phases implFiles
 

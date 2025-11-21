@@ -11,7 +11,9 @@ open System.Threading
 open System.Threading.Tasks
 open System.Runtime.CompilerServices
 
+#if !FABLE_COMPILER
 open FSharp.Compiler.Caches
+#endif
 
 [<Class>]
 type InterruptibleLazy<'T> private (value, valueFactory: unit -> 'T) =
@@ -976,11 +978,17 @@ type UniqueStampGenerator<'T when 'T: equality and 'T: not null>() =
 #endif
 
 /// memoize tables (all entries cached, never collected)
-type MemoizationTable<'T, 'U when 'T: not null>(name, compute: 'T -> 'U, keyComparer: IEqualityComparer<'T>, ?canMemoize) =
+type MemoizationTable<'T, 'U when 'T: not null>(name: string, compute: 'T -> 'U, keyComparer: IEqualityComparer<'T>, ?canMemoize) =
 
+#if FABLE_COMPILER
+    do ignore name
+    let table = new ConcurrentDictionary<'T, Lazy<'U>>(keyComparer)
+    let computeFunc = Func<_, _>(fun key -> lazy (compute key))
+#else
     let options = CacheOptions.getDefault keyComparer |> CacheOptions.withNoEviction
     let table = new Cache<'T, Lazy<'U>>(options, name)
     let computeFunc key = lazy compute key
+#endif
 
     member t.Apply x =
         if
@@ -1066,13 +1074,10 @@ type LazyWithContext<'T, 'Ctxt> =
          | null -> true
          | _ -> false)
 
-    member x.Force(ctxt: 'Ctxt) =
+    member x.Force(ctxt: 'Ctxt) : 'T =
         match x.funcOrException with
         | null -> x.value
         | _ ->
-#if FABLE_COMPILER
-            x.UnsynchronizedForce(ctxt)
-#else
             // Enter the lock in case another thread is in the process of evaluating the result
             Monitor.Enter x
 
@@ -1080,7 +1085,6 @@ type LazyWithContext<'T, 'Ctxt> =
                 x.UnsynchronizedForce ctxt
             finally
                 Monitor.Exit x
-#endif
 
     member x.UnsynchronizedForce ctxt =
         match x.funcOrException with

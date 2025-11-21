@@ -110,7 +110,11 @@ module internal WarnScopes =
         // 4. The trailing whitespace.
         // 5. The comment (if any).
 
+#if FABLE_COMPILER
+        Regex("""( *)#(\S+)(?: +([^\/\r\n/;]+))*(?:;;)?( *)(\/\/.*)?$""")
+#else
         Regex("""( *)#(\S+)(?: +([^ \r\n/;]+))*(?:;;)?( *)(\/\/.*)?$""", RegexOptions.CultureInvariant)
+#endif
 
     let private parseDirective lexbuf =
         let text = Lexbuf.LexemeString lexbuf
@@ -119,7 +123,18 @@ module internal WarnScopes =
         let mGroups = (regex.Match text).Groups
         let totalLength = mGroups[0].Length
         let dIdent = mGroups[2].Value
+#if FABLE_COMPILER
+        // Fable's Regex does not support Captures and CaptureCollections,
+        // so we extract the arguments and indices from the match group[3]
+        let argsStr: string = mGroups[3].Value
+        let argsPos = text.IndexOf(argsStr, System.StringComparison.Ordinal)
+        let args = argsStr.Split([|' '|])
+        let argCaptures, _last =
+            (argsPos, args) ||> Array.mapFold (fun acc arg -> (acc, arg), acc + arg.Length + 1)
+        let argCaptures = argCaptures |> Array.filter (fun (pos, arg) -> arg <> "") |> Array.toList
+#else
         let argCaptures = [ for c in mGroups[3].Captures -> c ]
+#endif
 
         let positions line offset length =
             mkPos line (startPos.Column + offset), mkPos line (startPos.Column + offset + length)
@@ -133,9 +148,15 @@ module internal WarnScopes =
         if argCaptures.IsEmpty then
             errorR (Error(FSComp.SR.lexWarnDirectiveMustHaveArgs (), directiveRange))
 
+#if FABLE_COMPILER
+        let mkDirective ctor (offset: int, arg: string) =
+            let m = mkRange offset arg.Length
+            getNumber lexbuf.LanguageVersion m arg |> Option.map (fun n -> ctor (n, m))
+#else
         let mkDirective ctor (c: Capture) =
             let m = mkRange c.Index c.Length
             getNumber lexbuf.LanguageVersion m c.Value |> Option.map (fun n -> ctor (n, m))
+#endif
 
         let warnCmds =
             match dIdent with

@@ -6,6 +6,7 @@ open System
 open System.Threading
 open FSharp.Compiler
 open FSharp.Compiler.Text
+open Internal.Utilities.Text.Lexing
 
 #nowarn "57"
 

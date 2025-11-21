@@ -262,7 +262,7 @@ type internal TypeCheckInfo =
         tcAccessRights: AccessorDomain *
         projectFileName: string *
         mainInputFileName: string *
-        projectOptions: FSharpProjectOptions *
+        projectOptions: FSharpProjectOptions option *
         sResolutions: TcResolutions *
         sSymbolUses: TcSymbolUses *
         sFallback: NameResolutionEnv *

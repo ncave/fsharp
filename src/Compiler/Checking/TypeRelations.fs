@@ -39,12 +39,17 @@ type TTypeCacheKey =
         ||> ValueOption.map2(fun t1 t2 -> TTypeCacheKey(t1, t2, canCoerce))
 
 let getTypeSubsumptionCache =
+#if FABLE_COMPILER
+    let factory (_g: TcGlobals) =
+        new System.Collections.Concurrent.ConcurrentDictionary<TTypeCacheKey, bool>()
+#else
     let factory (g: TcGlobals) =
         let options =
             match g.compilationMode with
             | CompilationMode.OneOff -> Caches.CacheOptions.getDefault HashIdentity.Structural |> Caches.CacheOptions.withNoEviction
             | _ -> { Caches.CacheOptions.getDefault HashIdentity.Structural with TotalCapacity = 65536; HeadroomPercentage = 75 }
         new Caches.Cache<TTypeCacheKey, bool>(options, "typeSubsumptionCache")
+#endif
     Extras.WeakMap.getOrCreate factory     
 
 /// Implements a :> b without coercion based on finalized (no type variable) types

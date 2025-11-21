@@ -41,12 +41,6 @@ let _ =
     if checking then
         dprintn "warning: ILBinaryReader.checking is on"
 
-#if FABLE_COMPILER
-let noStableFileHeuristic = false
-let alwaysMemoryMapFSC = false
-let stronglyHeldReaderCacheSizeDefault = 30
-let stronglyHeldReaderCacheSize = stronglyHeldReaderCacheSizeDefault
-#else //!FABLE_COMPILER
 let noStableFileHeuristic =
     try
         not (isNull (Environment.GetEnvironmentVariable "FSharp_NoStableFileHeuristic"))
@@ -62,13 +56,14 @@ let alwaysMemoryMapFSC =
 let stronglyHeldReaderCacheSizeDefault = 30
 
 let stronglyHeldReaderCacheSize =
+#if !FABLE_COMPILER
     try
         (match Environment.GetEnvironmentVariable("FSharp_StronglyHeldBinaryReaderCacheSize") with
          | null -> stronglyHeldReaderCacheSizeDefault
          | s -> int32 s)
     with _ ->
+#endif
         stronglyHeldReaderCacheSizeDefault
-#endif //!FABLE_COMPILER
 
 let singleOfBits (x: int32) =
     BitConverter.ToSingle(BitConverter.GetBytes x, 0)
