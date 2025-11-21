@@ -2,6 +2,8 @@
 
 module internal FSharp.Compiler.BuildGraph
 
+#if !FABLE_COMPILER
+
 /// Contains helpers related to the build graph
 [<RequireQualifiedAccess>]
 module internal GraphNode =
@@ -37,3 +39,5 @@ type internal GraphNode<'T> =
 
     /// Return 'true' if the computation is in-progress.
     member IsComputing: bool
+
+#endif //!FABLE_COMPILER

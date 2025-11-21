@@ -11,7 +11,9 @@ open System.Threading
 open System.Threading.Tasks
 open System.Runtime.CompilerServices
 
+#if !FABLE_COMPILER
 open FSharp.Compiler.Caches
+#endif
 
 [<Class>]
 type InterruptibleLazy<'T> private (value, valueFactory: unit -> 'T) =
@@ -42,7 +44,7 @@ type InterruptibleLazy<'T> private (value, valueFactory: unit -> 'T) =
                 | _ ->
 
                     value <- (valueFactory |> unbox<unit -> 'T>) ()
-                    valueFactory <- Unchecked.defaultof<_>
+                    valueFactory <- Unchecked.defaultof<'T>
             finally
                 Monitor.Exit(syncObj)
 
@@ -129,12 +131,17 @@ module internal PervasiveAutoOpens =
                 tPrev <- null
 
             if descr <> "Finish" then
+#if FABLE_COMPILER
+                tPrev <- null
+#else
                 tPrev <- FSharp.Compiler.Diagnostics.Activity.Profiling.startAndMeasureEnvironmentStats descr
+#endif
 
     let foldOn p f z x = f z (p x)
 
     let notFound () = raise (KeyNotFoundException())
 
+#if !FABLE_COMPILER
     type Async with
 
         static member RunImmediate(computation: Async<'T>, ?cancellationToken) =
@@ -150,6 +157,7 @@ module internal PervasiveAutoOpens =
                 task.Result
             with :? AggregateException as ex when ex.InnerExceptions.Count = 1 ->
                 raise (ex.InnerExceptions[0])
+#endif //!FABLE_COMPILER
 
 [<AbstractClass>]
 type DelayInitArrayMap<'T, 'TDictKey, 'TDictValue>(f: unit -> 'T[]) =
@@ -463,7 +471,9 @@ module List =
         | _ -> true
 
     let mapq (f: 'T -> 'T) inp =
+#if !FABLE_COMPILER
         assert not typeof<'T>.IsValueType
+#endif
 
         match inp with
         | [] -> inp
@@ -699,7 +709,11 @@ module ResizeArray =
     /// This is done to help prevent a stop-the-world collection of the single large array, instead allowing for a greater
     /// probability of smaller collections. Stop-the-world is still possible, just less likely.
     let mapToSmallArrayChunks f (inp: ResizeArray<'t>) =
+#if FABLE_COMPILER
+        let itemSizeBytes = 8
+#else
         let itemSizeBytes = sizeof<'t>
+#endif
         // rounding down here is good because it ensures we don't go over
         let maxArrayItemCount = LOH_SIZE_THRESHOLD_BYTES / itemSizeBytes
 
@@ -707,6 +721,7 @@ module ResizeArray =
         // in order to prevent long-term storage of those values
         chunkBySize maxArrayItemCount f inp
 
+#if !FABLE_COMPILER
 module Span =
     let inline exists ([<InlineIfLambda>] predicate: 'T -> bool) (span: Span<'T>) =
         let mutable state = false
@@ -717,6 +732,7 @@ module Span =
             i <- i + 1
 
         state
+#endif
 
 module String =
     let make (n: int) (c: char) : string = String(c, n)
@@ -806,6 +822,9 @@ module String =
         | value -> if value.Contains pattern then Some() else None
 
     let getLines (str: string) =
+#if FABLE_COMPILER
+        System.Text.RegularExpressions.Regex.Split(str, "\r\n|\r|\n");
+#else
         use reader = new StringReader(str)
 
         [|
@@ -820,6 +839,7 @@ module String =
                 // http://stackoverflow.com/questions/19365404/stringreader-omits-trailing-linebreak
                 yield String.Empty
         |]
+#endif //!FABLE_COMPILER
 
 module Dictionary =
     let inline newWithSize (size: int) =
@@ -896,12 +916,14 @@ module internal LockAutoOpens =
 
     let AssumeLockWithoutEvidence<'LockTokenType when 'LockTokenType :> LockToken> () = Unchecked.defaultof<'LockTokenType>
 
+#if !FABLE_COMPILER
 /// Encapsulates a lock associated with a particular token-type representing the acquisition of that lock.
 type Lock<'LockTokenType when 'LockTokenType :> LockToken>() =
     let lockObj = obj ()
 
     member _.AcquireLock f =
         lock lockObj (fun () -> f (AssumeLockWithoutEvidence<'LockTokenType>()))
+#endif
 
 //---------------------------------------------------
 // Misc
@@ -949,14 +971,24 @@ type UniqueStampGenerator<'T when 'T: equality and 'T: not null>() =
     member _.Encode str =
         encodeTable.GetOrAdd(str, computeFunc).Value
 
+#if FABLE_COMPILER
+    member _.Table = encodeTable.Keys :> ICollection<'T>
+#else
     member _.Table = encodeTable.Keys
+#endif
 
 /// memoize tables (all entries cached, never collected)
-type MemoizationTable<'T, 'U when 'T: not null>(name, compute: 'T -> 'U, keyComparer: IEqualityComparer<'T>, ?canMemoize) =
+type MemoizationTable<'T, 'U when 'T: not null>(name: string, compute: 'T -> 'U, keyComparer: IEqualityComparer<'T>, ?canMemoize) =
 
+#if FABLE_COMPILER
+    do ignore name
+    let table = new ConcurrentDictionary<'T, Lazy<'U>>(keyComparer)
+    let computeFunc = Func<_, _>(fun key -> lazy (compute key))
+#else
     let options = CacheOptions.getDefault keyComparer |> CacheOptions.withNoEviction
     let table = new Cache<'T, Lazy<'U>>(options, name)
     let computeFunc key = lazy compute key
+#endif
 
     member t.Apply x =
         if
@@ -1027,7 +1059,7 @@ type LazyWithContext<'T, 'Ctxt> =
     static member NotLazy(x: 'T) : LazyWithContext<'T, 'Ctxt> =
         {
             value = x
-            funcOrException = null
+            funcOrException = (null: objnull)
             findOriginalException = id
         }
 
@@ -1042,7 +1074,7 @@ type LazyWithContext<'T, 'Ctxt> =
          | null -> true
          | _ -> false)
 
-    member x.Force(ctxt: 'Ctxt) =
+    member x.Force(ctxt: 'Ctxt) : 'T =
         match x.funcOrException with
         | null -> x.value
         | _ ->
@@ -1066,7 +1098,7 @@ type LazyWithContext<'T, 'Ctxt> =
             try
                 let res = f ctxt
                 x.value <- res
-                x.funcOrException <- null
+                x.funcOrException <- (null: objnull)
                 res
             with RecoverableException exn ->
                 x.funcOrException <- box (LazyWithContextFailure(exn))
@@ -1125,7 +1157,7 @@ module IPartialEqualityComparer =
                 if dict.ContainsKey key then
                     false
                 else
-                    (dict[key] <- null
+                    (dict[key] <- (null: objnull)
                      true)
             else
                 true)

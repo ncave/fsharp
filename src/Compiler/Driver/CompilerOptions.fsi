@@ -78,6 +78,8 @@ val SetTailcallSwitch: TcConfigBuilder -> OptionSwitch -> unit
 
 val SetDebugSwitch: TcConfigBuilder -> string option -> OptionSwitch -> unit
 
+#if !FABLE_COMPILER
+
 val PrintOptionInfo: TcConfigBuilder -> unit
 
 val SetTargetProfile: TcConfigBuilder -> string -> unit
@@ -98,3 +100,5 @@ val ReportTime: (TcConfig -> string -> unit)
 val GetAbbrevFlagSet: TcConfigBuilder -> bool -> Set<string>
 
 val PostProcessCompilerArgs: Set<string> -> string[] -> string list
+
+#endif //!FABLE_COMPILER

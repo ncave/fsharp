@@ -63,6 +63,7 @@ type PhasedDiagnostic with
     /// Compute new severity according to the various diagnostics options
     member AdjustSeverity: FSharpDiagnosticOptions * FSharpDiagnosticSeverity -> FSharpDiagnosticSeverity
 
+#if !FABLE_COMPILER
     /// Output all of a diagnostic to a buffer, including range
     member Output: buf: StringBuilder * tcConfig: TcConfig * severity: FSharpDiagnosticSeverity -> unit
 
@@ -74,6 +75,7 @@ type PhasedDiagnostic with
         tcConfig: TcConfig *
         severity: FSharpDiagnosticSeverity ->
             unit
+#endif //!FABLE_COMPILER
 
 /// Get a diagnostics logger that filters the reporting of warnings based on scoped pragma information
 val GetDiagnosticsLoggerFilteringByScopedNowarn:
@@ -81,6 +83,8 @@ val GetDiagnosticsLoggerFilteringByScopedNowarn:
 
 /// Remove 'implicitIncludeDir' from a file name before output
 val SanitizeFileName: fileName: string -> implicitIncludeDir: string -> string
+
+#if !FABLE_COMPILER
 
 /// Used internally and in LegacyHostedCompilerForTesting
 [<RequireQualifiedAccess>]
@@ -116,3 +120,5 @@ type FormattedDiagnostic =
 val CollectFormattedDiagnostics:
     tcConfig: TcConfig * severity: FSharpDiagnosticSeverity * PhasedDiagnostic * suggestNames: bool ->
         FormattedDiagnostic[]
+
+#endif //!FABLE_COMPILER

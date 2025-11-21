@@ -2560,7 +2560,11 @@ type TyparConstraint =
     
     override x.ToString() = sprintf "%+A" x 
     
+#if FABLE_COMPILER
+[<CustomEquality; CustomComparison; StructuredFormatDisplay("{DebugText}")>]
+#else
 [<NoEquality; NoComparison; StructuredFormatDisplay("{DebugText}")>]
+#endif
 type TraitWitnessInfo = 
     | TraitWitnessInfo of tys: TTypes * memberName: string * memberFlags: SynMemberFlags * objAndArgTys: TTypes * returnTy: TType option
     
@@ -2575,6 +2579,13 @@ type TraitWitnessInfo =
 
     override x.ToString() = "TraitWitnessInfo(" + x.MemberName + ")"
     
+#if FABLE_COMPILER
+    override x.GetHashCode() = hash x.MemberName
+    override x.Equals(_y: obj) = false // not used
+    interface System.IComparable with
+        member x.CompareTo(_y: obj) = -1 // not used
+#endif
+
 /// The specification of a member constraint that must be solved 
 [<NoEquality; NoComparison; StructuredFormatDisplay("{DebugText}")>]
 type TraitConstraintInfo = 
@@ -4488,7 +4499,13 @@ type TType =
         | TType_var (tp, _) -> 
             match tp.Solution with 
             | None -> tp.DisplayName
+#if FABLE_COMPILER
+            | Some t ->
+                let s = if maxDepth < 0 then "True" else t.LimitedToString(maxDepth-1)
+                tp.DisplayName + $" (solved: {s})"
+#else
             | Some t -> tp.DisplayName + $" (solved: {if maxDepth < 0 then Boolean.TrueString else t.LimitedToString(maxDepth-1)})"
+#endif
         | TType_measure ms -> ms.ToString()
 
     override x.ToString() = x.LimitedToString(4)

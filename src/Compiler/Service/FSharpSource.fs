@@ -10,14 +10,18 @@ open FSharp.Compiler.Text
 [<RequireQualifiedAccess>]
 type TextContainer =
     | OnDisk
+#if !FABLE_COMPILER
     | Stream of Stream
+#endif
     | SourceText of ISourceText
 
     interface IDisposable with
 
         member this.Dispose() =
             match this with
+#if !FABLE_COMPILER
             | Stream stream -> stream.Dispose()
+#endif
             | _ -> ()
 
 [<AbstractClass>]
@@ -28,6 +32,8 @@ type FSharpSource internal () =
     abstract TimeStamp: DateTime
 
     abstract GetTextContainer: unit -> Async<TextContainer>
+
+#if !FABLE_COMPILER
 
 type private FSharpSourceMemoryMappedFile(filePath: string, timeStamp: DateTime, openStream: unit -> Stream) =
     inherit FSharpSource()
@@ -59,6 +65,8 @@ type private FSharpSourceFromFile(filePath: string) =
 
     override _.GetTextContainer() = TextContainer.OnDisk |> async.Return
 
+#endif //!FABLE_COMPILER
+
 type private FSharpSourceCustom(filePath: string, getTimeStamp, getSourceText) =
     inherit FSharpSource()
 
@@ -81,6 +89,7 @@ type FSharpSource with
     static member Create(filePath, getTimeStamp, getSourceText) =
         FSharpSourceCustom(filePath, getTimeStamp, getSourceText) :> FSharpSource
 
+#if !FABLE_COMPILER
     static member CreateFromFile(filePath: string) =
         FSharpSourceFromFile(filePath) :> FSharpSource
 
@@ -91,3 +100,4 @@ type FSharpSource with
             fun () -> FileSystem.OpenFileForReadShim(filePath, useMemoryMappedFile = true, shouldShadowCopy = true)
 
         FSharpSourceMemoryMappedFile(filePath, timeStamp, openStream) :> FSharpSource
+#endif //!FABLE_COMPILER

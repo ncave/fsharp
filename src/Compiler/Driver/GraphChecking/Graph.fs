@@ -104,7 +104,11 @@ module internal Graph =
         sb.ToString()
 
     let writeMermaidToFile path (graph: Graph<FileIndex * string>) =
+#if FABLE_COMPILER
+        ignore (path: string)
+#else
         use out =
             FileSystem.OpenFileForWriteShim(path, fileMode = System.IO.FileMode.Create)
 
         graph |> serialiseToMermaid |> out.WriteAllText
+#endif //!FABLE_COMPILER

@@ -66,10 +66,12 @@ module internal PervasiveAutoOpens =
 
         member inline IndexOfOrdinal: value: string * startIndex: int * count: int -> int
 
+#if !FABLE_COMPILER
     type Async with
 
         /// Runs the computation synchronously, always starting on the current thread.
         static member RunImmediate: computation: Async<'T> * ?cancellationToken: CancellationToken -> 'T
+#endif
 
     val foldOn: p: ('a -> 'b) -> f: ('c -> 'b -> 'd) -> z: 'c -> x: 'a -> 'd
 
@@ -239,8 +241,10 @@ module internal ResizeArray =
     /// probability of smaller collections. Stop-the-world is still possible, just less likely.
     val mapToSmallArrayChunks: f: ('t -> 'a) -> inp: ResizeArray<'t> -> 'a[][]
 
+#if !FABLE_COMPILER
 module internal Span =
     val inline exists: predicate: ('T -> bool) -> span: Span<'T> -> bool
+#endif
 
 module internal String =
 
@@ -330,11 +334,13 @@ type internal LockToken =
         inherit ExecutionToken
     end
 
+#if !FABLE_COMPILER
 /// Encapsulates a lock associated with a particular token-type representing the acquisition of that lock.
 type internal Lock<'LockTokenType when 'LockTokenType :> LockToken> =
 
     new: unit -> Lock<'LockTokenType>
     member AcquireLock: f: ('LockTokenType -> 'a) -> 'a
+#endif
 
 [<AutoOpen>]
 module internal LockAutoOpens =
@@ -415,11 +421,11 @@ type internal LazyWithContextFailure =
 /// Just like "Lazy" but EVERY forcer must provide an instance of "ctxt", e.g. to help track errors
 /// on forcing back to at least one sensible user location
 [<Sealed>]
-type internal LazyWithContext<'T, 'ctxt> =
-    static member Create: f: ('ctxt -> 'T) * findOriginalException: (exn -> exn) -> LazyWithContext<'T, 'ctxt>
-    static member NotLazy: x: 'T -> LazyWithContext<'T, 'ctxt>
-    member Force: ctxt: 'ctxt -> 'T
-    member UnsynchronizedForce: ctxt: 'ctxt -> 'T
+type internal LazyWithContext<'T, 'Ctxt> =
+    static member Create: f: ('Ctxt -> 'T) * findOriginalException: (exn -> exn) -> LazyWithContext<'T, 'Ctxt>
+    static member NotLazy: x: 'T -> LazyWithContext<'T, 'Ctxt>
+    member Force: ctxt: 'Ctxt -> 'T
+    member UnsynchronizedForce: ctxt: 'Ctxt -> 'T
     member IsDelayed: bool
     member IsForced: bool
 

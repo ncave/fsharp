@@ -90,6 +90,7 @@ type ExecutionContext =
     { LookupTypeRef: ILTypeRef -> Type
       LookupType: ILType -> Type }
 
+#if !FABLE_COMPILER
 /// An incremental ILX code generator for a single assembly
 type public IlxAssemblyGenerator =
     /// Create an incremental ILX code generator for a single assembly
@@ -114,6 +115,7 @@ type public IlxAssemblyGenerator =
 
     /// Invert the compilation of the given value and return its current dynamic value and its compiled System.Type
     member LookupGeneratedValue: ExecutionContext * Val -> (objnull * Type) option
+#endif //!FABLE_COMPILER
 
 val ReportStatistics: TextWriter -> unit
 

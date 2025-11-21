@@ -80,6 +80,9 @@ type DelayedILModuleReader =
     member this.OutputFile = this.name
 
     member this.TryGetILModuleReader() =
+#if FABLE_COMPILER
+        cancellable.Return<ILModuleReader option>(None)
+#else
         // fast path
         match box this.result with
         | null ->
@@ -115,6 +118,7 @@ type DelayedILModuleReader =
                         | _ -> Some this.result)
             }
         | _ -> cancellable.Return(Some this.result)
+#endif //!FABLE_COMPILER
 
 [<RequireQualifiedAccess; NoComparison; CustomEquality>]
 type FSharpReferencedProject =
@@ -198,6 +202,9 @@ module internal FSharpCheckerResultsSettings =
         GetEnvInteger "FCS_MaxErrorsOutOfProjectContext" 3
 
     // Look for DLLs in the location of the service DLL first.
+#if FABLE_COMPILER
+    let defaultFSharpBinariesDir = "."
+#else
     let defaultFSharpBinariesDir =
         FSharpEnvironment
             .BinFolderOfDefaultFSharpCompiler(
@@ -205,6 +212,7 @@ module internal FSharpCheckerResultsSettings =
                 |> Option.ofObj
             )
             .Value
+#endif
 
 [<Sealed>]
 type FSharpSymbolUse(denv: DisplayEnv, symbol: FSharpSymbol, inst: TyparInstantiation, itemOcc, range: range) =
@@ -668,7 +676,7 @@ type internal TypeCheckInfo
             match meth.GetParamDatas(amap, m, meth.FormalMethodInst) with
             | x :: _ ->
                 x
-                |> List.choose (fun (ParamData(_isParamArray, _isInArg, _isOutArg, _optArgInfo, _callerInfo, name, _, ty)) ->
+                |> List.choose (fun (ParamData(_isParamArray, _isInArg, _isOutArg, _optArgInfo, _callerInfo, name, _, ty), _) ->
                     match name with
                     | Some id -> Some(Item.OtherName(Some id, ty, None, Some(ArgumentContainer.Method meth), id.idRange))
                     | None -> None)
@@ -2876,7 +2884,9 @@ module internal ParseAndCheckFile =
             //    the formatting of types in it may change (for example, 'a to obj)
             //
             // So we'll create a diagnostic later, but cache the FormatCore message now
+#if !FABLE_COMPILER
             diagnostic.Exception.Data["CachedFormatCore"] <- diagnostic.FormatCore(flatErrors, suggestNamesForErrors)
+#endif
             diagnosticsCollector.Add(struct (diagnostic, severity))
 
             if severity = FSharpDiagnosticSeverity.Error then
@@ -2987,7 +2997,11 @@ module internal ParseAndCheckFile =
         let tokenizer =
             LexFilter.LexFilter(indentationSyntaxStatus, options.CompilingFSharpCore, Lexer.token lexargs true, lexbuf, false)
 
+#if FABLE_COMPILER
+        if false then
+#else
         if ct.CanBeCanceled then
+#endif
             (fun _ ->
                 ct.ThrowIfCancellationRequested()
                 tokenizer.GetToken())
@@ -3158,6 +3172,8 @@ module internal ParseAndCheckFile =
 
         errHandler.CollectedDiagnostics(None), parseResult, errHandler.AnyErrors
 
+#if !FABLE_COMPILER
+
     let ApplyLoadClosure
         (
             tcConfig: TcConfig,
@@ -3259,6 +3275,8 @@ module internal ParseAndCheckFile =
             )
             |> ignore
 
+#endif //!FABLE_COMPILER
+
     // Type check a single file against an initial context, gleaning both errors and intellisense information.
     let CheckOneFile
         (
@@ -3296,8 +3314,10 @@ module internal ParseAndCheckFile =
 
             use _unwindBP = UseBuildPhase BuildPhase.TypeCheck
 
+#if !FABLE_COMPILER
             // If additional references were brought in by the preprocessor then we need to process them
             ApplyLoadClosure(tcConfig, parsedMainInput, mainInputFileName, loadClosure, tcImports, backgroundDiagnostics)
+#endif
 
             // Typecheck the real input.
             let sink = TcResultsSinkImpl(tcGlobals, sourceText = sourceText)
@@ -3626,7 +3646,11 @@ type FSharpCheckFileResults
 
                 match pageWidth with
                 | None -> layout
+#if FABLE_COMPILER
+                | Some _pageWidth -> layout
+#else
                 | Some pageWidth -> Display.squashTo pageWidth layout
+#endif
                 |> LayoutRender.showL
                 |> SourceText.ofString)
 
@@ -3733,6 +3757,8 @@ type FSharpCheckFileResults
 
         FSharpCheckFileResults(mainInputFileName, errors, Some tcFileInfo, dependencyFiles, builder, keepAssemblyContents)
 
+#if !FABLE_COMPILER
+
     static member CheckOneFile
         (
             parseResults: FSharpParseFileResults,
@@ -3781,6 +3807,8 @@ type FSharpCheckFileResults
 
             return results
         }
+
+#endif //!FABLE_COMPILER
 
 [<Sealed>]
 // 'details' is an option because the creation of the tcGlobals etc. for the project may have failed.
@@ -3901,6 +3929,10 @@ type FSharpCheckProjectResults
         let results =
             match builderOrSymbolUses with
             | Choice1Of2 builder ->
+#if FABLE_COMPILER
+                ignore builder
+                seq {}
+#else
                 builder.SourceFiles
                 |> Array.ofList
                 |> Array.collect (fun x ->
@@ -3911,7 +3943,11 @@ type FSharpCheckProjectResults
                         | _ -> [||]
                     | _ -> [||])
                 |> Array.toSeq
+#endif //!FABLE_COMPILER
             | Choice2Of2 task ->
+#if FABLE_COMPILER
+                seq {}
+#else
                 Async.RunSynchronously(
                     async {
                         let! tcSymbolUses = task
@@ -3924,6 +3960,7 @@ type FSharpCheckProjectResults
                     },
                     ?cancellationToken = cancellationToken
                 )
+#endif //!FABLE_COMPILER
 
         results
         |> Seq.filter (fun symbolUse -> symbolUse.ItemOccurrence <> ItemOccurrence.RelatedText)
@@ -3942,9 +3979,13 @@ type FSharpCheckProjectResults
 
         let cenv = SymbolEnv(tcGlobals, thisCcu, Some ccuSig, tcImports)
 
-        let tcSymbolUses =
+        let tcSymbolUses : TcSymbolUses seq =
             match builderOrSymbolUses with
             | Choice1Of2 builder ->
+#if FABLE_COMPILER
+                ignore builder
+                seq {}
+#else
                 builder.SourceFiles
                 |> Array.ofList
                 |> Array.map (fun x ->
@@ -3955,7 +3996,13 @@ type FSharpCheckProjectResults
                         | _ -> TcSymbolUses.Empty
                     | _ -> TcSymbolUses.Empty)
                 |> Array.toSeq
-            | Choice2Of2 tcSymbolUses -> Async.RunSynchronously(tcSymbolUses, ?cancellationToken = cancellationToken)
+#endif //!FABLE_COMPILER
+            | Choice2Of2 tcSymbolUses ->
+#if FABLE_COMPILER
+                seq {}
+#else
+                Async.RunSynchronously(tcSymbolUses, ?cancellationToken = cancellationToken)
+#endif //!FABLE_COMPILER
 
         [|
             for r in tcSymbolUses do
@@ -3989,6 +4036,8 @@ type FSharpCheckProjectResults
 
     override _.ToString() =
         "FSharpCheckProjectResults(" + projectFileName + ")"
+
+#if !FABLE_COMPILER
 
 type FsiInteractiveChecker(legacyReferenceResolver, tcConfig: TcConfig, tcGlobals: TcGlobals, tcImports: TcImports, tcState) =
 
@@ -4106,6 +4155,8 @@ type FsiInteractiveChecker(legacyReferenceResolver, tcConfig: TcConfig, tcGlobal
 
             return parseResults, typeCheckResults, projectResults
         }
+
+#endif //!FABLE_COMPILER
 
 /// The result of calling TypeCheckResult including the possibility of abort and background compiler not caught up.
 [<RequireQualifiedAccess>]
