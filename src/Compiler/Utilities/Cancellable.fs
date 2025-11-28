@@ -57,7 +57,9 @@ open System
 open System.Threading
 open FSharp.Compiler
 
+#if !FABLE_COMPILER
 open FSharp.Core.CompilerServices.StateMachineHelpers
+#endif
 
 [<RequireQualifiedAccess; Struct>]
 type ValueOrCancelled<'TResult> =
@@ -127,7 +129,9 @@ type CancellableBuilder() =
     member inline _.Bind(comp, [<InlineIfLambda>] k) =
         Cancellable(fun ct ->
 
+#if !FABLE_COMPILER
             __debugPoint ""
+#endif
 
             match Cancellable.run ct comp with
             | ValueOrCancelled.Value v1 -> Cancellable.run ct (k v1)
@@ -136,7 +140,9 @@ type CancellableBuilder() =
     member inline _.BindReturn(comp, [<InlineIfLambda>] k) =
         Cancellable(fun ct ->
 
+#if !FABLE_COMPILER
             __debugPoint ""
+#endif
 
             match Cancellable.run ct comp with
             | ValueOrCancelled.Value v1 -> ValueOrCancelled.Value(k v1)
@@ -145,7 +151,9 @@ type CancellableBuilder() =
     member inline _.Combine(comp1, comp2) =
         Cancellable(fun ct ->
 
+#if !FABLE_COMPILER
             __debugPoint ""
+#endif
 
             match Cancellable.run ct comp1 with
             | ValueOrCancelled.Value() -> Cancellable.run ct comp2
@@ -154,7 +162,9 @@ type CancellableBuilder() =
     member inline _.TryWith(comp, [<InlineIfLambda>] handler) =
         Cancellable(fun ct ->
 
+#if !FABLE_COMPILER
             __debugPoint ""
+#endif
 
             let compRes =
                 try
@@ -172,13 +182,15 @@ type CancellableBuilder() =
             | ValueOrCancelled.Cancelled err1 -> ValueOrCancelled.Cancelled err1)
 
 #if FABLE_COMPILER
-    member inline _.Using(resource: 'Resource when 'Resource :> IDisposable, [<InlineIfLambda>] comp) =
+    member inline _.Using(resource: ('R :> IDisposable), [<InlineIfLambda>] comp) =
 #else
     member inline _.Using(resource: _ MaybeNull, [<InlineIfLambda>] comp) =
 #endif
         Cancellable(fun ct ->
 
+#if !FABLE_COMPILER
             __debugPoint ""
+#endif
 
             let body = comp resource
 
@@ -208,7 +220,9 @@ type CancellableBuilder() =
     member inline _.TryFinally(comp, [<InlineIfLambda>] compensation) =
         Cancellable(fun ct ->
 
+#if !FABLE_COMPILER
             __debugPoint ""
+#endif
 
             let compRes =
                 try

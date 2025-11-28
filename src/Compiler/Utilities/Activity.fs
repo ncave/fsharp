@@ -18,6 +18,7 @@ module ActivityNames =
 
     let AllRelevantNames = [| FscSourceName; ProfiledSourceName |]
 
+#if !FABLE_COMPILER
 module Metrics =
     let Meter = new Metrics.Meter(ActivityNames.FscSourceName)
 
@@ -65,6 +66,7 @@ module Metrics =
             formatTable headers rows
         with exn ->
             $"Error formatting table: {exn}"
+#endif
 
 [<RequireQualifiedAccess>]
 module internal Activity =
@@ -91,6 +93,7 @@ module internal Activity =
         let callerFilePath = "callerFilePath"
         let callerLineNumber = "callerLineNumber"
 
+#if !FABLE_COMPILER
         let AllKnownTags =
             [|
                 fileName
@@ -113,6 +116,7 @@ module internal Activity =
                 callerFilePath
                 callerLineNumber
             |]
+#endif
 
     module Events =
         let cacheHit = "cacheHit"
@@ -134,6 +138,11 @@ module internal Activity =
 
     let addEvent (name: string) =
         ignore name
+        ()
+    
+    let addEventWithTags (name: string) (tags: (string * objnull) seq) =
+        ignore name
+        ignore tags
         ()
 
 #else //!FABLE_COMPILER

@@ -4499,7 +4499,13 @@ type TType =
         | TType_var (tp, _) -> 
             match tp.Solution with 
             | None -> tp.DisplayName
+#if FABLE_COMPILER
+            | Some t ->
+                let s = if maxDepth < 0 then "True" else t.LimitedToString(maxDepth-1)
+                tp.DisplayName + $" (solved: {s})"
+#else
             | Some t -> tp.DisplayName + $" (solved: {if maxDepth < 0 then Boolean.TrueString else t.LimitedToString(maxDepth-1)})"
+#endif
         | TType_measure ms -> ms.ToString()
 
     override x.ToString() = x.LimitedToString(4)

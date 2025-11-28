@@ -459,10 +459,12 @@ val tryLanguageFeatureErrorOption:
 
 val languageFeatureNotSupportedInLibraryError: langFeature: LanguageFeature -> m: range -> 'T
 
+#if !FABLE_COMPILER
 module internal StackGuardMetrics =
     val Listen: unit -> IDisposable
     val StatsToString: unit -> string
     val CaptureStatsAndWriteToConsole: unit -> IDisposable
+#endif
 
 type StackGuard =
     new: name: string -> StackGuard

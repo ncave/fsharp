@@ -421,11 +421,11 @@ type internal LazyWithContextFailure =
 /// Just like "Lazy" but EVERY forcer must provide an instance of "ctxt", e.g. to help track errors
 /// on forcing back to at least one sensible user location
 [<Sealed>]
-type internal LazyWithContext<'T, 'ctxt> =
-    static member Create: f: ('ctxt -> 'T) * findOriginalException: (exn -> exn) -> LazyWithContext<'T, 'ctxt>
-    static member NotLazy: x: 'T -> LazyWithContext<'T, 'ctxt>
-    member Force: ctxt: 'ctxt -> 'T
-    member UnsynchronizedForce: ctxt: 'ctxt -> 'T
+type internal LazyWithContext<'T, 'Ctxt> =
+    static member Create: f: ('Ctxt -> 'T) * findOriginalException: (exn -> exn) -> LazyWithContext<'T, 'Ctxt>
+    static member NotLazy: x: 'T -> LazyWithContext<'T, 'Ctxt>
+    member Force: ctxt: 'Ctxt -> 'T
+    member UnsynchronizedForce: ctxt: 'Ctxt -> 'T
     member IsDelayed: bool
     member IsForced: bool
 

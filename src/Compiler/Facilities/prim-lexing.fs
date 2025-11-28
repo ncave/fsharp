@@ -263,9 +263,9 @@ type internal Position =
     static member FirstLine fileIdx = Position(fileIdx, 1, 0, 0)
 
 #if FABLE_COMPILER
-    type internal LexBufferChar = uint16
+type internal LexBufferChar = uint16
 #else
-    type internal LexBufferChar = char
+type internal LexBufferChar = char
 #endif
 
 type internal LexBufferFiller<'Char> = LexBuffer<'Char> -> unit
@@ -385,7 +385,7 @@ and [<Sealed>] internal LexBuffer<'Char>
         FSharp.Compiler.DiagnosticsLogger.checkLanguageFeatureAndRecover langVersion featureId range
 
     static member FromFunction
-        (reportLibraryOnlyFeatures, langVersion, strictIndentation, f: 'Char[] * int * int -> int)
+        (reportLibraryOnlyFeatures: bool, langVersion: LanguageVersion, strictIndentation: bool option, f: 'Char[] * int * int -> int)
         : LexBuffer<'Char> =
         let extension = Array.zeroCreate 4096
 
