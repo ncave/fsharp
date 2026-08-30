@@ -68,7 +68,7 @@ type public ILModuleReader =
     // ILModuleReader objects only need to be explicitly disposed if memory mapping is used, i.e. reduceMemoryUsage = false
     inherit System.IDisposable
 
-
+#if !FABLE_COMPILER
 /// Open a binary reader, except first copy the entire contents of the binary into 
 /// memory, close the file and ensure any subsequent reads happen from the in-memory store. 
 /// PDB files may not be read with this option. 
@@ -76,15 +76,18 @@ type public ILModuleReader =
 val internal OpenILModuleReader: string -> ILReaderOptions -> ILModuleReader
 
 val internal ClearAllILModuleReaderCache : unit -> unit
+#endif //!FABLE_COMPILER
 
 /// Open a binary reader based on the given bytes. 
 /// This binary reader is not internally cached.
 val internal OpenILModuleReaderFromBytes: fileName:string -> assemblyContents: byte[] -> options: ILReaderOptions -> ILModuleReader
 
+#if !FABLE_COMPILER
 /// Open a binary reader based on the given stream. 
 /// This binary reader is not internally cached.
 /// The binary reader will own the given stream and the stream will be disposed when there are no references to the binary reader.
 val internal OpenILModuleReaderFromStream: fileName:string -> peStream: Stream -> options: ILReaderOptions -> ILModuleReader
+#endif //!FABLE_COMPILER
 
 type internal Statistics = 
     { mutable rawMemoryFileCount : int
@@ -95,6 +98,8 @@ type internal Statistics =
 
 val internal GetStatistics : unit -> Statistics
 
+#if !FABLE_COMPILER
+
 /// The public API hook for changing the IL assembly reader, used by Resharper
 [<AutoOpen>]
 module public Shim =
@@ -103,3 +108,5 @@ module public Shim =
         abstract GetILModuleReader: fileName: string * readerOptions: ILReaderOptions -> ILModuleReader
 
     val mutable AssemblyReader: IAssemblyReader
+
+#endif //!FABLE_COMPILER

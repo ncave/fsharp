@@ -53,7 +53,7 @@ type CalledArg =
       NameOpt: Ident option
       CalledArgumentType: TType }
 
-val CalledArg:
+val GetCalledArg:
     pos: struct (int * int) *
     isParamArray: bool *
     optArgInfo: OptionalArgInfo *

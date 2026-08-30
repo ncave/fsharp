@@ -10230,7 +10230,11 @@ let rec EvalAttribArgExpr suppressLangFeatureCheck (g: TcGlobals) (x: Expr) =
         
         match v1, v2 with
         | Expr.Const (Const.Char x1, m, ty), Expr.Const (Const.Char x2, _, _) ->
+#if FABLE_COMPILER
+            Expr.Const (Const.Char (char (int x1 - int x2)), m, ty)
+#else
             Expr.Const (Const.Char (x1 - x2), m, ty)
+#endif
         | _ ->
             EvalArithBinOp (Checked.(-), Checked.(-), Checked.(-), Checked.(-), Checked.(-), Checked.(-), Checked.(-), Checked.(-), Checked.(-), Checked.(-), Checked.(-)) v1 v2
     | SpecificBinopExpr g g.unchecked_multiply_vref (arg1, arg2) ->
@@ -11865,6 +11869,8 @@ and visitVal (v: Val) : TypedTreeNode =
         Children = Seq.toList children
     }
 
+#if !FABLE_COMPILER
+
 let rec serializeNode (writer: IndentedTextWriter) (addTrailingComma:bool) (node: TypedTreeNode) =
     writer.WriteLine("{")
     // Add indent after opening {
@@ -11930,6 +11936,8 @@ let updateSeqTypeIsPrefix (fsharpCoreMSpec: ModuleOrNamespace) =
                 )
         )
     )
+
+#endif //!FABLE_COMPILER
 
 let isTyparOrderMismatch (tps: Typars) (argInfos: CurriedArgInfos) =
     let rec getTyparName (ty: TType) : string list =

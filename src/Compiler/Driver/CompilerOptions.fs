@@ -10,7 +10,9 @@ open FSharp.Compiler.Optimizer
 open Internal.Utilities.Library
 open Internal.Utilities.Library.Extras
 open FSharp.Compiler.AbstractIL.IL
+#if !FABLE_COMPILER
 open FSharp.Compiler.AbstractIL.ILPdbWriter
+#endif
 open FSharp.Compiler.AbstractIL.Diagnostics
 open FSharp.Compiler.CompilerConfig
 open FSharp.Compiler.CompilerDiagnostics
@@ -123,9 +125,11 @@ let getCompilerOption (CompilerOption(_s, _tag, _spec, _, help) as compilerOptio
     let lineWidth =
         match width with
         | None ->
+#if !FABLE_COMPILER
             try
                 Console.BufferWidth
             with _ ->
+#endif
                 defaultLineWidth
         | Some w -> w
 
@@ -232,6 +236,7 @@ module ResponseFile =
         | CompilerOptionSpec of string
         | Comment of string
 
+#if !FABLE_COMPILER
     let parseFile path : Choice<ResponseFileData, Exception> =
         let parseLine (l: string) =
             match l with
@@ -254,6 +259,7 @@ module ResponseFile =
             Choice1Of2 data
         with e ->
             Choice2Of2 e
+#endif //!FABLE_COMPILER
 
 let ParseCompilerOptions (collectOtherArgument: string -> unit, blocks: CompilerOptionBlock list, args) =
     use _ = UseBuildPhase BuildPhase.Parameter
@@ -331,6 +337,10 @@ let ParseCompilerOptions (collectOtherArgument: string -> unit, blocks: Compiler
         match args with
         | [] -> ()
         | opt: string :: t when opt.StartsWithOrdinal("@") ->
+#if FABLE_COMPILER
+            ignore t
+            ()
+#else
             let responseFileOptions =
                 let fullpath =
                     try
@@ -359,6 +369,7 @@ let ParseCompilerOptions (collectOtherArgument: string -> unit, blocks: Compiler
                         rspData |> List.choose onlyOptions
 
             processArg (responseFileOptions @ t)
+#endif //!FABLE_COMPILER
         | opt :: t ->
             let option, optToken, argString = parseOption opt
 
@@ -1140,6 +1151,10 @@ let mlCompatibilityFlag (tcConfigB: TcConfigBuilder) =
         Some(FSComp.SR.optsMlcompatibility ())
     )
 
+#if FABLE_COMPILER
+let exit _code = ()
+#endif
+
 let GetLanguageVersions () =
     seq {
         FSComp.SR.optsSupportedLangVersions ()
@@ -1220,10 +1235,12 @@ let codePageFlag (tcConfigB: TcConfigBuilder) =
         "codepage",
         tagInt,
         OptionInt(fun n ->
+#if !FABLE_COMPILER
             try
                 Encoding.GetEncoding n |> ignore
             with :? ArgumentException as err ->
                 error (Error(FSComp.SR.optsProblemWithCodepage (n, err.Message), rangeCmdArgs))
+#endif
 
             tcConfigB.inputCodePage <- Some n),
         None,
@@ -1430,7 +1447,9 @@ let testFlag tcConfigB =
                     { tcConfigB.optSettings with
                         reportHasEffect = true
                     }
+#if !FABLE_COMPILER
             | "NoErrorText" -> FSComp.SR.SwallowResourceText <- true
+#endif
             | "EmitFeeFeeAs100001" -> tcConfigB.testFlagEmitFeeFeeAs100001 <- true
             | "DumpDebugInfo" -> tcConfigB.dumpDebugInfo <- true
             | "ShowLoadedAssemblies" -> tcConfigB.showLoadedAssemblies <- true
@@ -2412,6 +2431,8 @@ let ApplyCommandLineArgs (tcConfigB: TcConfigBuilder, sourceFiles: string list, 
         errorRecovery e range0
         sourceFiles
 
+#if !FABLE_COMPILER
+
 //----------------------------------------------------------------------------
 // ReportTime
 //----------------------------------------------------------------------------
@@ -2510,3 +2531,5 @@ let DoWithDiagnosticColor severity f =
             | _ -> infoColor
 
         DoWithColor color f
+
+#endif //!FABLE_COMPILER

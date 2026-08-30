@@ -22,7 +22,11 @@ open System.Collections.Generic
 
 module QP = QuotationPickler
 
+#if FABLE_COMPILER
+let verboseCReflect = false
+#else
 let verboseCReflect = isEnvVarSet "VERBOSE_CREFLECT"
+#endif
 
 [<RequireQualifiedAccess>]
 type IsReflectedDefinition =

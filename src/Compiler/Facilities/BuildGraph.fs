@@ -5,6 +5,8 @@ module FSharp.Compiler.BuildGraph
 open System.Threading
 open System.Globalization
 
+#if !FABLE_COMPILER
+
 [<RequireQualifiedAccess>]
 module GraphNode =
 
@@ -78,3 +80,5 @@ type GraphNode<'T> private (computation: Async<'T>, cachedResult: ValueOption<'T
         GraphNode(nodeResult, ValueSome result, nodeResult)
 
     new(computation) = GraphNode(computation, ValueNone, Unchecked.defaultof<_>)
+
+#endif //!FABLE_COMPILER

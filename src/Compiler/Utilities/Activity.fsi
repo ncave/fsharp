@@ -2,7 +2,9 @@
 namespace FSharp.Compiler.Diagnostics
 
 open System
+#if !FABLE_COMPILER
 open System.Diagnostics.Metrics
+#endif
 
 /// For activities following the dotnet distributed tracing concept
 /// https://learn.microsoft.com/dotnet/core/diagnostics/distributed-tracing-concepts?source=recommendations
@@ -16,10 +18,12 @@ module ActivityNames =
 
     val AllRelevantNames: string[]
 
+#if !FABLE_COMPILER
 module internal Metrics =
     val Meter: Meter
 
     val printTable: headers: string list -> rows: string list list -> string
+#endif
 
 /// For activities following the dotnet distributed tracing concept
 /// https://learn.microsoft.com/dotnet/core/diagnostics/distributed-tracing-concepts?source=recommendations
@@ -53,9 +57,11 @@ module internal Activity =
 
     val addEventWithTags: name: string -> tags: (string * objnull) seq -> unit
 
+#if !FABLE_COMPILER
     module Profiling =
         val startAndMeasureEnvironmentStats: name: string -> System.IDisposable | null
         val addConsoleListener: unit -> IDisposable
 
     module CsvExport =
         val addCsvFileListener: pathToFile: string -> IDisposable
+#endif
