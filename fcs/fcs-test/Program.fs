@@ -128,8 +128,73 @@ let printAst title (projectResults: FSharpCheckProjectResults) =
     printfn "%s Typed AST:" title
     decls |> printfn "%s"
 
+/// Checks the project in several passes the way a watch session does: a full check, then a check cut short at
+/// the first dependent of an edited file, then a full check again. The file past the cut point depends on the
+/// edited file and must be checked again in the last pass instead of reusing its earlier result.
+let checkRecheckAfterTruncatedPass (extraArgs: string list) =
+    let projName = "Incremental.fsproj"
+    let projDir = Path.Combine(Path.GetTempPath(), "fcs-test-incremental")
+    let files = [| "A.fs"; "B.fs"; "C.fs"; "D.fs" |] |> Array.map (fun name -> Path.Combine(projDir, name))
+    let sources = System.Collections.Generic.Dictionary<string, string>()
+    sources[files[0]] <- "module A\nlet value = 1"
+    sources[files[1]] <- "module B\nlet twice = A.value + A.value"
+    sources[files[2]] <- "module C\nlet unrelated = \"c\""
+    sources[files[3]] <- "module D\nlet shown: int = A.value"
+
+    let dllName = Path.Combine(projDir, "Incremental.dll")
+    let args = Array.append (mkProjectCommandLineArgsForScript (dllName, files)) (List.toArray extraArgs)
+    let checker = InteractiveChecker.Create(getProjectOptionsFromCommandLineArgs (projName, args))
+    let sourceReader fileName =
+        let source = sources[fileName]
+        hash source, lazy source
+    let errorsOf (results: FSharpCheckProjectResults) =
+        results.Diagnostics
+        |> Array.filter (fun d -> d.Severity = FSharp.Compiler.Diagnostics.FSharpDiagnosticSeverity.Error)
+        |> Array.map (fun d -> Path.GetFileName d.FileName)
+        |> Array.distinct
+        |> Array.sort
+    let check lastFile =
+        checker.ParseAndCheckProject(projName, files, sourceReader, ?lastFile = lastFile) |> Async.RunSynchronously |> errorsOf
+
+    let initial = check None
+    sources[files[0]] <- "module A\nlet value = \"one\""
+    let cutAtB = check (Some files[1])
+    let afterwards = check None
+    printfn "\n---> Recheck after truncated pass %A: initial %A, cut at B.fs %A, full %A" extraArgs initial cutAtB afterwards
+    if initial <> [||] || cutAtB <> [||] || afterwards <> [| "D.fs" |] then
+        failwith "D.fs kept a result checked against the old A.fs"
+
+/// Two implementation files in different directories declare the same module, as happens when Fable compiles
+/// several packages into one project. A later file that opens the module must see the definitions of both.
+let checkSharedModuleName (extraArgs: string list) =
+    let projName = "SharedModule.fsproj"
+    let projDir = Path.Combine(Path.GetTempPath(), "fcs-test-shared-module")
+    let files = [| "pkg1/First.fs"; "pkg2/Second.fs"; "Use.fs" |] |> Array.map (fun name -> Path.Combine(projDir, name))
+    let sources =
+        dict [
+            files[0], "module Shared\nlet first = 1"
+            files[1], "module Shared\nopen Shared\nlet second = first + 1"
+            files[2], "module Use\nopen Shared\nlet total = first + second"
+        ]
+    let dllName = Path.Combine(projDir, "SharedModule.dll")
+    let args = Array.append (mkProjectCommandLineArgsForScript (dllName, files)) (List.toArray extraArgs)
+    let checker = InteractiveChecker.Create(getProjectOptionsFromCommandLineArgs (projName, args))
+    let sourceReader fileName =
+        let source = sources[fileName]
+        hash source, lazy source
+    let results = checker.ParseAndCheckProject(projName, files, sourceReader) |> Async.RunSynchronously
+    let errors = results.Diagnostics |> Array.filter (fun d -> d.Severity = FSharp.Compiler.Diagnostics.FSharpDiagnosticSeverity.Error)
+    printfn "\n---> Shared module name %A: %d errors" extraArgs errors.Length
+    if errors.Length > 0 then
+        failwithf "Use.fs does not see both files of module Shared: %A" (errors |> Array.map (fun d -> d.Message))
+
 [<EntryPoint>]
 let main _argv = 
+    checkRecheckAfterTruncatedPass []
+    checkRecheckAfterTruncatedPass [ "--parallelcompilation-" ]
+    checkSharedModuleName []
+    checkSharedModuleName [ "--parallelcompilation-" ]
+
     let projName = "Project.fsproj"
     let fileName = __SOURCE_DIRECTORY__ + "/test_script.fsx"
     let fileNames = [| fileName |]

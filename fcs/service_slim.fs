@@ -4,8 +4,10 @@ namespace FSharp.Compiler.SourceCodeServices
 
 open System
 open System.Collections.Concurrent
+open System.Collections.Generic
 open System.IO
 open System.Threading
+open System.Threading.Tasks
 
 open Internal.Utilities.Collections
 open Internal.Utilities.Library
@@ -49,6 +51,17 @@ open FSharp.Compiler.GraphChecking
 type internal TcResult = TcEnv * TopAttribs * CheckedImplFile option * ModuleOrNamespaceType
 type internal TcErrors = FSharpDiagnostic[]
 
+/// Outcome of checking one file over the dependency graph. The record stays valid while the same parse tree
+/// is checked under the same name and every dependency still resolves to the version recorded here.
+type internal FileCheckRecord = {
+    version: int64
+    parseResults: FSharpParseFileResults
+    qualifiedName: string
+    dependencyVersions: (string * int64)[]
+    finisher: Finisher<NodeToTypeCheck, TcState, PartialResult>
+    checkDiagnostics: TcErrors
+}
+
 type internal CompilerState = {
     tcConfig: TcConfig
     tcGlobals: TcGlobals
@@ -57,6 +70,8 @@ type internal CompilerState = {
     projectOptions: FSharpProjectOptions
     parseCache: ConcurrentDictionary<string * int, FSharpParseFileResults>
     checkCache: ConcurrentDictionary<string, (TcResult * TcErrors) * (TcState * ModuleNamesDict)>
+    fileCheckCache: ConcurrentDictionary<string, FileCheckRecord>
+    checkVersion: int64 ref
 }
 
 type internal CacheMsg<'T> =
@@ -149,6 +164,8 @@ module internal ParseAndCheck =
         let parseCache = ConcurrentDictionary<string * int, FSharpParseFileResults>(HashIdentity.Structural)
         // type check cache, keyed on file name
         let checkCache = ConcurrentDictionary<string, (TcResult * TcErrors) * (TcState * ModuleNamesDict)>(HashIdentity.Structural)
+        // per-file graph check results, keyed on file name
+        let fileCheckCache = ConcurrentDictionary<string, FileCheckRecord>(HashIdentity.Structural)
 
         return {
             tcConfig = tcConfig
@@ -158,6 +175,8 @@ module internal ParseAndCheck =
             projectOptions = projectOptions
             parseCache = parseCache
             checkCache = checkCache
+            fileCheckCache = fileCheckCache
+            checkVersion = ref 0L
         }
     }
 
@@ -239,6 +258,216 @@ module internal ParseAndCheck =
                                 loadClosure, implFile, sink.GetOpenDeclarations())
         FSharpCheckFileResults (fileName, errors, Some scope, parseResults.DependencyFiles, None, keepAssemblyContents)
 
+    let NotifySubscriber (subscriber, compilerState, tcState: TcState, tcResult: TcResult) =
+        match subscriber, tcResult with
+        | Some notify, (_, _, Some implFile, _) ->
+            let cenv = SymbolEnv(compilerState.tcGlobals, tcState.Ccu, Some tcState.CcuSig, compilerState.tcImports)
+            notify (FSharpImplementationFileContents(cenv, implFile))
+        | _ -> ()
+
+    type NodeOutcome = {
+        finisher: Finisher<NodeToTypeCheck, TcState, PartialResult>
+        stateAfter: TcState
+    }
+
+    let private nodeOrder node =
+        match node with
+        | NodeToTypeCheck.PhysicalFile idx -> 0, idx
+        | NodeToTypeCheck.ArtificialImplFile idx -> 1, idx
+
+    /// The first failure is propagated to every unfinished node, so no waiter is left hanging.
+    let private RunNodes (graph: Graph<NodeToTypeCheck>) (run: NodeToTypeCheck -> (NodeToTypeCheck -> NodeOutcome) -> NodeOutcome) =
+        let nodes = graph.Keys |> Seq.toArray
+        let dependenciesOf node = graph[node] |> Array.filter ((<>) node)
+        let dependentsOf =
+            let reversed = Graph.reverse graph
+            fun node ->
+                match reversed.TryGetValue node with
+                | true, dependents -> dependents |> Array.filter ((<>) node)
+                | _ -> [||]
+        let completion =
+            nodes
+            |> Array.map (fun node -> node, TaskCompletionSource<NodeOutcome>(TaskCreationOptions.RunContinuationsAsynchronously))
+            |> readOnlyDict
+        let waitingOn = nodes |> Array.map (fun node -> node, ref (dependenciesOf node).Length) |> readOnlyDict
+        let failed = ref false
+        let outcomeOf node = completion[node].Task.GetAwaiter().GetResult()
+
+        let rec start node =
+            Task.Run(fun () ->
+                if not failed.Value then
+                    try
+                        completion[node].TrySetResult(run node outcomeOf) |> ignore
+                        for dependent in dependentsOf node do
+                            let counter = waitingOn[dependent]
+                            if Interlocked.Decrement(&counter.contents) = 0 then start dependent
+                    with e ->
+                        failed.Value <- true
+                        for pending in completion.Values do
+                            pending.TrySetException e |> ignore)
+            |> ignore
+
+        for node in nodes do
+            if waitingOn[node].Value = 0 then start node
+
+        outcomeOf
+
+    /// Several implementation files may declare the same module; sequential checking lets later files see all of
+    /// them, while the dependency trie records only the first, so the others are linked here.
+    let BuildFileGraph (parseResults: FSharpParseFileResults[], filePairs: FilePairMap, sourceFiles: FileInProject[]) =
+        let graph, _trie = DependencyResolution.mkGraph filePairs sourceFiles
+        let sameModuleFiles =
+            parseResults
+            |> Array.mapi (fun idx parseRes ->
+                match parseRes.ParseTree with
+                | ParsedInput.ImplFile _ when not (filePairs.HasSignature idx) -> Some (parseRes.ParseTree.QualifiedName.Text, idx)
+                | _ -> None)
+            |> Array.choose id
+            |> Array.groupBy fst
+            |> Array.choose (fun (_, group) -> if group.Length > 1 then Some (group |> Array.map snd |> Array.sort) else None)
+        if sameModuleFiles.Length = 0 then graph else
+        graph
+        |> Seq.map (fun (KeyValue(idx, deps)) ->
+            let linked =
+                sameModuleFiles
+                |> Array.collect (fun group ->
+                    if group |> Array.exists (fun file -> file = idx || Array.contains file deps) then
+                        group |> Array.filter (fun file -> file < idx)
+                    else
+                        [||])
+            idx, Array.append deps linked |> Array.distinct)
+        |> Graph.make
+
+    /// Files are checked concurrently over the dependency graph, then folded, cached and reported in project
+    /// order, so the subscriber and the caches see the same per-file states a sequential check produces.
+    let TypeCheckFilesOverGraph (parseResults: FSharpParseFileResults[], tcInitialState: TcState, compilerState, subscriber) =
+        let tcConfig = compilerState.tcConfig
+        let diagnosticsOptions = tcConfig.diagnosticsOptions
+        let fileCount = parseResults.Length
+        let fileNames = parseResults |> Array.map _.FileName
+
+        let inputs, moduleNamesDicts =
+            parseResults
+            |> Array.mapFold (fun moduleNamesDict (parseRes: FSharpParseFileResults) ->
+                let input, moduleNamesDict = DeduplicateParsedInputModuleName moduleNamesDict parseRes.ParseTree
+                (input, moduleNamesDict), moduleNamesDict) Map.empty
+            |> fst
+            |> Array.unzip
+
+        let sourceFiles = inputs |> Array.mapi (fun idx input -> { Idx = idx; FileName = input.FileName; ParsedInput = input })
+        let filePairs = FilePairMap(sourceFiles)
+        let fileGraph = BuildFileGraph (parseResults, filePairs, sourceFiles)
+        let dependencyNames =
+            Array.init fileCount (fun idx ->
+                fileGraph[idx] |> Array.filter ((<>) idx) |> Array.sort |> Array.map (fun dep -> fileNames[dep]))
+
+        let reused =
+            let plan = Array.zeroCreate<FileCheckRecord option> fileCount
+            let indexOf = fileNames |> Array.mapi (fun idx name -> name, idx) |> readOnlyDict
+            for idx in 0 .. fileCount - 1 do
+                let plannedVersion depName =
+                    match indexOf.TryGetValue depName with
+                    | true, depIdx when depIdx < idx ->
+                        match plan[depIdx] with
+                        | Some record -> record.version
+                        | None -> 0L
+                    | _ -> 0L
+                let sameDependency (depName, depVersion) currentDep =
+                    depName = currentDep && depVersion = plannedVersion depName
+                plan[idx] <-
+                    match compilerState.fileCheckCache.TryGetValue fileNames[idx] with
+                    | true, record when
+                        obj.ReferenceEquals(record.parseResults, parseResults[idx])
+                        && record.qualifiedName = inputs[idx].QualifiedName.Text
+                        && record.dependencyVersions.Length = dependencyNames[idx].Length
+                        && Array.forall2 sameDependency record.dependencyVersions dependencyNames[idx] -> Some record
+                    | _ -> None
+            plan
+
+        let nodeGraph = TransformDependencyGraph(fileGraph, filePairs)
+        let reachable = Graph.transitive nodeGraph
+        let reachableFrom node =
+            match reachable.TryGetValue node with
+            | true, nodes -> nodes |> Array.filter ((<>) node)
+            | _ -> [||]
+
+        let toDiagnostics idx diagnostics =
+            DiagnosticHelpers.CreateDiagnostics (diagnosticsOptions, false, fileNames[idx], diagnostics, suggestNamesForErrors, tcConfig.flatErrors, None)
+        let newFileLogger () =
+            let capturing = CompilationDiagnosticLogger("TypeCheckFile", diagnosticsOptions)
+            capturing, GetDiagnosticsLoggerFilteringByScopedNowarn(diagnosticsOptions, capturing)
+        let checkDiagnostics = Array.zeroCreate<TcErrors> fileCount
+
+        let finish (Finisher(finisher = finisher)) tcState = finisher tcState
+        let quietly f =
+            use _ = UseDiagnosticsLogger DiscardErrorsLogger
+            f ()
+
+        let stateBefore node (outcomeOf: NodeToTypeCheck -> NodeOutcome) =
+            match nodeGraph[node] |> Array.filter ((<>) node) with
+            | [||] -> tcInitialState
+            | dependencies ->
+                let widest = dependencies |> Array.maxBy (fun dep -> (reachableFrom dep).Length)
+                let alreadyIn = HashSet(reachableFrom widest)
+                alreadyIn.Add widest |> ignore
+                let remaining = reachableFrom node |> Array.filter (alreadyIn.Contains >> not) |> Array.sortBy nodeOrder
+                quietly (fun () ->
+                    remaining |> Array.fold (fun tcState dep -> finish (outcomeOf dep).finisher tcState |> snd) (outcomeOf widest).stateAfter)
+
+        let runNode node outcomeOf =
+            let tcState = stateBefore node outcomeOf
+            let finisher =
+                match node with
+                | NodeToTypeCheck.ArtificialImplFile idx ->
+                    Finisher(node, AddSignatureResultToTcImplEnv(compilerState.tcImports, compilerState.tcGlobals, None, TcResultsSink.NoSink, tcState, inputs[idx]))
+                | NodeToTypeCheck.PhysicalFile idx ->
+                    match reused[idx] with
+                    | Some record -> record.finisher
+                    | None ->
+                        let capturing, logger = newFileLogger ()
+                        use _scope = new CompilationGlobalsScope (logger, BuildPhase.TypeCheck)
+                        let checkForErrors () = parseResults[idx].ParseHadErrors || logger.ErrorCount > 0
+                        let finisher =
+                            CheckOneInputWithCallback node
+                                (checkForErrors, tcConfig, compilerState.tcImports, compilerState.tcGlobals, None, TcResultsSink.NoSink, tcState, inputs[idx], false)
+                            |> Cancellable.runWithoutCancellation
+                        checkDiagnostics[idx] <- toDiagnostics idx (capturing.GetDiagnostics())
+                        finisher
+            { finisher = finisher; stateAfter = quietly (fun () -> finish finisher tcState |> snd) }
+
+        let outcomeOf = RunNodes nodeGraph runNode
+        use _phase = UseBuildPhase BuildPhase.TypeCheck
+
+        let versionOf fileName =
+            match compilerState.fileCheckCache.TryGetValue fileName with
+            | true, record -> record.version
+            | _ -> 0L
+
+        let publish tcState idx =
+            let outcome = outcomeOf (NodeToTypeCheck.PhysicalFile idx)
+            let capturing, logger = newFileLogger ()
+            let tcResult, tcState =
+                use _ = UseDiagnosticsLogger logger
+                finish outcome.finisher tcState
+            let record =
+                match reused[idx] with
+                | Some record -> record
+                | None ->
+                    { version = Interlocked.Increment(&compilerState.checkVersion.contents)
+                      parseResults = parseResults[idx]
+                      qualifiedName = inputs[idx].QualifiedName.Text
+                      dependencyVersions = dependencyNames[idx] |> Array.map (fun dep -> dep, versionOf dep)
+                      finisher = outcome.finisher
+                      checkDiagnostics = checkDiagnostics[idx] }
+            compilerState.fileCheckCache[fileNames[idx]] <- record
+            let tcErrors = Array.append record.checkDiagnostics (toDiagnostics idx (capturing.GetDiagnostics()))
+            compilerState.checkCache[fileNames[idx]] <- ((tcResult, tcErrors), (tcState, moduleNamesDicts[idx]))
+            NotifySubscriber (subscriber, compilerState, tcState, tcResult)
+            (tcResult, tcErrors), tcState
+
+        let results, tcState = Array.mapFold publish tcInitialState (Array.init fileCount id)
+        results, (tcState, Array.last moduleNamesDicts)
+
     let TypeCheckClosedInputSet (parseResults: FSharpParseFileResults[], tcState, compilerState, subscriber) =
         let cachedTypeCheck (tcState, moduleNamesDict) (parseRes: FSharpParseFileResults) =
             let checkCacheKey = parseRes.FileName
@@ -247,18 +476,20 @@ module internal ParseAndCheck =
                 TypeCheckOneInputEntry (parseRes, TcResultsSink.NoSink, tcState, moduleNamesDict, compilerState)
 
             let (result, errors), (tcState, moduleNamesDict) = compilerState.checkCache.GetOrAdd(checkCacheKey, typeCheckOneInput)
-
-            let _, _, implFile, _ = result
-            match subscriber, implFile with
-            | Some subscriber, Some implFile ->
-                let cenv = SymbolEnv(compilerState.tcGlobals, tcState.Ccu, Some tcState.CcuSig, compilerState.tcImports)
-                FSharpImplementationFileContents(cenv, implFile) |> subscriber
-            | _ -> ()
-
+            NotifySubscriber (subscriber, compilerState, tcState, result)
             (result, errors), (tcState, moduleNamesDict)
 
+        let graphMode =
+            parseResults.Length > 1
+            && compilerState.tcConfig.typeCheckingConfig.Mode = TypeCheckingMode.Graph
+            && not compilerState.tcConfig.isInteractive
+            && not compilerState.tcConfig.compilingFSharpCore
+
         let results, (tcState, moduleNamesDict) =
-            ((tcState, Map.empty), parseResults) ||> Array.mapFold cachedTypeCheck
+            if graphMode then
+                TypeCheckFilesOverGraph (parseResults, tcState, compilerState, subscriber)
+            else
+                ((tcState, Map.empty), parseResults) ||> Array.mapFold cachedTypeCheck
 
         let tcResults, tcErrors = Array.unzip results
         let (tcEnvAtEndOfLastFile, topAttrs, implFiles, _ccuSigsForFiles), tcState =
@@ -285,6 +516,7 @@ type InteractiveChecker internal (compilerStateCache) =
         let! compilerState = compilerStateCache.Get()
         compilerState.parseCache.Clear()
         compilerState.checkCache.Clear()
+        compilerState.fileCheckCache.Clear()
     }
 
     member _.GetImportedAssemblies() = async {
@@ -430,7 +662,7 @@ type InteractiveChecker internal (compilerStateCache) =
         let currentFileIdx = Array.IndexOf(fileNames, currentFileName)
 
         let filePairs = FilePairMap(sourceFiles)
-        let graph, _trie = DependencyResolution.mkGraph filePairs sourceFiles        
+        let graph = BuildFileGraph (parseResults, filePairs, sourceFiles)
         let findTransitiveDependentFiles (startNode : FileIndex) : FileIndex array =
             let rec dfs (node : FileIndex) (visited : Set<FileIndex>) (acc : FileIndex array) : FileIndex array =
                 if (Set.contains node visited) then
@@ -439,7 +671,7 @@ type InteractiveChecker internal (compilerStateCache) =
                     let newVisited = Set.add node visited
 
                     let consumers =
-                        // Last node in the project cannot have 
+                        // Last node in the project cannot have
                         if node = graph.Count - 1 then
                             acc
                         else
