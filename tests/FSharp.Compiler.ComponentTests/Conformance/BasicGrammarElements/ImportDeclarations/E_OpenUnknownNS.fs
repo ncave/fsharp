@@ -1,5 +1,5 @@
-// #Regression #Conformance #DeclarationElements #Import 
-#light
+// #Regression #Conformance #DeclarationElements #Import
+
 
 // Verify error when opening an unknown module or namespace
 

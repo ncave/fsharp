@@ -82,7 +82,7 @@ module MemberDefinitions_NamedArguments =
         |> withDiagnostics [
             (Error 39, Line 8, Col 47, Line 8, Col 51, "The value or constructor 'arg1' is not defined.")
             (Error 39, Line 8, Col 54, Line 8, Col 58, "The value or constructor 'arg2' is not defined.")
-            (Error 3, Line 12, Col 1, Line 12, Col 8, "This value is not a function and cannot be applied.")
+            (Error 3, Line 12, Col 1, Line 12, Col 8, "This value is not a function and cannot be applied. It has type '(int * int)', which does not accept arguments.")
         ]
 
     // SOURCE=genericNamedParams.fs		# genericNamedParams.fs
@@ -155,3 +155,31 @@ module MemberDefinitions_NamedArguments =
         compilation
         |> verifyCompileAndRun
         |> shouldSucceed
+
+    [<Theory>]
+    [<InlineData("preview", "1, 2", true)>]
+    [<InlineData("preview", "x = 1, y = 2", false)>]
+    [<InlineData("preview", "y = 2, x = 1", false)>]
+    [<InlineData("10.0", "1, 2", false)>]
+    let ``provided methods require named arguments`` langVersion (arguments: string) shouldReject =
+        let providerPath = System.IO.Path.Combine(__SOURCE_DIRECTORY__, "../../../../../fsharp/typeProviders/requireNamedArguments/provider.fsx")
+        let provider =
+            Fsx $"""#load @"{providerPath}" """
+            |> withName "RequireNamedArgumentsProvider"
+            |> ignoreWarnings
+            |> compile
+            |> shouldSucceed
+
+        let result =
+            Fsx $"""#r @"{provider.OutputPath.Value}"
+let result = Provided.C.M({arguments})"""
+#if NETCOREAPP
+            |> withOptions ["--usesdkrefs-"]
+#endif
+            |> withLangVersion langVersion
+            |> eval
+
+        if shouldReject then
+            result |> shouldFail |> withErrorCode 3923
+        else
+            result |> shouldSucceed

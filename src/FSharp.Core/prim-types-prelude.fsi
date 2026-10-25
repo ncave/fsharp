@@ -6,7 +6,6 @@
 
 #nowarn "35" // This construct is deprecated: the treatment of this operator is now handled directly by the F# compiler and its meaning may not be redefined.
 #nowarn "61" // The containing type can use <c>null</c> as a representation value for its nullary union case. This member will be compiled as a static member.
-#nowarn "62" // This construct is for ML compatibility. The syntax <c>module ... : sig .. end</c> is deprecated unless OCaml compatibility is enabled. Consider using <c>module ... = begin .. end'.
 
 // Basic F# type definitions, functions and operators.
 namespace Microsoft.FSharp.Core
@@ -141,7 +140,7 @@ namespace Microsoft.FSharp.Core
 
     /// <summary>Single dimensional, zero-based arrays, written <c>int array</c>, <c>string array</c> etc.</summary>
     ///
-    /// <remarks>Use the values in the <c>Array</c> module to manipulate values 
+    /// <remarks>Use the values in the <c>Array</c> module to manipulate values
     /// of this type, or the notation <c>arr.[x]</c> to get/set array
     /// values.</remarks>
     ///
@@ -149,11 +148,11 @@ namespace Microsoft.FSharp.Core
     /// <exclude />
     type 'T ``[]`` = (# "!0[]" #)
 
-    /// <summary>Two dimensional arrays, typically zero-based.</summary> 
+    /// <summary>Two dimensional arrays, typically zero-based.</summary>
     ///
     /// <remarks>Use the values in the <c>Array2D</c> module
     /// to manipulate values of this type, or the notation <c>arr.[x,y]</c> to get/set array
-    /// values.   
+    /// values.
     ///
     /// Non-zero-based arrays can also be created using methods on the System.Array type.</remarks>
     ///
@@ -177,12 +176,12 @@ namespace Microsoft.FSharp.Core
     ///
     /// <remarks>Use the values in the <c>Array4D</c> module
     /// to manipulate values of this type, or the notation <c>arr.[x1,x2,x3,x4]</c> to get and set array
-    /// values.</remarks>  
+    /// values.</remarks>
     ///
     /// <category>Basic Types</category>
     /// <exclude />
     type 'T ``[,,,]`` = (# "!0[0 ...,0 ...,0 ...,0 ...]" #)
-    
+
     /// <summary>Five dimensional arrays, typically zero-based. Non-zero-based arrays
     /// can be created using methods on the System.Array type.</summary>
     ///
@@ -403,19 +402,19 @@ namespace Microsoft.FSharp.Core
         (# "!0[0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...,0 ...]" #)
 
     /// <summary>Single dimensional, zero-based arrays, written <c>int array</c>, <c>string array</c> etc.</summary>
-    /// 
-    /// <remarks>Use the values in the <see cref="T:Microsoft.FSharp.Collections.ArrayModule" /> module to manipulate values 
+    ///
+    /// <remarks>Use the values in the <see cref="T:Microsoft.FSharp.Collections.ArrayModule" /> module to manipulate values
     /// of this type, or the notation <c>arr.[x]</c> to get/set array
-    /// values.</remarks>   
+    /// values.</remarks>
     ///
     /// <category>Basic Types</category>
     type 'T array = 'T[]
-            
+
     /// <summary>Represents an unmanaged pointer in F# code.</summary>
     ///
     /// <remarks>This type should only be used when writing F# code that interoperates
     /// with native code. Use of this type in F# code may result in
-    /// unverifiable code being generated. Conversions to and from the 
+    /// unverifiable code being generated. Conversions to and from the
     /// <see cref="T:Microsoft.FSharp.Core.nativeint" /> type may be required. Values of this type can be generated
     /// by the functions in the <c>NativeInterop.NativePtr</c> module.</remarks>
     ///
@@ -426,7 +425,7 @@ namespace Microsoft.FSharp.Core
     ///
     /// <remarks>This type should only be used when writing F# code that interoperates
     /// with native code. Use of this type in F# code may result in
-    /// unverifiable code being generated. Conversions to and from the 
+    /// unverifiable code being generated. Conversions to and from the
     /// <see cref="T:Microsoft.FSharp.Core.nativeint" /> type may be required. Values of this type can be generated
     /// by the functions in the <c>NativeInterop.NativePtr</c> module.</remarks>
     ///

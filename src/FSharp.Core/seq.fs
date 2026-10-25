@@ -608,7 +608,7 @@ module Seq =
         mkUnfoldSeq generator state
 
     [<CompiledName("Empty")>]
-    let empty<'T> = (EmptyEnumerable :> seq<'T>)
+    let empty<'T> = System.Linq.Enumerable.Empty<'T>()
 
     [<CompiledName("InitializeInfinite")>]
     let initInfinite initializer =
@@ -1011,7 +1011,11 @@ module Seq =
         checkNonNull "source" source
 
         match source with
-        | :? ('T array) as res -> (res.Clone() :?> 'T array)
+        | :? ('T array) as res ->
+            if res.Length = 0 && res.GetType() = typeof<'T array> then
+                [||]
+            else
+                (res.Clone() :?> 'T array)
         | :? ('T list) as res -> List.toArray res
         | :? ICollection<'T> as res ->
             // Directly create an array and copy ourselves.

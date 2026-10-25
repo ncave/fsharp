@@ -1,9 +1,9 @@
-// #Conformance #PatternMatching 
-#light
+// #Conformance #PatternMatching
+
 
 // Verify that if the when guard fails, that pattern is not matched.
 
-let complexXOR x y = 
+let complexXOR x y =
     match x with
     | true when not y -> true
     | false when y -> true

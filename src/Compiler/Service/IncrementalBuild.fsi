@@ -28,8 +28,7 @@ type internal FrameworkImportsCacheKey =
         assemblyName: string *
         targetFrameworkDirectories: string list *
         fsharpBinaries: string *
-        langVersion: decimal *
-        checkNulls: bool
+        importReuseKey: ImportReuseKey
 
     interface ICacheKey<string, FrameworkImportsCacheKey>
 
@@ -70,7 +69,7 @@ type internal TcInfo =
         latestCcuSigForFile: ModuleOrNamespaceType option
 
         /// Accumulated errors, last file first
-        tcDiagnosticsRev: (PhasedDiagnostic * FSharpDiagnosticSeverity)[] list
+        tcDiagnosticsRev: PhasedDiagnostic[] list
 
         tcDependencyFiles: string list
 
@@ -78,7 +77,7 @@ type internal TcInfo =
     }
 
     /// Accumulated diagnostics
-    member TcDiagnostics: (PhasedDiagnostic * FSharpDiagnosticSeverity)[]
+    member TcDiagnostics: PhasedDiagnostic[]
 
 /// Accumulated results of type checking. Optional data that isn't needed to type-check a file, but needed for more information for in tooling.
 [<NoEquality; NoComparison>]
@@ -90,6 +89,9 @@ type internal TcInfoExtras =
 
         /// Result of checking most recent file, if any
         latestImplFile: CheckedImplFile option
+
+        /// Inferred signature of the most recent file, before any signature file is applied
+        latestOwnSigForFile: ModuleOrNamespaceType option
 
         /// If enabled, stores a linear list of ranges and strings that identify an Item(symbol) in a file. Used for background find all references.
         itemKeyStore: ItemKeyStore option
@@ -267,8 +269,7 @@ type internal IncrementalBuilder =
     /// Await the untyped parse results for a particular slot in the vector of parse results.
     ///
     /// This may be a marginally long-running operation (parses are relatively quick, only one file needs to be parsed)
-    member GetParseResultsForFile:
-        fileName: string -> ParsedInput * range * string * (PhasedDiagnostic * FSharpDiagnosticSeverity)[]
+    member GetParseResultsForFile: fileName: string -> ParsedInput * range * string * PhasedDiagnostic[]
 
     member NotifyFileChanged: fileName: string * timeStamp: DateTime -> Async<unit>
 
@@ -292,9 +293,11 @@ type internal IncrementalBuilder =
         enablePartialTypeChecking: bool *
         dependencyProvider: DependencyProvider option *
         parallelReferenceResolution: ParallelReferenceResolution *
+        shareImportedAssemblies: bool *
         captureIdentifiersWhenParsing: bool *
         getSource: (string -> Async<ISourceText option>) option *
-        useChangeNotifications: bool ->
+        useChangeNotifications: bool *
+        getReferenceStamp: (string -> DateTime) voption ->
             Async<IncrementalBuilder option * FSharpDiagnostic[]>
 
 /// Generalized Incremental Builder. This is exposed only for unit testing purposes.

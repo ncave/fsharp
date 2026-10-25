@@ -36,6 +36,9 @@ type internal SymbolEnv =
 
     member tcValF: ConstraintSolver.TcValF
 
+    // fickl: lets expression conversion reuse it for codegen witnesses
+    member infoReader: InfoReader
+
 /// Indicates the accessibility of a symbol, as seen by the F# language
 type FSharpAccessibility =
     internal new: Accessibility * ?isProtected: bool -> FSharpAccessibility
@@ -66,6 +69,8 @@ type FSharpDisplayContext =
 
     member WithShortTypeNames: bool -> FSharpDisplayContext
 
+    member WithNullnessAnnotations: bool -> FSharpDisplayContext
+
     /// Causes type signatures to be formatted with prefix-style generic parameters,
     /// for example `list<int>`.
     member WithPrefixGenericParameters: unit -> FSharpDisplayContext
@@ -78,6 +83,13 @@ type FSharpDisplayContext =
     /// while nested types inherit generic parameters style from the current `FSharpDisplayContext` instance,
     /// for example, `int list seq` becomes `seq<int list>`
     member WithTopLevelPrefixGenericParameters: unit -> FSharpDisplayContext
+
+[<Struct>]
+type FSharpObsoleteDiagnosticInfo =
+    { IsError: bool
+      DiagnosticId: string option
+      Message: string option
+      UrlFormat: string option }
 
 /// Represents a symbol in checked F# source code or a compiled .NET component.
 ///
@@ -147,6 +159,8 @@ type FSharpSymbol =
 
     /// Indicates if this symbol has an attribute matching the full name of the given type parameter
     member HasAttribute<'T> : unit -> bool
+
+    abstract ObsoleteDiagnosticInfo: FSharpObsoleteDiagnosticInfo option
 
 /// Represents an assembly as seen by the F# language
 type FSharpAssembly =
@@ -224,10 +238,10 @@ type FSharpEntity =
     member Namespace: string option
 
     /// Get the fully qualified name of the type or module
-    member QualifiedName: string
+    member QualifiedName: string option
 
     /// The fully qualified name of the type or module without strong assembly name.
-    member BasicQualifiedName: string
+    member BasicQualifiedName: string option
 
     /// Get the full name of the type or module
     member FullName: string
@@ -892,6 +906,9 @@ type FSharpMemberOrFunctionOrValue =
     /// Indicates if this is a setter method for a property, or a use of a property in setter mode
     member IsPropertySetterMethod: bool
 
+    /// Indicates if this is an accessor method for a property, i.e. either a getter or a setter.
+    member IsPropertyAccessor: bool
+
     /// Indicates if this is an add method for an event
     member IsEventAddMethod: bool
 
@@ -986,10 +1003,10 @@ type FSharpMemberOrFunctionOrValue =
     member IsConstructor: bool
 
     /// Format the type using the rules of the given display context
-    member FormatLayout: displayContext: FSharpDisplayContext -> TaggedText[]
+    member FormatRichText: displayContext: FSharpDisplayContext -> RichText
 
     /// Format the type using the rules of the given display context
-    member GetReturnTypeLayout: displayContext: FSharpDisplayContext -> TaggedText[] option
+    member GetReturnTypeRichText: displayContext: FSharpDisplayContext -> RichText option
 
     /// Get the signature text to include this Symbol into an existing signature file.
     member GetValSignatureText: displayContext: FSharpDisplayContext * m: range -> string option
@@ -1120,8 +1137,22 @@ type FSharpType =
     /// Indicates if the type is a tuple type (reference or struct). The GenericArguments property returns the elements of the tuple type.
     member IsTupleType: bool
 
+    /// Indicates if the type is a reference tuple type. The GenericArguments property returns the elements of the tuple type.
+    member IsReferenceTupleType: bool
+
     /// Indicates if the type is a struct tuple type. The GenericArguments property returns the elements of the tuple type.
     member IsStructTupleType: bool
+
+    member IsArrayType: bool
+    member IsNativePointerType: bool
+    member IsUnitType: bool
+    member IsFSharpList: bool
+    member IsFSharpChoice: bool
+    member IsFSharpOption: bool
+    member IsFSharpValueOption: bool
+    member IsStringType: bool
+    member IsObjectType: bool
+    member IsBooleanType: bool
 
     /// Indicates if the type is a function type. The GenericArguments property returns the domain and range of the function type.
     member IsFunctionType: bool
@@ -1145,10 +1176,10 @@ type FSharpType =
     member FormatWithConstraints: context: FSharpDisplayContext -> string
 
     /// Format the type using the rules of the given display context
-    member FormatLayout: context: FSharpDisplayContext -> TaggedText[]
+    member FormatRichText: context: FSharpDisplayContext -> RichText
 
     /// Format the type - with constraints - using the rules of the given display context
-    member FormatLayoutWithConstraints: context: FSharpDisplayContext -> TaggedText[]
+    member FormatRichTextWithConstraints: context: FSharpDisplayContext -> RichText
 
     /// Instantiate generic type parameters in a type
     member Instantiate: (FSharpGenericParameter * FSharpType) list -> FSharpType
@@ -1165,7 +1196,7 @@ type FSharpType =
     member ErasedType: FSharpType
 
     /// The fully qualified name of the type or module without strong assembly name.
-    member BasicQualifiedName: string
+    member BasicQualifiedName: string option
 
     /// Adjust the type by removing any occurrences of type inference variables, replacing them
     /// systematically with lower-case type inference variables such as <c>'a</c>.

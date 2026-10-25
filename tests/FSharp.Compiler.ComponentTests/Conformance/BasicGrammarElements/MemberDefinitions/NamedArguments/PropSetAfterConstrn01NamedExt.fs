@@ -1,5 +1,5 @@
-// #Regression #Conformance #DeclarationElements #MemberDefinitions #NamedArguments 
-#light
+// #Regression #Conformance #DeclarationElements #MemberDefinitions #NamedArguments
+
 
 // FSB 1368, named arguments implicitly using property setters for generic class do not typecheck correctly
 

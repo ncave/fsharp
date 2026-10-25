@@ -3,33 +3,11 @@ module Conformance.BasicGrammarElements.StaticLet
 open Xunit
 open FSharp.Test
 open FSharp.Test.Compiler
-open System.IO
-
-let testCasesForFSharp7ErrorMessage = 
-    Directory.EnumerateFiles(__SOURCE_DIRECTORY__) 
-    |> Seq.toArray 
-    |> Array.map Path.GetFileName
-    |> Array.except [__SOURCE_FILE__;"PlainEnum.fs";"StaticLetExtensionToBuiltinType.fs"] // ALl files in the folder except this one with the tests
-    |> Array.map (fun f -> [|f :> obj|])
-
 
 [<Theory>]
-[<MemberData(nameof(testCasesForFSharp7ErrorMessage))>]
-let ``Should fail in F# 7 and lower`` (implFileName:string) =    
-    let fileContents = File.ReadAllText (Path.Combine(__SOURCE_DIRECTORY__,implFileName))
-
-    Fs fileContents     
-    |> withLangVersion70
-    |> typecheck
-    |> shouldFail
-    |> withErrorCode 902
-    |> withDiagnosticMessageMatches "For F#7 and lower, static 'let','do' and 'member val' definitions may only be used in types with a primary constructor.*"
-
-[<Theory>]
-[<InlineData("7.0")>]
 [<InlineData("8.0")>]
 [<InlineData("preview")>]
-let ``Regression in Member val  - not allowed without primary constructor``  (langVersion:string) = 
+let ``Regression in Member val  - not allowed without primary constructor``  (langVersion:string) =
     Fs """module Test
 type Bad3 = 
     member val X = 1 + 1   """
@@ -40,7 +18,6 @@ type Bad3 =
 
 
 [<Theory>]
-[<InlineData("7.0")>]
 [<InlineData("8.0")>]
 [<InlineData("preview")>]
 let ``Regression - Type augmentation with abstract slot not allowed`` (langVersion:string) =
@@ -54,7 +31,6 @@ type System.Random with
     |> withDiagnostics [Error 912, Line 3, Col 8, Line 3, Col 31, "This declaration element is not permitted in an augmentation"]
 
 [<Theory>]
-[<InlineData("7.0")>]
 [<InlineData("8.0")>]
 [<InlineData("preview")>]
 let ``Regression - record with abstract slot not allowed`` (langVersion:string) =
@@ -110,7 +86,7 @@ let ``Static let - lowercase DU`` compilation =
     compilation
     |> withLangVersion80
     |> typecheck
-    |> shouldSucceed    
+    |> shouldSucceed
 
 [<Theory; Directory(__SOURCE_DIRECTORY__, Includes=[|"SimpleEmptyType.fs"|])>]
 let ``Static let in empty type`` compilation =
@@ -137,14 +113,6 @@ let ``Static member val in empty type`` compilation =
     |> typecheck
     |> shouldSucceed
 
-[<Theory; Directory(__SOURCE_DIRECTORY__, Includes=[|"StaticMemberValInEmptyType.fs"|])>]
-let ``Static member val in empty type Fsharp 7`` compilation =
-    compilation
-    |> withLangVersion70
-    |> typecheck
-    |> shouldFail
-    |> withDiagnostics [Error 902, Line 4, Col 5, Line 4, Col 41, "For F#7 and lower, static 'let','do' and 'member val' definitions may only be used in types with a primary constructor ('type X(args) = ...'). To enable them in all other types, use language version '8' or higher."]
-
 [<Theory; Directory(__SOURCE_DIRECTORY__, Includes=[|"SimpleUnion.fs"|])>]
 let ``Static let in simple union`` compilation =
     compilation
@@ -156,7 +124,7 @@ let ``Static let in simple union`` compilation =
 let ``Support in plain enums - typecheck should fail`` compilation =
     compilation
     |> withLangVersion80
-    |> typecheck    
+    |> typecheck
     |> shouldFail
     |> withDiagnosticMessage "Enumerations cannot have members"
 
@@ -188,7 +156,7 @@ let ``Static let in struct record`` compilation =
     |> verifyCompileAndRun
     |> shouldSucceed
     |> withStdOutContains "7"
-    
+
 [<Theory; Directory(__SOURCE_DIRECTORY__, Includes=[|"CreateUnionCases.fs"|])>]
 let ``Static let creating DU cases`` compilation =
     compilation
@@ -196,7 +164,7 @@ let ``Static let creating DU cases`` compilation =
     |> shouldSucceed
     |> withStdOutContains "..."
 
-    
+
 [<Theory; Directory(__SOURCE_DIRECTORY__, Includes=[|"UnionOrderOfExecution.fs"|])>]
 let ``Static let union - order of execution`` compilation =
     compilation
@@ -209,7 +177,7 @@ side effect in member Singleton
 calling print Case2 42
 side effect in member Singleton
 calling print Case2 42"""
-    
+
 [<Theory; Directory(__SOURCE_DIRECTORY__, Includes=[|"RecordOrderOfExecution.fs"|])>]
 let ``Static let record - order of execution`` compilation =
     compilation
@@ -223,7 +191,7 @@ calling print 1
 side effect in member R1
 calling print 1"""
 
-    
+
 [<Theory; Directory(__SOURCE_DIRECTORY__, Includes=[|"RecursiveDUs.fs"|])>]
 let ``Static let - recursive DU definitions calling each other`` compilation =
     compilation
@@ -263,7 +231,7 @@ let ``Static let extension to builtin type`` compilation =
     |> typecheck
     |> shouldFail
     |> withDiagnostics [Error 3573, Line 4, Col 5, Line 4, Col 51, "Static bindings cannot be added to extrinsic augmentations. Consider using a 'static member' instead."]
-    
+
 [<Theory; Directory(__SOURCE_DIRECTORY__, Includes=[|"QuotationsForStaticLetRecords.fs"|])>]
 let ``Static let - quotations support for records`` compilation =
     compilation
@@ -403,10 +371,10 @@ creating MyTypes.U.u1 now
 MyTypes module 'do' no. 2
 InnerModuleNotAccess 'do'
 Case2 1"""
-   
+
 
 [<Fact>]
-let ``Static let IL init single file test withRealInternalSignatureOff`` () = 
+let ``Static let IL init single file test withRealInternalSignatureOff`` () =
     FSharp """
 module Test
 open System
@@ -472,7 +440,7 @@ do Console.WriteLine("module after type")
 }"""]
 
 [<Fact>]
-let ``Static let IL init single file test withRealInternalSignatureOn`` () = 
+let ``Static let IL init single file test withRealInternalSignatureOn`` () =
     FSharp """
 module Test
 open System
@@ -509,7 +477,7 @@ do Console.WriteLine("module after type")
       IL_000c:  ret
     } 
 
-    .method assembly specialname static void staticInitialization@() cil managed
+    .method assembly static void  staticInitialization@() cil managed
     {
       
       .maxstack  8
@@ -531,7 +499,7 @@ do Console.WriteLine("module after type")
     IL_000c:  ret
   } 
 
-  .method assembly specialname static void staticInitialization@() cil managed
+  .method assembly static void  staticInitialization@() cil managed
   {
     
     .maxstack  8
@@ -744,7 +712,7 @@ Console.Write(MyTypes.X.GetX)
     IL_000c:  ret
   } 
 
-  .method assembly specialname static void staticInitialization@() cil managed
+  .method assembly static void  staticInitialization@() cil managed
   {
     
     .maxstack  8
@@ -779,7 +747,7 @@ Console.Write(MyTypes.X.GetX)
     IL_000c:  ret
   } 
 
-  .method assembly specialname static void staticInitialization@() cil managed
+  .method assembly static void  staticInitialization@() cil managed
   {
     
     .maxstack  8
@@ -871,7 +839,7 @@ b.ToString() |> ignore
     |> asExe
     |> ignoreWarnings
     |> compileAndRun
-    |> shouldSucceed 
+    |> shouldSucceed
 
 
 [<Theory>]
@@ -904,4 +872,4 @@ module ActualProgram =
     |> asExe
     |> ignoreWarnings
     |> compileAndRun
-    |> shouldSucceed  
+    |> shouldSucceed

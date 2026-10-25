@@ -14,13 +14,18 @@ type Scenario =
     {
         Name: string
         Files: FileInScenario list
+        CompilerOptions: string list
     }
 
     override x.ToString() = x.Name
 
 let private scenario name files =
     let files = files |> List.mapi (fun idx f -> f idx)
-    { Name = name; Files = files }
+    { Name = name; Files = files; CompilerOptions = [] }
+
+let private scenarioWithOptions name options files =
+    let files = files |> List.mapi (fun idx f -> f idx)
+    { Name = name; Files = files; CompilerOptions = options }
 
 let private sourceFile fileName content (dependencies: Set<int>) =
     fun idx ->
@@ -1105,7 +1110,7 @@ module LibB
 
 let append s i = s + string i
 """
-                    (set [| 0 |])
+                    Set.empty
                 sourceFile
                     "Run.fsx"
                     """
@@ -1122,7 +1127,7 @@ module ScriptModule =
             let a = inc 41
             append s a
 """
-                    (set [| 1 |])
+                    (set [| 0; 1 |])
                 sourceFile
                     "Independent.fs"
                     """
@@ -1150,11 +1155,218 @@ let value = Script.ScriptModule.compute "hi"
 """
                     (set [| 2 |])
             ]
+        scenario
+            "Loaded script referenced by full path without open"
+            [
+                sourceFile
+                    "A.fsx"
+                    """
+let value = 41
+"""
+                    Set.empty
+                sourceFile
+                    "B.fsx"
+                    """
+#load "A.fsx"
+
+let result = A.value + 1
+"""
+                    (set [| 0 |])
+            ]
+        scenario
+            "Sub-namespace opens parent namespace with types and modules"
+            [
+                sourceFile
+                    "Types.fs"
+                    """
+namespace Nu
+
+type GameTime =
+    { Value: float }
+    static member ofSeconds (s: float) = { Value = s }
+"""
+                    Set.empty
+                sourceFile
+                    "Assets.fs"
+                    """
+namespace Nu
+
+module Assets =
+    module Default =
+        let Black = "black"
+"""
+                    (set [| 0 |])
+                sourceFile
+                    "Constants.fs"
+                    """
+namespace Nu.Constants
+open Nu
+
+module Dissolve =
+    let x = Assets.Default.Black
+"""
+                    (set [| 0; 1 |])
+            ]
+        scenario
+            "Sub-namespace opens parent namespace and uses type constructor"
+            [
+                sourceFile
+                    "Types.fs"
+                    """
+namespace Nu
+
+type GameTime =
+    { Value: float }
+    static member ofSeconds (s: float) = { Value = s }
+"""
+                    Set.empty
+                sourceFile
+                    "Constants.fs"
+                    """
+namespace Nu.Constants
+open Nu
+
+module Defaults =
+    let IncomingTime = GameTime.ofSeconds 0.5
+"""
+                    (set [| 0 |])
+            ]
+        scenario
+            "Sub-namespace opens parent namespace with only modules"
+            [
+                sourceFile
+                    "Modules.fs"
+                    """
+namespace Nu
+
+module Assets =
+    module Default =
+        let Black = "black"
+"""
+                    Set.empty
+                sourceFile
+                    "Consumer.fs"
+                    """
+namespace Nu.Sub
+open Nu
+
+module M =
+    let x = Assets.Default.Black
+"""
+                    (set [| 0 |])
+            ]
+        scenario
+            "Multiple namespace declarations in one file with AutoOpen"
+            [
+                sourceFile
+                    "Entity.fs"
+                    """
+namespace Nu
+
+type Entity = { Name: string }
+"""
+                    Set.empty
+                sourceFile
+                    "BlockMap.fs"
+                    """
+namespace Nu.BlockMap
+
+module BlockMapCore =
+    let defaultSize = 32
+
+namespace Nu
+
+[<AutoOpen>]
+module BlockMapExtensions =
+    let getBlockMapSize () = 42
+"""
+                    (set [| 0 |])
+                sourceFile
+                    "Consumer.fs"
+                    """
+namespace Nu.Game
+open Nu
+
+module GameLogic =
+    let size = getBlockMapSize ()
+    let e : Entity = { Name = "test" }
+"""
+                    (set [| 0; 1 |])
+            ]
+        // CompilationRepresentation(ModuleSuffix) on Assets2 avoids FS0248 at the CLR level.
+        scenario
+            "Same module name defined in multiple files of the same namespace"
+            [
+                sourceFile
+                    "Assets1.fs"
+                    """
+namespace Nu
+
+[<RequireQualifiedAccess>]
+module Assets =
+    module Default =
+        let PackageName = "Default"
+"""
+                    Set.empty
+                sourceFile
+                    "Assets2.fs"
+                    """
+namespace Nu
+
+[<RequireQualifiedAccess; CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
+module Assets =
+    module Default =
+        let Black = "black"
+"""
+                    Set.empty
+                sourceFile
+                    "Constants.fs"
+                    """
+namespace Nu.Constants
+open Nu
+
+module Dissolve =
+    let x = Assets.Default.Black
+"""
+                    (set [| 0; 1 |])
+            ]
+        // Tuple type extensions (RFC FS-1043) are desugared by DesugarTupleTypeExtensionCompInfo
+        // during type-checking, which happens AFTER this dependency graph is built. The graph
+        // builder therefore sees the raw SynComponentInfo (synType = Some (SynType.Tuple ...),
+        // LongIdent = []). Unlike a nominal type extension, a tuple extension has no LongId to key
+        // on, so the only thing that links a consumer to the declaring file is the `open`. This
+        // scenario pins that a consumer which opens the tuple-extension module depends on it, so
+        // graph-based checking orders the declaring file before the consumer. The tuple-extension
+        // syntax is preview-only, so this scenario compiles with --langversion:preview.
+        scenarioWithOptions
+            "Tuple type extension links consumer to declaring file via open"
+            [ "--langversion:preview" ]
+            [
+                sourceFile
+                    "A.fs"
+                    """
+module A
+
+type (int * int) with
+    static member inline (+++) ((a, b), (c, d)) = (a + c, b + d)
+"""
+                    Set.empty
+                sourceFile
+                    "B.fs"
+                    """
+module B
+
+open A
+
+let add () = (1, 2) +++ (3, 4)
+"""
+                    (set [| 0 |])
+            ]
     ]
 
 
 // Implementation given before signature file. This scenario will not compile, but is supported.
-// Produced graph should have a necessary dependecy to trigger expected errors. 
+// Produced graph should have a necessary dependecy to trigger expected errors.
 let internal misorderedScenario =
     scenario
         "Signature file follows implementation"

@@ -1,5 +1,5 @@
-// #Regression #Conformance #DeclarationElements #Attributes 
-#light
+// #Regression #Conformance #DeclarationElements #Attributes
+
 
 // FSB 1622, Cannot use "null" in Attributes
 

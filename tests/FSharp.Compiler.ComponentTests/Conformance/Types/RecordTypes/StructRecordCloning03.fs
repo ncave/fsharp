@@ -1,5 +1,5 @@
-// #Conformance #TypesAndModules #Records 
-#light
+// #Conformance #TypesAndModules #Records
+
 
 // Verify ability to clone a record with mutable fields
 

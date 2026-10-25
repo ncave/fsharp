@@ -90,6 +90,14 @@ module QuickParse =
                     && (lineStr[index] = '|' || IsIdentifierPartCharacter lineStr[index])
                     ->
                     Some index
+                // Handle optional parameter syntax: if we're on '?' and the next char is an identifier, use the next position
+                | _ when
+                    (index < lineStr.Length)
+                    && lineStr[index] = '?'
+                    && (index + 1 < lineStr.Length)
+                    && IsIdentifierPartCharacter lineStr[index + 1]
+                    ->
+                    Some(index + 1)
                 | _ -> None // not on a word or '.'
 
             let (|Char|_|) p =
@@ -172,7 +180,7 @@ module QuickParse =
                         let pos = r + MagicalAdjustmentConstant
                         Some(ident, pos, false))
 
-    let GetCompleteIdentifierIslandImpl (lineStr: string MaybeNull) (index: int) : (string * int * bool) option =
+    let GetCompleteIdentifierIslandImpl (lineStr: string | null) (index: int) : (string * int * bool) option =
         match lineStr with
         | Null -> None
         | NonNull lineStr -> GetCompleteIdentifierIslandImplAux lineStr index
@@ -200,7 +208,7 @@ module QuickParse =
     /// a call to `DeclItemsForNamesAtPosition` for intellisense. This will
     /// allow us to use find the correct qualified items rather than resorting
     /// to the more expensive and less accurate environment lookup.
-    let GetCompleteIdentifierIsland (tolerateJustAfter: bool) (lineStr: string MaybeNull) (index: int) : (string * int * bool) option =
+    let GetCompleteIdentifierIsland (tolerateJustAfter: bool) (lineStr: string | null) (index: int) : (string * int * bool) option =
         if String.IsNullOrEmpty lineStr then
             None
         else
@@ -266,7 +274,7 @@ module QuickParse =
             let result = InResidue(index, index)
             result
 
-    let GetPartialLongName (lineStr: string MaybeNull, index: int) =
+    let GetPartialLongName (lineStr: string | null, index: int) =
         match lineStr with
         | Null -> defaultName
         | NonNull lineStr -> GetPartialLongNameAux(lineStr, index)
@@ -399,9 +407,9 @@ module QuickParse =
                             AtStartOfIdentifier(pos + 1, "" :: current, throwAwayNext, Some pos)
                         elif not (pos > 0 && (IsIdentifierPartCharacter(pos - 1) || IsWhitespace(pos - 1))) then
                             // it's not dots as part.of.a.long.ident, it's e.g. the range operator (..), or some other multi-char operator ending in dot
-                            if lineStr[pos - 1] = ')' then
-                                // one very problematic case is someCall(args).Name
-                                // without special logic, we will decide that ). is an operator and parse Name as the plid
+                            if lineStr[pos - 1] = ')' || lineStr[pos - 1] = ']' then
+                                // Problematic cases: someCall(args).Name or a.[0].Data.Name
+                                // without special logic, we would treat ). or ]. as an operator and parse Name as the plid
                                 // but in fact this is an expression tail, and we don't want a plid, rather we need to use expression typings at that location
                                 // so be sure not to treat the name here as a plid
                                 AtStartOfIdentifier(pos + 1, [], true, None) // Throw away what we have, and the next apparent plid, and start over.
@@ -421,7 +429,7 @@ module QuickParse =
                     QualifyingIdents = plid
                 }
 
-    let GetPartialLongNameEx (lineStr: string MaybeNull, index: int) : PartialLongName =
+    let GetPartialLongNameEx (lineStr: string | null, index: int) : PartialLongName =
         match lineStr with
         | Null -> PartialLongName.Empty(index)
         | NonNull lineStr -> GetPartialLongNameExAux(lineStr, index)

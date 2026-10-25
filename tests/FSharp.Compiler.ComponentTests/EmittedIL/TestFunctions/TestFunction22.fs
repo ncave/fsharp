@@ -1,3 +1,3 @@
-// #NoMono #NoMT #CodeGen #EmittedIL 
-#light
+// #NoMono #NoMT #CodeGen #EmittedIL
+
 System.Console.WriteLine()

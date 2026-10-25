@@ -31,7 +31,7 @@ exception SyntaxError of obj (* ParseErrorContext<_> *) * range: range
 
 exception IndentationProblem of string * range
 
-let warningStringOfCoords line column = sprintf "(%d:%d)" line (column + 1)
+let warningStringOfCoords (line: int) (column: int) = $"({line}:{column + 1})"
 
 let warningStringOfPos (p: pos) = warningStringOfCoords p.Line p.Column
 
@@ -69,6 +69,52 @@ let rhs2 (parseState: IParseState) i j =
 /// Get the range corresponding to one of the r.h.s. symbols of a grammar rule while it is being reduced
 let rhs parseState i = rhs2 parseState i i
 
+/// Split a trailing printf specifier (e.g. "%d") off an interpolated-string literal that precedes a
+/// hole. '%%' is a literal escape, not a specifier.
+let peelTrailingPrintfSpecifier (litText: string) : string * string option =
+    let n = litText.Length
+    let mutable i = 0
+    let mutable specStart = -1
+
+    while i < n && specStart < 0 do
+        if litText[i] = '%' then
+            if i + 1 < n && litText[i + 1] = '%' then
+                i <- i + 2 // '%%' escape, keep scanning
+            else
+                specStart <- i // start of a real specifier
+        else
+            i <- i + 1
+
+    // A real printf specifier ends, immediately before the hole, with a type character. Anything else
+    // (for example the explicit '%P(' placeholder syntax) is left in the literal untouched.
+    if specStart < 0 || "bscdiuxXoBeEfFgGMOAat".IndexOf litText[n - 1] < 0 then
+        litText, None
+    else
+        litText[.. specStart - 1], Some litText[specStart..]
+
+/// Build the [String literal; FillExpr hole] pair for one interpolation hole, splitting the '{x,n}'
+/// alignment out of its tuple encoding and peeling a trailing printf specifier onto the hole.
+let mkInterpolatedStringFillParts (litText: string, litRange: range, fill: SynExpr * Ident option) =
+    let fillExpr, qualifier = fill
+
+    let holeExpr, alignment =
+        match fillExpr with
+        | SynExpr.Tuple(false, [ e; (SynExpr.Const(SynConst.Int32 _, _) as n) ], _, _) -> e, Some n
+        | _ -> fillExpr, None
+
+    let litValue, formatting =
+        match qualifier, alignment with
+        | None, None ->
+            match peelTrailingPrintfSpecifier litText with
+            | lit, Some spec -> lit, SynInterpolationFormatting.Printf(spec, litRange)
+            | _, None -> litText, SynInterpolationFormatting.DotNet(None, None)
+        | _ -> litText, SynInterpolationFormatting.DotNet(alignment, qualifier)
+
+    [
+        SynInterpolatedStringPart.String(litValue, litRange)
+        SynInterpolatedStringPart.FillExpr(holeExpr, formatting)
+    ]
+
 //------------------------------------------------------------------------
 // Parsing/lexing: status of #if/#endif processing in lexing, used for continuations
 // for whitespace tokens in parser specification.
@@ -77,6 +123,7 @@ let rhs parseState i = rhs2 parseState i i
 type LexerIfdefStackEntry =
     | IfDefIf
     | IfDefElse
+    | IfDefElif
 
 /// Represents the active #if/#else blocks
 type LexerIfdefStackEntries = (LexerIfdefStackEntry * range) list
@@ -166,7 +213,6 @@ type LexerContinuation =
         style: LexerStringStyle *
         int *
         range: range
-    | MLOnly of ifdef: LexerIfdefStackEntries * nesting: LexerInterpolatedStringNesting * range: range
     | EndLine of ifdef: LexerIfdefStackEntries * nesting: LexerInterpolatedStringNesting * LexerEndlineContinuation
 
     static member Default = LexCont.Token([], [])
@@ -179,8 +225,7 @@ type LexerContinuation =
         | LexCont.Comment(ifdef = ifd)
         | LexCont.SingleLineComment(ifdef = ifd)
         | LexCont.StringInComment(ifdef = ifd)
-        | LexCont.EndLine(ifdef = ifd)
-        | LexCont.MLOnly(ifdef = ifd) -> ifd
+        | LexCont.EndLine(ifdef = ifd) -> ifd
 
     member x.LexerInterpStringNesting =
         match x with
@@ -190,8 +235,7 @@ type LexerContinuation =
         | LexCont.Comment(nesting = nesting)
         | LexCont.SingleLineComment(nesting = nesting)
         | LexCont.StringInComment(nesting = nesting)
-        | LexCont.EndLine(nesting = nesting)
-        | LexCont.MLOnly(nesting = nesting) -> nesting
+        | LexCont.EndLine(nesting = nesting) -> nesting
 
 and LexCont = LexerContinuation
 
@@ -199,7 +243,7 @@ and LexCont = LexerContinuation
 // Parse IL assembly code
 //------------------------------------------------------------------------
 
-let ParseAssemblyCodeInstructions s reportLibraryOnlyFeatures langVersion strictIndentation m : IL.ILInstr[] =
+let ParseAssemblyCodeInstructions s reportLibraryOnlyFeatures langVersion m : IL.ILInstr[] =
 #if NO_INLINE_IL_PARSER
     ignore s
     ignore isFeatureSupported
@@ -208,13 +252,13 @@ let ParseAssemblyCodeInstructions s reportLibraryOnlyFeatures langVersion strict
     [||]
 #else
     try
-        AsciiParser.ilInstrs AsciiLexer.token (StringAsLexbuf(reportLibraryOnlyFeatures, langVersion, strictIndentation, s))
+        AsciiParser.ilInstrs AsciiLexer.token (StringAsLexbuf(reportLibraryOnlyFeatures, langVersion, s))
     with _ ->
         errorR (Error(FSComp.SR.astParseEmbeddedILError (), m))
         [||]
 #endif
 
-let ParseAssemblyCodeType s reportLibraryOnlyFeatures langVersion strictIndentation m =
+let ParseAssemblyCodeType s reportLibraryOnlyFeatures langVersion m =
     ignore s
 
 #if NO_INLINE_IL_PARSER
@@ -222,7 +266,7 @@ let ParseAssemblyCodeType s reportLibraryOnlyFeatures langVersion strictIndentat
     IL.PrimaryAssemblyILGlobals.typ_Object
 #else
     try
-        AsciiParser.ilType AsciiLexer.token (StringAsLexbuf(reportLibraryOnlyFeatures, langVersion, strictIndentation, s))
+        AsciiParser.ilType AsciiLexer.token (StringAsLexbuf(reportLibraryOnlyFeatures, langVersion, s))
     with RecoverableParseError ->
         errorR (Error(FSComp.SR.astParseEmbeddedILTypeError (), m))
         IL.PrimaryAssemblyILGlobals.typ_Object
@@ -722,13 +766,27 @@ let rebindRanges first fields lastSep =
                 | Some mEq -> unionRanges lidwd.Range mEq
                 | None -> lidwd.Range
 
-    let rec run (name, mEquals, value: SynExpr option) l acc =
-        let lidwd, _ = name
-        let fieldRange = calculateFieldRange lidwd mEquals value
+    let rec run fieldOrSpread l acc =
+        match fieldOrSpread with
+        | RecordBinding.Field((lidwd, _ as name), mEquals, value) ->
+            let fieldRange = calculateFieldRange lidwd mEquals value
 
-        match l with
-        | [] -> List.rev (SynExprRecordField(name, mEquals, value, fieldRange, lastSep) :: acc)
-        | (f, m) :: xs -> run f xs (SynExprRecordField(name, mEquals, value, fieldRange, m) :: acc)
+            match l with
+            | [] ->
+                let field =
+                    SynExprRecordFieldOrSpread.Field(SynExprRecordField(name, mEquals, value, fieldRange), lastSep)
+
+                List.rev (field :: acc)
+            | (f, m) :: xs ->
+                let field =
+                    SynExprRecordFieldOrSpread.Field(SynExprRecordField(name, mEquals, value, fieldRange), m)
+
+                run f xs (field :: acc)
+
+        | RecordBinding.Spread spread ->
+            match l with
+            | [] -> List.rev (SynExprRecordFieldOrSpread.Spread(spread, lastSep) :: acc)
+            | (f, _) :: xs -> run f xs (SynExprRecordFieldOrSpread.Spread(spread, lastSep) :: acc)
 
     run first fields []
 
@@ -740,7 +798,7 @@ let mkRecdField (lidwd: SynLongIdent) = lidwd, true
 // Used for 'do expr' in a class.
 let mkSynDoBinding (vis: SynAccess option, mDo, expr, m) =
     match vis with
-    | Some vis -> errorR (Error(FSComp.SR.parsDoCannotHaveVisibilityDeclarations (vis |> string), m))
+    | Some vis -> errorR (Error(FSComp.SR.parsDoCannotHaveVisibilityDeclarations (RichText.mkKeyword (vis |> string)), m))
     | None -> ()
 
     SynBinding(
@@ -807,8 +865,6 @@ let checkEndOfFileError t =
     | LexCont.StringInComment(_, _, LexerStringStyle.TripleQuote, _, m) ->
         reportParseErrorAt m (FSComp.SR.parsEofInTripleQuoteStringInComment ())
 
-    | LexCont.MLOnly(_, _, m) -> reportParseErrorAt m (FSComp.SR.parsEofInIfOcaml ())
-
     | LexCont.EndLine(_, _, LexerEndlineContinuation.IfdefSkip(_, m)) -> reportParseErrorAt m (FSComp.SR.parsEofInDirective ())
 
     | LexCont.EndLine(endifs, nesting, LexerEndlineContinuation.Token)
@@ -824,7 +880,7 @@ let checkEndOfFileError t =
 type BindingSet = BindingSetPreAttrs of range * bool * bool * (SynAttributes -> SynAccess option -> SynAttributes * SynBinding list) * range
 
 let mkClassMemberLocalBindings
-    (isStatic, initialRangeOpt, attrs, vis, BindingSetPreAttrs(_, isRec, isUse, declsPreAttrs, bindingSetRange))
+    (isStatic, initialRangeOpt, attrs, vis, BindingSetPreAttrs(_, isRec, isUse, declsPreAttrs, bindingSetRange), mIn)
     =
     let ignoredFreeAttrs, decls = declsPreAttrs attrs vis
 
@@ -834,6 +890,10 @@ let mkClassMemberLocalBindings
         | Some m -> unionRanges m bindingSetRange
         // decls could have a leading attribute
         |> fun m -> (m, decls) ||> unionRangeWithListBy (fun (SynBinding(range = m)) -> m)
+        |> fun m ->
+            match mIn with
+            | None -> m
+            | Some mIn -> unionRanges m mIn
 
     if not (isNil ignoredFreeAttrs) then
         warning (Error(FSComp.SR.parsAttributesIgnored (), mWhole))
@@ -865,18 +925,16 @@ let mkClassMemberLocalBindings
             SynBinding(a0, k, il, im, a, x, v, h, ri, e, m, dp, trivia) :: rest
         | None, decls -> decls
 
-    SynMemberDefn.LetBindings(decls, isStatic, isRec, mWhole)
+    SynMemberDefn.LetBindings(decls, isStatic, isRec, mWhole, { InKeyword = mIn })
 
 /// Creates a SynExprAndBang node for and! bindings in computation expressions
-let mkAndBang
-    (mKeyword: range, pat: SynPat, returnInfo: SynBindingReturnInfo option, rhs: SynExpr, mWhole: range, mEquals: range, mIn: range option)
-    =
+let mkAndBang (mKeyword: range, pat: SynPat, returnInfo: SynBindingReturnInfo option, rhs: SynExpr, mWhole: range, mEquals: range) =
     let spBind = DebugPointAtBinding.Yes(unionRanges mKeyword rhs.Range)
 
     let trivia: SynBindingTrivia =
         {
-            LeadingKeyword = SynLeadingKeyword.And mKeyword
-            InlineKeyword = mIn
+            LeadingKeyword = SynLeadingKeyword.AndBang mKeyword
+            InlineKeyword = None
             EqualsRange = Some mEquals
         }
 
@@ -896,16 +954,21 @@ let mkAndBang
         trivia = trivia
     )
 
-let mkDefnBindings (mWhole, BindingSetPreAttrs(_, isRec, isUse, declsPreAttrs, _bindingSetRange), attrs, vis, attrsm) =
+let mkDefnBindings (mWhole, BindingSetPreAttrs(_, isRec, isUse, declsPreAttrs, _bindingSetRange), attrs, vis, attrsm, mIn) =
     if isUse then
         warning (Error(FSComp.SR.parsUseBindingsIllegalInModules (), mWhole))
 
     let freeAttrs, decls = declsPreAttrs attrs vis
     // decls might have an extended range due to leading attributes
     let mWhole =
-        (mWhole, decls) ||> unionRangeWithListBy (fun (SynBinding(range = m)) -> m)
+        (mWhole, decls)
+        ||> unionRangeWithListBy (fun (SynBinding(range = m)) -> m)
+        |> fun m ->
+            match mIn with
+            | None -> m
+            | Some mIn -> unionRanges m mIn
 
-    let letDecls = [ SynModuleDecl.Let(isRec, decls, mWhole) ]
+    let letDecls = [ SynModuleDecl.Let(isRec, decls, mWhole, { InKeyword = mIn }) ]
 
     let attrDecls =
         if not (isNil freeAttrs) then
@@ -915,9 +978,9 @@ let mkDefnBindings (mWhole, BindingSetPreAttrs(_, isRec, isUse, declsPreAttrs, _
 
     attrDecls @ letDecls
 
-let idOfPat (parseState: IParseState) m p =
+let idOfPat m p =
     match p with
-    | SynPat.Wild r when parseState.LexBuffer.SupportsFeature LanguageFeature.WildCardInForLoop -> mkSynId r "_"
+    | SynPat.Wild r -> mkSynId r "_"
     | SynPat.Named(SynIdent(id, _), false, _, _) -> id
     | SynPat.LongIdent(longDotId = SynLongIdent([ id ], _, _); typarDecls = None; argPats = SynArgPats.Pats []; accessibility = None) -> id
     | _ -> raiseParseErrorAt m (FSComp.SR.parsIntegerForLoopRequiresSimpleIdentifier ())
@@ -940,12 +1003,17 @@ let appendValToLeadingKeyword mVal leadingKeyword =
     | SynLeadingKeyword.Default(mDefault) -> SynLeadingKeyword.DefaultVal(mDefault, mVal)
     | _ -> leadingKeyword
 
-let mkSynUnionCase attributes (access: SynAccess option) id kind mDecl (xmlDoc, mBar) =
+let mkSynUnionCase attributes (access: SynAccess option) id kind mOf mDecl (xmlDoc, mBar) =
     match access with
     | Some access -> errorR (Error(FSComp.SR.parsUnionCasesCannotHaveVisibilityDeclarations (), access.Range))
     | _ -> ()
 
-    let trivia: SynUnionCaseTrivia = { BarRange = Some mBar }
+    let trivia: SynUnionCaseTrivia =
+        {
+            BarRange = Some mBar
+            OfKeyword = mOf
+        }
+
     let mDecl = unionRangeWithXmlDoc xmlDoc mDecl
     SynUnionCase(attributes, id, kind, xmlDoc, None, mDecl, trivia)
 
@@ -1067,108 +1135,180 @@ let leadingKeywordIsAbstract =
     | SynLeadingKeyword.StaticAbstractMember _ -> true
     | _ -> false
 
-/// Unified helper for creating let/let!/use/use! expressions
-/// Creates SynExpr.LetOrUse based on isBang parameter
-/// Handles all four cases: 'let', 'let!', 'use', and 'use!'
-let mkLetExpression
+let mkLetExpression (mIn: range option, mWhole: range, body: SynExpr, bindingInfo: BindingSet) =
+    let (BindingSetPreAttrs(_, isRec, _isUse, declsPreAttrs, _)) = bindingInfo
+    let ignoredFreeAttrs, decls = declsPreAttrs [] None
+
+    let mWhole =
+        match decls with
+        | SynBinding(xmlDoc = xmlDoc) :: _ -> unionRangeWithXmlDoc xmlDoc mWhole
+        | _ -> mWhole
+
+    if not (isNil ignoredFreeAttrs) then
+        warning (Error(FSComp.SR.parsAttributesIgnored (), mWhole))
+
+    SynExpr.LetOrUse(
+        {
+            IsRecursive = isRec
+            Bindings = decls
+            Body = body
+            Range = mWhole
+            Trivia = { InKeyword = mIn }
+            IsFromSource = true // User-written let/use bindings
+        }
+    )
+
+let mkLetBangExpression
     (
-        isBang: bool,
         mIn: range option,
         mWhole: range,
         body: SynExpr,
-        bindingInfo: BindingSet option,
-        bangInfo: (SynPat * SynBindingReturnInfo option * SynExpr * SynBinding list * range * range option * bool) option
+        bangInfo: (SynPat * SynBindingReturnInfo option * SynExpr * SynBinding list * SynLeadingKeyword * range option * bool)
     ) =
-    if isBang then
-        match bangInfo with
-        | Some(pat, returnInfo, rhs, andBangs, mKeyword, mEquals, isUse) ->
-            let spBind = DebugPointAtBinding.Yes(unionRanges mKeyword rhs.Range)
+    let (pat, returnInfo, rhs, andBangs, leadingKeyword, mEquals, _isUse) = bangInfo
+    let spBind = DebugPointAtBinding.Yes(unionRanges leadingKeyword.Range rhs.Range)
 
-            let trivia: SynBindingTrivia =
-                {
-                    LeadingKeyword =
-                        if isUse then
-                            SynLeadingKeyword.Use mKeyword
-                        else
-                            SynLeadingKeyword.Let mKeyword
-                    InlineKeyword = mIn
-                    EqualsRange = mEquals
-                }
+    let trivia: SynBindingTrivia =
+        {
+            LeadingKeyword = leadingKeyword
+            InlineKeyword = None
+            EqualsRange = mEquals
+        }
 
-            let binding =
-                SynBinding(
-                    accessibility = None,
-                    kind = SynBindingKind.Normal,
-                    isInline = false,
-                    isMutable = false,
-                    attributes = [],
-                    xmlDoc = PreXmlDoc.Empty,
-                    valData = SynInfo.emptySynValData,
-                    headPat = pat,
-                    returnInfo = returnInfo,
-                    expr = rhs,
-                    range = unionRanges mKeyword rhs.Range,
-                    debugPoint = spBind,
-                    trivia = trivia
-                )
+    let binding =
+        SynBinding(
+            accessibility = None,
+            kind = SynBindingKind.Normal,
+            isInline = false,
+            isMutable = false,
+            attributes = [],
+            xmlDoc = PreXmlDoc.Empty,
+            valData = SynInfo.emptySynValData,
+            headPat = pat,
+            returnInfo = returnInfo,
+            expr = rhs,
+            range = unionRanges leadingKeyword.Range rhs.Range,
+            debugPoint = spBind,
+            trivia = trivia
+        )
 
-            SynExpr.LetOrUse(
-                isRecursive = false,
-                isUse = isUse,
-                isFromSource = true,
-                isBang = true,
-                bindings = binding :: andBangs,
-                body = body,
-                range = mWhole,
-                trivia =
-                    {
-                        LetOrUseKeyword = mKeyword
-                        InKeyword = mIn
-                        EqualsRange = mEquals
-                    }
-            )
+    SynExpr.LetOrUse
+        {
+            IsRecursive = false
+            Bindings = binding :: andBangs
+            Body = body
+            Range = mWhole
+            Trivia = { InKeyword = mIn }
+            IsFromSource = true // User-written let!/use! bindings
+        }
 
-        | None -> SynExpr.FromParseError(body, mWhole)
-    else
-        match bindingInfo with
-        | Some(BindingSetPreAttrs(_, isRec, isUse, declsPreAttrs, _)) ->
-            let ignoredFreeAttrs, decls = declsPreAttrs [] None
+let mkAbstractMember
+    parseState
+    attrs
+    (accessBeforeKeyword: SynAccess option)
+    memberFlags
+    (accessBeforeId: SynAccess option)
+    mInline
+    id
+    typeParams
+    typeWithConstraints
+    accessors
+    =
+    if Option.isSome accessBeforeKeyword then
+        errorR (Error(FSComp.SR.parsVisibilityDeclarationsShouldComePriorToIdentifier (), rhs parseState 2))
 
-            let mWhole =
-                match decls with
-                | SynBinding(xmlDoc = xmlDoc) :: _ -> unionRangeWithXmlDoc xmlDoc mWhole
-                | _ -> mWhole
+    let (ty: SynType), arity = typeWithConstraints
 
-            if not (isNil ignoredFreeAttrs) then
-                warning (Error(FSComp.SR.parsAttributesIgnored (), mWhole))
+    let isInline, doc, explicitValTyparDecls =
+        Option.isSome mInline, grabXmlDoc (parseState, attrs, 1), typeParams
 
-            let mIn' =
-                mIn
-                |> Option.bind (fun (mIn: range) -> if posEq mIn.Start body.Range.Start then None else Some mIn)
+    let mWith, (getSet, getSetRangeOpt: GetSetKeywords option, getterAccess, setterAccess) =
+        accessors
 
-            let mLetOrUse =
-                match decls with
-                | SynBinding(trivia = trivia) :: _ -> trivia.LeadingKeyword.Range
-                | _ -> range0
+    let getSetAdjuster arity =
+        match arity, getSet with
+        | SynValInfo([], _), SynMemberKind.Member -> SynMemberKind.PropertyGet
+        | _ -> getSet
 
-            let mEquals =
-                match decls with
-                | SynBinding(trivia = trivia) :: _ -> trivia.EqualsRange
-                | _ -> None
+    let mWhole =
+        let m = rhs parseState 1
 
-            SynExpr.LetOrUse(
-                isRecursive = isRec,
-                isUse = isUse,
-                isFromSource = true,
-                isBang = false,
-                bindings = decls,
-                body = body,
-                range = mWhole,
-                trivia =
-                    {
-                        LetOrUseKeyword = mLetOrUse
-                        InKeyword = mIn'
-                        EqualsRange = mEquals
-                    }
-            )
-        | None -> SynExpr.FromParseError(body, mWhole)
+        match getSetRangeOpt with
+        | None -> unionRanges m ty.Range
+        | Some gs -> unionRanges m gs.Range
+        |> unionRangeWithXmlDoc doc
+
+    [ accessBeforeKeyword; accessBeforeId; getterAccess; setterAccess ]
+    |> List.iter (function
+        | None -> ()
+        | Some access -> errorR (Error(FSComp.SR.parsAccessibilityModsIllegalForAbstract (), access.Range)))
+
+    let mkFlags, leadingKeyword = memberFlags
+
+    let trivia =
+        {
+            LeadingKeyword = leadingKeyword
+            InlineKeyword = mInline
+            WithKeyword = mWith
+            EqualsRange = None
+        }
+
+    let vis2 = SynValSigAccess.Single None
+
+    let valSpfn =
+        SynValSig(attrs, id, explicitValTyparDecls, ty, arity, isInline, false, doc, vis2, None, mWhole, trivia)
+
+    let trivia: SynMemberDefnAbstractSlotTrivia = { GetSetKeywords = getSetRangeOpt }
+
+    [
+        SynMemberDefn.AbstractSlot(valSpfn, mkFlags (getSetAdjuster arity), mWhole, trivia)
+    ]
+
+let mkMatchClauses patternAndGuard patternResult (mNextBar: range option) nextClauses mLastOuter =
+    let (pat: SynPat), (mWhen: range option), guard = patternAndGuard
+    let (mArrow: range option), (resultExpr: SynExpr) = patternResult
+
+    fun mBar ->
+        let m = unionRanges resultExpr.Range pat.Range
+
+        let trivia =
+            {
+                ArrowRange = mArrow
+                BarRange = mBar
+                WhenKeyword = mWhen
+            }
+
+        let clause =
+            SynMatchClause(pat, guard, resultExpr, m, DebugPointAtTarget.Yes, trivia)
+
+        let clauses, mLast =
+            match nextClauses with
+            | Some patternClauses ->
+                let clauses, mLast = patternClauses mNextBar
+                clause :: clauses, mLast
+
+            | _ -> [ clause ], resultExpr.Range
+
+        clauses, mLastOuter |> Option.defaultValue mLast
+
+let mkMatchClausesRecoverMissingResult
+    (patternAndGuard: SynPat * range option * SynExpr option)
+    exprDebugString
+    (mExpr: range option)
+    (mNextBar: range option)
+    nextClauses
+    mLastOuter
+    =
+    let pat, _, guard = patternAndGuard
+
+    let mBeforeResult =
+        match mExpr with
+        | Some m -> m
+        | _ ->
+
+            match guard with
+            | Some expr -> expr.Range
+            | _ -> pat.Range
+
+    let patternResult = None, arbExpr (exprDebugString, mBeforeResult.EndRange)
+    mkMatchClauses patternAndGuard patternResult (mNextBar: range option) nextClauses mLastOuter

@@ -225,6 +225,12 @@ type TypeCheckingConfig =
         DumpGraph: bool
     }
 
+/// A field belongs here when two projects differing in it cannot reuse one imported form
+[<RequireQualifiedAccess>]
+type ImportReuseKey =
+    { LangVersion: decimal
+      CheckNullness: bool }
+
 [<NoEquality; NoComparison>]
 type TcConfigBuilder =
     {
@@ -256,9 +262,6 @@ type TcConfigBuilder =
 
         mutable implicitlyResolveAssemblies: bool
 
-        /// Set if the user has explicitly turned indentation-aware syntax on/off
-        mutable indentationAwareSyntax: bool option
-
         mutable conditionalDefines: string list
 
         /// Sources added into the build with #load
@@ -287,8 +290,6 @@ type TcConfigBuilder =
         mutable embedResources: string list
 
         mutable diagnosticsOptions: FSharpDiagnosticOptions
-
-        mutable mlCompatibility: bool
 
         mutable checkNullness: bool
 
@@ -475,7 +476,7 @@ type TcConfigBuilder =
 
         mutable emitDebugInfoInQuotations: bool
 
-        mutable strictIndentation: bool option
+        mutable alwaysInline: bool option
 
         mutable exename: string option
 
@@ -512,11 +513,15 @@ type TcConfigBuilder =
 
         mutable langVersion: LanguageVersion
 
+        mutable disabledLanguageFeatures: Set<LanguageFeature>
+
         mutable xmlDocInfoLoader: IXmlDocumentationInfoLoader option
 
         mutable exiter: Exiter
 
         mutable parallelReferenceResolution: ParallelReferenceResolution
+
+        mutable shareImportedAssemblies: bool
 
         mutable captureIdentifiersWhenParsing: bool
 
@@ -562,6 +567,7 @@ type TcConfigBuilder =
 
     member AddPathMapping: oldPrefix: string * newPrefix: string -> unit
 
+    /// Parse file[,name[,access]], allowing a quoted file path to contain commas.
     static member SplitCommandLineResourceInfo: string -> string * string * ILResourceAccess
 
     // Directories to start probing in for native DLLs for FSI dynamic loading
@@ -607,9 +613,6 @@ type TcConfig =
 
     member implicitlyResolveAssemblies: bool
 
-    /// Set if the user has explicitly turned indentation-aware syntax on/off
-    member indentationAwareSyntax: bool option
-
     member conditionalDefines: string list
 
     member subsystemVersion: int * int
@@ -629,8 +632,6 @@ type TcConfig =
     member embedResources: string list
 
     member diagnosticsOptions: FSharpDiagnosticOptions
-
-    member mlCompatibility: bool
 
     member checkNullness: bool
 
@@ -820,9 +821,7 @@ type TcConfig =
 
     member FxResolver: FxResolver
 
-    member strictIndentation: bool option
-
-    member ComputeIndentationAwareSyntaxInitialStatus: string -> bool
+    member alwaysInline: bool
 
     member GetTargetFrameworkDirectories: unit -> string list
 
@@ -898,9 +897,13 @@ type TcConfig =
 
     member parallelReferenceResolution: ParallelReferenceResolution
 
+    member shareImportedAssemblies: bool
+
     member captureIdentifiersWhenParsing: bool
 
     member typeCheckingConfig: TypeCheckingConfig
+
+    member importReuseKey: ImportReuseKey
 
     member dumpSignatureData: bool
 
@@ -952,11 +955,6 @@ val FSharpImplFileSuffixes: string list
 
 /// Script file suffixes
 val FSharpScriptFileSuffixes: string list
-
-/// File suffixes where #light is the default
-val FSharpIndentationAwareSyntaxFileSuffixes: string list
-
-val FSharpMLCompatFileSuffixes: string list
 
 /// Indicates whether experimental features should be enabled automatically
 val FSharpExperimentalFeaturesEnabledAutomatically: bool

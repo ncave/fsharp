@@ -1,6 +1,6 @@
-// #NoMono #NoMT #CodeGen #EmittedIL   
-#light
-              
+// #NoMono #NoMT #CodeGen #EmittedIL
+
+
 type U = U of int * int
 
 let TestFunction16(inp) =

@@ -1,5 +1,5 @@
-// #Conformance #PatternMatching 
-#light
+// #Conformance #PatternMatching
+
 
 // Pattern match short unicode literals in strings
 

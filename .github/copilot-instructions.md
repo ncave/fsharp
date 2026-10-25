@@ -1,162 +1,79 @@
-# GitHub Copilot Instructions for F# Compiler
+# F# Compiler
 
-## STRUCTURE YOUR CHANGE (BEFORE EDITING)
-Keep scope tight.  
-General guide:
-- Use F#
-- Target .NET Standard 2.0 for compatibility
-- Avoid external dependencies – the codebase is self-contained (do NOT add new NuGet packages)
-- Follow docs/coding-standards.md and docs/overview.md
+## Build
 
-**Test‑First** (bugs / regressions): Add/adjust a minimal test that fails on current main → confirm it fails → implement fix → run core command and ensure test passes → only then continue.
-
-Plan your task:
-1. Write a 1–2 sentence intent (bug fix / API add / language tweak).  
-2. Identify domain: Language (`LanguageFeature.fsi` touched) vs `src/FSharp.Core/` vs `vsintegration/` vs compiler/service.  
-3. Public API? Edit matching `.fsi` simultaneously.  
-4. New/changed diagnostics? Update FSComp.txt.  
-5. IL shape change expected? Plan ILVerify baseline update.  
-6. Expect baseline diffs? Plan `TEST_UPDATE_BSL=1` run.  
-7. Add/adjust tests in existing projects.  
-8. Decide release-notes sink now (Section 8).  
-9. Run formatting only at the end.
-
----
-
-# AFTER CHANGING CODE ( Agent-only. Ubuntu only )
-
-Always run the core command. Always verify exit codes. No assumptions.
-
-## 1. Core Command
+Default (set `BUILDING_USING_DOTNET=true` system-wide):
+```bash
+dotnet build <changed>.fsproj -c Debug
 ```
-./build.sh -c Release --testcoreclr
-```
-Non‑zero → classify & stop.
+Get target framework: `dotnet msbuild <proj> -getProperty:TargetFrameworks`
+FSharp.Core + compiler composite: `./build.sh -c Release`
+FSharp.Build changes: `./build.sh -c Release`
 
-## 2. Bootstrap (Failure Detection Only)
-Two-phase build. No separate bootstrap command.  
-Early proto/tool errors (e.g. "Error building tools") → `BootstrapFailure` (capture key lines). Stop.
+## No bullshit
 
-## 3. Build Failure
-Proto ok but solution build fails → `BuildFailure`.  
-Capture exit code, ≤15 error lines (`error FS`, `error F#`, `error MSB`), binlog path: `artifacts/log/Release/Build.*.binlog`.  
-Do not proceed to tests.
+Build fails → 99% YOUR previous change broke it. You ARE the compiler.
+DON'T say "pre-existing", "infra issue", "unrelated".
+DO `git clean -xfd artifacts` and rebuild.
+Bootstrap contamination: early commits break compiler → later "fixes" still use broken bootstrap. Clean fully.
+Triage a build failure → `binlog-analysis` skill fetches the binlog (local build or failed AzDo PR build) and analyzes it live via the `binlog-mcp` MCP (structured errors, root-cause diagnose, MSBuild perf X-ray).
 
-## 4. Tests
-Core command runs CoreCLR tests:
-- FSharp.Test.Utilities
-- FSharp.Compiler.ComponentTests
-- FSharp.Compiler.Service.Tests
-- FSharp.Compiler.Private.Scripting.UnitTests
-- FSharp.Build.UnitTests
-- FSharp.Core.UnitTests
-Failures → `TestFailure` (projects + failing lines + baseline hints).
+## Test
 
-## 5. Baselines
-Drift → update then re-run.
+Default: `-c Debug`
 
-General/component:
-```
-TEST_UPDATE_BSL=1
-./build.sh -c Release --testcoreclr
-```
-Surface area:
-```
-TEST_UPDATE_BSL=1 
-dotnet test tests/FSharp.Compiler.Service.Tests/FSharp.Compiler.Service.Tests.fsproj --filter "SurfaceAreaTest" -c Release /p:BUILDING_USING_DOTNET=true
-```
-ILVerify:
-```
-TEST_UPDATE_BSL=1 
-pwsh tests/ILVerify/ilverify.ps1
-```
-Classify: `BaselineDrift(SurfaceArea|ILVerify|GeneralBSL)` + changed files.
+Use `-c Release` for: EmittedIL tests, Optimizer tests, full component runs
 
-## 6. Formatting
-```
-dotnet fantomas . --check
-```
-If fail:
-```
-dotnet fantomas .
-dotnet fantomas . --check
-```
-Still failing → `FormattingFailure`.
+spot check: `dotnet test <proj> [--filter-method|--filter-class] "<glob_pattern>" -c Debug`
 
-## 7. Public API / IL
-If new/changed public symbol (`.fsi` touched or public addition):
-1. Update `.fsi`.
-2. Surface area baseline flow.
-3. ILVerify if IL shape changed.
-4. Release notes (Section 8).
-Missed baseline update → `BaselineDrift`.
+full component: `dotnet test tests/FSharp.Compiler.ComponentTests -c Release`
 
-## 8. Release Notes (Sink Rules – Compact)
-Most fixes → FSharp.Compiler.Service.
+IDE/service: `tests/FSharp.Compiler.Service.Tests`
 
-| Condition | Sink |
-|-----------|------|
-| `LanguageFeature.fsi` changed | Language |
-| Public API/behavior/perf change under `src/FSharp.Core/` | FSharp.Core |
-| Only `vsintegration/` impacted | VisualStudio |
-| Otherwise | FSharp.Compiler.Service |
+VS integration: `vsintegration/` (Windows only)
 
-Action each needed sink:
-- Append bullet in latest version file under `docs/release-notes/<Sink>/`
-- Format: `* Description. ([PR #NNNNN](https://github.com/dotnet/fsharp/pull/NNNNN))`
-- Optional issue link before PR.
-Missing required entry → `ReleaseNotesMissing`.
+update baselines: `TEST_UPDATE_BSL=1 <test command>`
 
-## 9. Classifications
-Use one or more exactly:
-- `BootstrapFailure`
-- `BuildFailure`
-- `TestFailure`
-- `FormattingFailure`
-- `BaselineDrift(SurfaceArea|ILVerify|GeneralBSL)`
-- `ReleaseNotesMissing`
+## Spotcheck tests
 
-Schema:
-```
-Classification:
-Command:
-ExitCode:
-KeySnippets:
-ActionTaken:
-Result:
-OutstandingIssues:
-```
+- find new tests for bugfix/feature
+- find preexisting tests in same area
+- run siblings/related
 
-## 10. Decision Flow
-1. Format check  
-2. Core command  
-3. If fail classify & stop  
-4. Tests → `TestFailure` if any  
-5. Baseline drift? update → re-run → classify if persists  
-6. Public surface/IL? Section 7  
-7. Release notes sink (Section 8)  
-8. If no unresolved classifications → success summary
+## Final validation (Copilot Coding Agent only)
 
-## 11. Success Example
-```
-AllChecksPassed:
-  Formatting: OK
-  Bootstrap: OK
-  Build: OK
-  Tests: Passed
-  Baselines: Clean
-  ReleaseNotes: FSharp.Compiler.Service
-```
+Before submitting: `./build.sh -c Release --testcoreclr`
 
-## 12. Failure Example
-```
-BootstrapFailure:
-  Command: ./build.sh -c Release --testcoreclr
-  ExitCode: 1
-  KeySnippets:
-    - "Error building tools"
-  ActionTaken: None
-  Result: Stopped
-  OutstandingIssues: Bootstrap must be fixed
-```
-(eof)
+## Code
+
+.fs: implementation
+.fsi: declarations, API docs, context comments
+
+Abbreviations (`ad`, `cenv`, `m`, `tcref`, `eenv`, `cgbuf`, `ncenv`, `tau`, …): see `docs/coding-standards.md` for the canonical glossary before guessing what a short identifier means.
+
+## Rules
+
+Public API change → update .fsi
+New diagnostic → update `src/Compiler/FSComp.txt`
+API surface change → `TEST_UPDATE_BSL=1 dotnet test tests/FSharp.Compiler.Service.Tests --filter "SurfaceAreaTest" -c Release`
+After code changes → `dotnet fantomas .`
+When fully done → write release notes (see skill)
+
+## Shepherding PRs
+
+After PR is considered ready for review, and especially after it got any code review comments, avoid rewriting git history with rebases etc. Instead prefer merge commits.
+
+## Visual Studio first
+
+The `vs` MCP server reaches the Visual Studio instance holding this repo's solution. Where it and the shell both work, use it — it reports what the IDE's compiler and symbol graph know, not what the text files say.
+
+- Build with `build_solution` / `build_project` / `build_clean` rather than `dotnet build` or `msbuild`; the Build section above is the fallback for when no solution is loaded (`ide_get_workspace_folders` is empty).
+- Read errors from `ide_get_diagnostics`, not by parsing build output.
+- Navigate and rename with `nav_go_to_definition`, `nav_find_references`, `nav_search_workspace_symbols`, `nav_rename_symbol` — the symbol graph, not `grep` plus hand edits.
+- Format what you touched with `document_format` / `document_organize_imports` before reaching for `dotnet fantomas`.
+
+Before editing a file on disk, `document_check_dirty` it. An unsaved VS buffer is the real content: read it with `document_read_buffer` and `document_save` first, or the edit lands on stale text and the user's next save reverts it.
+
+`build_*` compiles whichever configuration the IDE has active, and `solution_set_configuration` changes it for the user's next manual build too — read `solution_get_configuration` before assuming `Debug`.
+
+`project_add_file` appends without a position, so it cannot place a new `<Compile Include>` correctly in an order-sensitive F# project: add those to the `.fsproj` by hand.

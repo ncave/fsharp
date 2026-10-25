@@ -1,5 +1,5 @@
-// #Conformance #PatternMatching 
-#light
+// #Conformance #PatternMatching
+
 
 let sumEvenValues (tuple:int*int) =
     match tuple with
@@ -8,7 +8,7 @@ let sumEvenValues (tuple:int*int) =
     | _, y when y % 2 = 0              -> y
     | _, _ -> 0
     | _ -> 0
-        
+
 if sumEvenValues (2, 2) <> 4 then exit 1
 if sumEvenValues (1, 5) <> 0 then exit 1
 

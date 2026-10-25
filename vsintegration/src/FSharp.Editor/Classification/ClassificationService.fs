@@ -14,6 +14,7 @@ open Microsoft.CodeAnalysis.Classification
 open Microsoft.CodeAnalysis.Text
 open Microsoft.CodeAnalysis.ExternalAccess.FSharp.Classification
 
+open FSharp.Compiler.CodeAnalysis
 open FSharp.Compiler.EditorServices
 open FSharp.Compiler.Tokenization
 open CancellableTasks
@@ -84,6 +85,7 @@ type internal FSharpClassificationService [<ImportingConstructor>] () =
             match RoslynHelpers.TryFSharpRangeToTextSpan(sourceText, item.Range) with
             | ValueNone -> ()
             | ValueSome span ->
+                // Use fixupSpan (not tryFixupSpan) for syntax coloring
                 let span =
                     match item.Type with
                     | SemanticClassificationType.Printf -> span
@@ -164,7 +166,7 @@ type internal FSharpClassificationService [<ImportingConstructor>] () =
 
                     let! cancellationToken = CancellableTask.getCancellationToken ()
 
-                    let defines, langVersion, strictIndentation = document.GetFsharpParsingOptions()
+                    let defines, langVersion = document.GetFsharpParsingOptions()
 
                     let! sourceText = document.GetTextAsync(cancellationToken)
 
@@ -197,7 +199,6 @@ type internal FSharpClassificationService [<ImportingConstructor>] () =
                             Some(document.FilePath),
                             defines,
                             Some langVersion,
-                            strictIndentation,
                             result,
                             cancellationToken
                         )
@@ -292,7 +293,8 @@ type internal FSharpClassificationService [<ImportingConstructor>] () =
                             let targetRange =
                                 RoslynHelpers.TextSpanToFSharpRange(document.FilePath, textSpan, sourceText)
 
-                            let classificationData = checkResults.GetSemanticClassification(Some targetRange)
+                            let classificationData =
+                                checkResults.GetSemanticClassification(Some targetRange, RelatedSymbolUseKind.All)
 
                             if classificationData.Length > 0 then
                                 let classificationDataLookup = itemToSemanticClassificationLookup classificationData

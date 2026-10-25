@@ -1,5 +1,5 @@
-// #Regression #Conformance #PatternMatching #TypeTests 
-#light
+// #Regression #Conformance #PatternMatching #TypeTests
+
 
 // Verify warning for when dynamic type test will always hold.
 

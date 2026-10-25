@@ -15,7 +15,6 @@ open FSharp.Compiler.CompilerConfig
 open FSharp.Compiler.CompilerDiagnostics
 open FSharp.Compiler.CompilerImports
 open FSharp.Compiler.DependencyManager
-open FSharp.Compiler.Diagnostics
 open FSharp.Compiler.DiagnosticsLogger
 open FSharp.Compiler.IO
 open FSharp.Compiler.CodeAnalysis
@@ -29,8 +28,8 @@ type LoadClosureInput =
     {
         FileName: string
         SyntaxTree: ParsedInput option
-        ParseDiagnostics: (PhasedDiagnostic * FSharpDiagnosticSeverity) list
-        MetaCommandDiagnostics: (PhasedDiagnostic * FSharpDiagnosticSeverity) list
+        ParseDiagnostics: PhasedDiagnostic list
+        MetaCommandDiagnostics: PhasedDiagnostic list
     }
 
 [<RequireQualifiedAccess>]
@@ -64,13 +63,13 @@ type LoadClosure =
         OriginalLoadReferences: (range * string * string) list
 
         /// Diagnostics seen while processing resolutions
-        ResolutionDiagnostics: (PhasedDiagnostic * FSharpDiagnosticSeverity) list
+        ResolutionDiagnostics: PhasedDiagnostic list
 
         /// Diagnostics seen while parsing root of closure
-        AllRootFileDiagnostics: (PhasedDiagnostic * FSharpDiagnosticSeverity) list
+        AllRootFileDiagnostics: PhasedDiagnostic list
 
         /// Diagnostics seen while processing the compiler options implied root of closure
-        LoadClosureRootFileDiagnostics: (PhasedDiagnostic * FSharpDiagnosticSeverity) list
+        LoadClosureRootFileDiagnostics: PhasedDiagnostic list
     }
 
 [<RequireQualifiedAccess>]
@@ -91,8 +90,8 @@ module ScriptPreprocessClosure =
             fileName: string *
             range: range *
             parsedInput: ParsedInput option *
-            parseDiagnostics: (PhasedDiagnostic * FSharpDiagnosticSeverity) list *
-            metaDiagnostics: (PhasedDiagnostic * FSharpDiagnosticSeverity) list
+            parseDiagnostics: PhasedDiagnostic list *
+            metaDiagnostics: PhasedDiagnostic list
 
     type Observed() =
         let seen = Dictionary<_, bool>()
@@ -135,7 +134,7 @@ module ScriptPreprocessClosure =
         let tcConfig = TcConfig.Create(tcConfigB, false)
 
         let lexbuf =
-            UnicodeLexing.SourceTextAsLexbuf(true, tcConfig.langVersion, tcConfig.strictIndentation, sourceText)
+            UnicodeLexing.SourceTextAsLexbuf(true, tcConfig.langVersion, sourceText)
 
         // The root compiland is last in the list of compilands.
         let isLastCompiland = (IsScript fileName, tcConfig.target.IsExe)
@@ -329,7 +328,7 @@ module ScriptPreprocessClosure =
 
         and reportError m =
             ResolvingErrorReport(fun errorType err msg ->
-                let error = err, msg
+                let error = err, RichText.mkText msg
 
                 match errorType with
                 | ErrorReportType.Warning -> warning (Error(error, m))
@@ -354,7 +353,7 @@ module ScriptPreprocessClosure =
 
                     match managerOpt with
                     | Null ->
-                        let err =
+                        let number, message =
                             dependencyProvider.CreatePackageManagerUnknownError(
                                 tcConfig.compilerToolPaths,
                                 outputDir,
@@ -363,7 +362,7 @@ module ScriptPreprocessClosure =
                                 reportError m
                             )
 
-                        errorR (Error(err, m))
+                        errorR (Error((number, message), m))
 
                     | NonNull dependencyManager ->
                         yield! resolvePackageManagerLines m packageManagerLines scriptName packageManagerKey dependencyManager
@@ -594,7 +593,7 @@ module ScriptPreprocessClosure =
             | None -> true
 
         // Filter out non-root errors and warnings
-        let allRootDiagnostics = allRootDiagnostics |> List.filter (fst >> isRootRange)
+        let allRootDiagnostics = allRootDiagnostics |> List.filter isRootRange
 
         {
             SourceFiles = List.groupBy fst sourceFiles |> List.map (map2Of2 (List.map snd))

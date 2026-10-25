@@ -9,9 +9,9 @@ open FSharp.Test.Compiler
 module DynamicAssignmentOperatorTests =
 
     [<Theory>]
-    [<InlineData("6.0")>]
-    [<InlineData("7.0")>]
-    let ``Implementing dynamic assignment operator does not produce a warning`` version = 
+    [<InlineData("8.0")>]
+    [<InlineData("preview")>]
+    let ``Implementing dynamic assignment operator does not produce a warning`` version =
         Fsx """
         type T = T with
             static member inline (?<-) (f, x, y) = f x y

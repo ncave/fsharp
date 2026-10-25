@@ -6,20 +6,20 @@ open System.Collections.Generic
 
 let failures = ref []
 
-let report_failure (s : string) = 
+let report_failure (s : string) =
     stderr.Write" NO: "
     stderr.WriteLine s
     failures := !failures @ [s]
     ()
 
-let check s e r = 
+let check s e r =
   if r <> e then
       (stderr.WriteLine ($"\n***** {s}: Expected: '{e}' Results: '{r}' = FAIL\n"); report_failure s)
 
 let test t (s1:Lazy<string>) s2 =
 
     let s1 = s1.Force()
-    if s1 <> s2 then 
+    if s1 <> s2 then
         report_failure ("test "+t+": expected \n\t'"+s2+"' but produced \n\t'"+s1+"'")
         stdout.WriteLine ("test "+t+": expected \n\t'"+s2+"' but produced \n\t'"+s1+"'")
 
@@ -290,17 +290,17 @@ let testing1 () =
     let _ = test "weioj3ffd2" (lazy(try if true then failwithf "%s" "abc" else "d"with Failure "abc" -> "e")) "e"
 
     let _ = test "weioj3" (lazy(sprintf "%t" (fun () -> "10"))) "10"
-    
+
     let bug600 = sprintf "%d"
-    let _ = test "bug600a1" (lazy(bug600 2)) "2" 
+    let _ = test "bug600a1" (lazy(bug600 2)) "2"
     let _ = test "bug600b1" (lazy(bug600 2)) "2" (* not 22! *)
 
     let bug600b = sprintf "%s"
-    let _ = test "bug600a2" (lazy(bug600b "2")) "2" 
+    let _ = test "bug600a2" (lazy(bug600b "2")) "2"
     let _ = test "bug600b2" (lazy(bug600b "2")) "2" (* not 22! *)
 
     let bug600c = sprintf "%x"
-    let _ = test "bug600a3" (lazy(bug600c 2)) "2" 
+    let _ = test "bug600a3" (lazy(bug600c 2)) "2"
     let _ = test "bug600b3" (lazy(bug600c 2)) "2" (* not 22! *)
 
     let _ = test "ckwoih" (lazy(sprintf "%x" 0xFFy)) ("ff")
@@ -8262,7 +8262,7 @@ let func7000()=
     test "test7935" (lazy(sprintf "%+0G" -10.0M)) "-10"
     test "test7936" (lazy(sprintf "%+05G" -10.0M)) "-0010"//  "00-10"
     test "test7937" (lazy(sprintf "%+01G" -10.0M)) "-10"
-    test "test7938" (lazy(sprintf "%+0*G" 7 -10.0M)) "-000010"/// "0000-10"
+    test "test7938" (lazy(sprintf "%+0*G" 7 -10.0M)) "-000010"// "0000-10"
     test "test7939" (lazy(sprintf "%+0.5G" -10.0M)) "-10"
     test "test7940" (lazy(sprintf "%+0.*G" 4 -10.0M)) "-10"
     test "test7941" (lazy(sprintf "%+0*.*G" 5 4 -10.0M)) "-0010"// "00-10"
@@ -9093,7 +9093,7 @@ module PercentAPublicTests =
 
     let testPercentAMyAnonymousRecord () =
         let data = {| A = "Hello, World!"; B = 1.027m; C = 1028; D = 1.029 |}
-        test "test8901" (lazy (sprintf "%A" data).Replace("\n", ";"))  """{ A = "Hello, World!";  B = 1.027M;  C = 1028;  D = 1.029 }"""
+        test "test8901" (lazy (sprintf "%A" data).Replace("\n", ";"))  """{| A = "Hello, World!";   B = 1.027M;   C = 1028;   D = 1.029 |}"""
 
     let testDiscriminatedUnion () =
         test "test8902" (lazy (sprintf "%A" (IntNumber 10 )).Replace("\n", ";"))  """IntNumber 10"""
@@ -9365,6 +9365,20 @@ module NonStructuralComparisonOverTimeSpanDirect =
     do check "test9407" (NonStructuralComparison.hash 11L) (Operators.hash 11L)
     do check "test9408" (NonStructuralComparison.hash 11UL) (Operators.hash 11UL)
 
+let testLazySimple () =
+    let f23 () = let z = lazy (12345) in z.Force()
+    check "lazy_simple" 12345 (f23())
+
+let testSeqWithTryFinally () =
+    let result =
+        seq {
+            try
+                yield 1
+                yield 2
+            with
+            | ex -> ()
+        } |> Seq.toList
+    check "seq_try_with" [1; 2] result
 
 [<EntryPoint>]
 let main _ =
@@ -9385,12 +9399,14 @@ let main _ =
     PercentAPublicTests.tests ()
     PercentAInternalTests.tests ()
     ClassWithEvents.testWithEventClass ()
+    testLazySimple ()
+    testSeqWithTryFinally ()
 
-    match !failures with 
-    | [] -> 
+    match !failures with
+    | [] ->
         stdout.WriteLine "All tests passed"
         exit 0
-    | _ -> 
+    | _ ->
         stdout.WriteLine "Some tests failed"
         exit 1
     0

@@ -37,6 +37,15 @@ module ``Interactive tests`` =
             (Warning 2304, Line 1, Col 3, Line 1, Col 13, "Functions with [<EntryPoint>] are not invoked in FSI. 'myFunc' was not invoked. Execute 'myFunc <args>' in order to invoke 'myFunc' with the appropriate string array of command line arguments.")
         ]
 
+    [<Fact>]
+    let ``RunScript preserves quit directives inside multiline strings`` () =
+        let _, output, _ =
+            global.FSharp.Test.CompilerAssert.RunScriptWithOptionsAndReturnResult
+                [||]
+                "let text = \"\"\"\n#quit\n\"\"\"\nprintf \"%s\" text"
+
+        Assert.Contains("#quit", output)
+
     [<Theory>]
     [<InlineData(true, true)>]
     [<InlineData(false, false)>]
@@ -93,6 +102,17 @@ module ``External FSI tests`` =
         |> runFsi
         |> shouldFail
 
+    // https://github.com/dotnet/fsharp/issues/12023
+    [<FSharp.Test.FactSkipOnSignedBuild>]
+    let ``Issue 12023 - FSI can load System.Drawing.Common via nuget reference``() =
+        Fsx """
+#r "nuget: System.Drawing.Common"
+open System.Drawing
+printfn "Assembly loaded: %s" (typeof<Color>.Assembly.GetName().Name)
+        """
+        |> runFsi
+        |> shouldSucceed
+
 
     [<Fact>]
     let ``Internals visible over a large number of submissions``() =
@@ -141,3 +161,266 @@ module MultiEmit =
             """if A.v <> 7.2 then failwith $"8: Failed {A.v} <> 7.2" """
             """if B.v <> 9.3 then failwith $"9: Failed {A.v} <> 9.3" """
         |] |> Seq.iter(fun item -> item |> scriptIt)
+
+    // https://github.com/dotnet/fsharp/issues/12386
+    // The bug manifests when the SRTP-constrained inline function is defined in one FSI submission
+    // and called in a separate submission. Single-unit compilation works fine.
+    // When a type has 2+ specific overloads plus a generic catch-all for operator ($), the SRTP
+    // constraint stays unresolved across submissions, causing value restriction (FS0030) or wrong
+    // runtime dispatch (NullReferenceException). Works fine within a single submission and in
+    // multi-file compiled projects.
+    [<Theory>]
+    [<InlineData(true)>]
+    [<InlineData(false)>]
+    let ``Issue 12386 - SRTP trait call resolves correct overload across FSI submissions`` (useMultiEmit) =
+        let args: string array = [| if useMultiEmit then "--multiemit+" else "--multiemit-" |]
+        use session = new FSharpScript(additionalArgs = args)
+
+        // Submission 1: Define type with overloaded ($) and an inline function using SRTP
+        session.Eval(
+            """
+type A = A with
+    static member ($) (A, a: float  ) = 0.0
+    static member ($) (A, a: decimal) = 0M
+    static member ($) (A, a: 't     ) = 0
+
+let inline call x = ($) A x
+"""
+        )
+        |> ignoreValue
+
+        // Submission 2: Call with float - should resolve to the float overload, not the generic one
+        let result = session.Eval("call 42.") |> getValue
+        let fsiVal = result.Value
+        Assert.Equal(typeof<float>, fsiVal.ReflectionType)
+        Assert.Equal(0.0, fsiVal.ReflectionValue :?> float)
+
+        // Submission 3: Call with decimal - should resolve to the decimal overload
+        let result2 = session.Eval("call 42M") |> getValue
+        let fsiVal2 = result2.Value
+        Assert.Equal(typeof<decimal>, fsiVal2.ReflectionType)
+        Assert.Equal(0M, fsiVal2.ReflectionValue :?> decimal)
+
+    // Same scenario as Issue 12386 but via compiled cross-project reference (not FSI).
+    // This verifies whether the bug is FSI-specific or also affects project references.
+    [<Fact>]
+    let ``Issue 12386 - SRTP trait call resolves correct overload across project references`` () =
+        let lib =
+            FSharp
+                """
+namespace Lib
+type A = A with
+    static member ($) (A, a: float  ) = 0.0
+    static member ($) (A, a: decimal) = 0M
+    static member ($) (A, a: 't     ) = 0
+
+module Calls =
+    let inline call x = ($) A x
+"""
+            |> asLibrary
+
+        FSharp
+            """
+module App
+open Lib.Calls
+
+let result = call 42.
+if result <> 0.0 then failwithf "Expected 0.0 but got %A" result
+"""
+        |> withReferences [ lib ]
+        |> asExe
+        |> compileExeAndRun
+        |> shouldSucceed
+
+    [<Fact>]
+    let ``Version directive displays version and environment info``() =
+        Fsx """
+#version;;
+()
+"""
+        |> withOptions ["--nologo"]
+        |> runFsi
+        |> shouldSucceed
+        |> withStdOutContains "F#"
+        |> withStdOutContains "Language Version:"
+        |> withStdOutContains "FSharp.Core:"
+        |> withStdOutContains ".NET:"
+        |> withStdOutContains "OS:"
+        |> ignore
+
+    // https://github.com/dotnet/fsharp/issues/14216
+    [<Fact>]
+    let ``Issue 14216 - No multiemit warning FS2303 when using DU in FSI`` () =
+        Fsx
+            """
+type T = U of unit
+let x = U()
+
+match x with
+| U v -> v
+"""
+        |> eval
+        |> shouldSucceed
+
+    // https://github.com/dotnet/fsharp/issues/14572
+    // Verify that the per-submission dynamic assembly emitted by FSI in --multiemit+ mode
+    // carries a manifest-level DebuggableAttribute when local optimizations are disabled
+    // (i.e. --optimize-), matching the single-emit path in ilreflect.fs, so that the CLR's
+    // JIT does not optimize away locals (which would empty Locals/Autos/Watch in VS).
+    module DebuggableAttributeManifest =
+
+        let private reflectionHelperScript =
+            """
+let asm = System.Reflection.Assembly.GetExecutingAssembly()
+asm.GetCustomAttributes(typeof<System.Diagnostics.DebuggableAttribute>, false)
+|> Array.map (fun a -> int (a :?> System.Diagnostics.DebuggableAttribute).DebuggingFlags)
+"""
+
+        let private evalDebuggableFlags (session: FSharpScript) : int[] =
+            let result, errors = session.Eval(reflectionHelperScript)
+            Assert.Empty(errors)
+
+            match result with
+            | Result.Ok(Some v) -> v.ReflectionValue :?> int[]
+            | Result.Ok None -> failwith "Expected a value from reflection helper script"
+            | Result.Error ex -> raise ex
+
+        let private disableOptimizationsBit =
+            int System.Diagnostics.DebuggableAttribute.DebuggingModes.DisableOptimizations
+
+        [<Fact>]
+        let ``multi-emit submission with --optimize- has DebuggableAttribute with DisableOptimizations`` () =
+            let args: string array = [| "--multiemit+"; "--optimize-" |]
+            use session = new FSharpScript(additionalArgs = args)
+            let flags = evalDebuggableFlags session
+
+            Assert.NotEmpty(flags)
+
+            Assert.True(
+                flags |> Array.exists (fun f -> f &&& disableOptimizationsBit <> 0),
+                $"Expected at least one DebuggableAttribute with DisableOptimizations bit set on the FSI submission's manifest, but got DebuggingFlags = %A{flags}"
+            )
+
+        [<Fact>]
+        let ``multi-emit submission with --optimize+ has no DebuggableAttribute`` () =
+            let args: string array = [| "--multiemit+"; "--optimize+" |]
+            use session = new FSharpScript(additionalArgs = args)
+            let flags = evalDebuggableFlags session
+
+            Assert.Empty(flags)
+
+        [<Fact>]
+        let ``multi-emit submission gating follows optimization, not --debug`` () =
+            // The gate matches single-emit (ilreflect.fs): it keys off local optimizations being
+            // disabled, not off --debug. With optimizations on (the FSI default) --debug+ alone
+            // must not attach a DebuggableAttribute, otherwise the semantics would diverge from
+            // both the single-emit and batch-compiler reference paths.
+            let args: string array = [| "--multiemit+"; "--debug+" |]
+            use session = new FSharpScript(additionalArgs = args)
+            let flags = evalDebuggableFlags session
+
+            Assert.Empty(flags)
+
+        [<Fact>]
+        let ``single-emit submission with --optimize- keeps DebuggableAttribute (regression)`` () =
+            // ilreflect.fs's mkDynamicAssemblyAndModule attaches DebuggableAttribute only when
+            // local optimizations are disabled. --optimize- gates that codepath, so include it
+            // here to make this a faithful regression test of the existing single-emit behavior.
+            let args: string array = [| "--multiemit-"; "--optimize-" |]
+            use session = new FSharpScript(additionalArgs = args)
+            let flags = evalDebuggableFlags session
+
+            Assert.NotEmpty(flags)
+
+            Assert.True(
+                flags |> Array.exists (fun f -> f &&& disableOptimizationsBit <> 0),
+                $"Expected at least one DebuggableAttribute with DisableOptimizations bit set on the single-emit FSI submission's manifest, but got DebuggingFlags = %A{flags}"
+            )
+
+        [<Fact>]
+        let ``multi-emit + --optimize- does not duplicate user-declared DebuggableAttribute`` () =
+            let args: string array = [| "--multiemit+"; "--optimize-" |]
+            use session = new FSharpScript(additionalArgs = args)
+
+            // In --multiemit+ every submission is its own assembly, so the user-declared attribute
+            // and the GetExecutingAssembly() inspection must run in the *same* submission to exercise
+            // the per-manifest dedup guard. With optimizations disabled the auto-attach would fire,
+            // so the guard must keep exactly one DebuggableAttribute when the user already declared one.
+            let result, errors =
+                session.Eval(
+                    """
+[<assembly: System.Diagnostics.DebuggableAttribute(System.Diagnostics.DebuggableAttribute.DebuggingModes.Default)>]
+do ()
+
+let asm = System.Reflection.Assembly.GetExecutingAssembly()
+asm.GetCustomAttributes(typeof<System.Diagnostics.DebuggableAttribute>, false)
+|> Array.map (fun a -> int (a :?> System.Diagnostics.DebuggableAttribute).DebuggingFlags)
+"""
+                )
+
+            Assert.Empty(errors)
+
+            let flags =
+                match result with
+                | Result.Ok(Some v) -> v.ReflectionValue :?> int[]
+                | Result.Ok None -> failwith "Expected a value from reflection helper script"
+                | Result.Error ex -> raise ex
+
+            Assert.Equal(1, flags.Length)
+
+    module PortablePdb =
+
+        let private getPrivateField (instance: obj) fieldName ownerName =
+            let flags = System.Reflection.BindingFlags.Instance ||| System.Reflection.BindingFlags.NonPublic
+            let field = instance.GetType().GetField(fieldName, flags)
+            Assert.True(not (isNull field), $"Could not find private field '{fieldName}' on {ownerName}")
+            field.GetValue(instance)
+
+        let private assertPdbArtifact debugOption expectPdb =
+            let args: string array = [| "--multiemit+"; debugOption |]
+            use session = new FSharpScript(additionalArgs = args)
+
+            let dynamicCompiler = getPrivateField session.Fsi "fsiDynamicCompiler" "FsiEvaluationSession"
+            let symbolsPath = getPrivateField dynamicCompiler "scriptingSymbolsPath" "FsiDynamicCompiler" :?> string
+            let _, errors = session.Eval("let submittedValue = 1")
+
+            Assert.Empty(errors)
+            Assert.True(System.IO.Directory.Exists(symbolsPath), $"FSI symbol directory does not exist: {symbolsPath}")
+
+            let pdbFiles = System.IO.Directory.GetFiles(symbolsPath, "*.pdb")
+
+            if expectPdb then
+                Assert.NotEmpty(pdbFiles)
+            else
+                Assert.Empty(pdbFiles)
+
+        [<Fact>]
+        let ``multi-emit PDB artifact is absent with --debug-`` () =
+            assertPdbArtifact "--debug-" false
+
+        [<Fact>]
+        let ``multi-emit PDB artifact is present with --debug+`` () =
+            assertPdbArtifact "--debug+" true
+
+    // https://github.com/dotnet/fsharp/issues/14454
+    [<FSharp.Test.FactForNETCOREAPP>]
+    let ``Issue 14454 - IAsyncDisposable use in task CE`` () =
+        Fsx
+            """
+open System
+open System.Threading.Tasks
+
+let asyncDisposable =
+    { new IAsyncDisposable with
+        member _.DisposeAsync() = ValueTask() }
+
+let t =
+    task {
+        use d = asyncDisposable
+        return ()
+    }
+
+t.Wait()
+            """
+        |> eval
+        |> shouldSucceed

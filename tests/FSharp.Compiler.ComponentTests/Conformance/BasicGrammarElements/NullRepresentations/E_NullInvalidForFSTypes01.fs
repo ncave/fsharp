@@ -1,5 +1,5 @@
-// #Regression #Conformance #TypesAndModules 
-#light
+// #Regression #Conformance #TypesAndModules
+
 
 // Verify that 'null' is not a valid value for F# types
 

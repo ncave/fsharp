@@ -67,7 +67,7 @@ type MyFSharpClass () =
         ()
 """
         Fsx fsharpSource
-        |> withLangVersion50
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compile
         |> shouldFail
@@ -112,7 +112,7 @@ type MyFSharpClass () =
 """
 
         Fsx fsharpSource
-        |> withLangVersion50
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compile
         |> shouldFail
@@ -158,13 +158,13 @@ type MyFSharpClass () =
 
         ()"""
         Fsx fsharpSource
-        |> withLangVersion50
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compile
         |> shouldFail
         |> withDiagnostics [
-            (Error 810, Line 21, Col 9, Line 21, Col 33, "Property 'GetPublicSetPrivate' cannot be set")
-            (Error 807, Line 28, Col 17, Line 28, Col 41, "Property 'SetPublicGetPrivate' is not readable")]
+            (Error 810, Line 21, Col 14, Line 21, Col 33, "Property 'GetPublicSetPrivate' cannot be set")
+            (Error 807, Line 28, Col 22, Line 28, Col 41, "Property 'SetPublicGetPrivate' is not readable")]
 
     [<Fact>]
     let ``F# class F# non-derived class - access public`` () =
@@ -188,8 +188,8 @@ type MyFSharpClass () =
         ()"""
 
         Fsx fsharpSource
-        |> withLangVersion50
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compile
         |> shouldFail
-        |> withSingleDiagnostic (Error 810, Line 21, Col 9, Line 21, Col 31, "Property 'GetPublicSetPrivate' cannot be set")
+        |> withSingleDiagnostic (Error 810, Line 21, Col 12, Line 21, Col 31, "Property 'GetPublicSetPrivate' cannot be set")

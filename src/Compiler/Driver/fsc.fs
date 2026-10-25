@@ -39,7 +39,6 @@ open FSharp.Compiler.CreateILModule
 open FSharp.Compiler.DependencyManager
 open FSharp.Compiler.Diagnostics
 open FSharp.Compiler.DiagnosticsLogger
-open FSharp.Compiler.Features
 open FSharp.Compiler.IlxGen
 open FSharp.Compiler.InfoReader
 open FSharp.Compiler.IO
@@ -74,10 +73,10 @@ type DiagnosticsLoggerUpToMaxErrors(tcConfigB: TcConfigBuilder, exiter: Exiter, 
 
     override _.ErrorCount = errors
 
-    override x.DiagnosticSink(diagnostic, severity) =
+    override x.DiagnosticSink(diagnostic) =
         let tcConfig = TcConfig.Create(tcConfigB, validate = false)
 
-        match diagnostic.AdjustSeverity(tcConfig.diagnosticsOptions, severity) with
+        match diagnostic.AdjustSeverity(tcConfig.diagnosticsOptions) with
         | FSharpDiagnosticSeverity.Error ->
             if errors >= tcConfig.maxErrors then
                 x.HandleTooManyErrors(FSComp.SR.fscTooManyErrors ())
@@ -89,9 +88,8 @@ type DiagnosticsLoggerUpToMaxErrors(tcConfigB: TcConfigBuilder, exiter: Exiter, 
 
             match diagnostic.Exception, tcConfigB.simulateException with
             | InternalError(msg, _), None
-            | Failure msg, None -> Debug.Assert(false, sprintf "Bug in compiler: %s\n%s" msg (diagnostic.Exception.ToString()))
-            | :? KeyNotFoundException, None ->
-                Debug.Assert(false, sprintf "Lookup exception in compiler: %s" (diagnostic.Exception.ToString()))
+            | Failure msg, None -> Debug.Assert(false, sprintf "Bug in compiler: %s\n%s" msg (diagnostic.ToString()))
+            | :? KeyNotFoundException, None -> Debug.Assert(false, sprintf "Lookup exception in compiler: %s" (diagnostic.ToString()))
             | _ -> ()
 
         | FSharpDiagnosticSeverity.Hidden -> ()
@@ -120,10 +118,9 @@ type IDiagnosticsLoggerProvider =
 
 type CapturingDiagnosticsLogger with
 
-    /// Commit the delayed diagnostics via a fresh temporary logger of the right kind.
     member x.CommitDelayedDiagnostics(diagnosticsLoggerProvider: IDiagnosticsLoggerProvider, tcConfigB, exiter) =
         let diagnosticsLogger = diagnosticsLoggerProvider.CreateLogger(tcConfigB, exiter)
-        x.CommitDelayedDiagnostics diagnosticsLogger
+        x.CommitDelayedDiagnostics(GetDiagnosticsLoggerFilteringByScopedNowarn(tcConfigB.diagnosticsOptions, diagnosticsLogger))
 
 /// The default DiagnosticsLogger implementation, reporting messages to the Console up to the maxerrors maximum
 type ConsoleLoggerProvider() =
@@ -318,11 +315,7 @@ module InterfaceFileWriter =
             Printf.fprintf os "%s\n\n" text
 
         let writeHeader filePath os =
-            if
-                filePath <> ""
-                && not (List.exists (FileSystemUtils.checkSuffix filePath) FSharpIndentationAwareSyntaxFileSuffixes)
-            then
-                fprintfn os "#light"
+            if filePath <> "" then
                 fprintfn os ""
 
         let writeAllToSameFile declaredImpls =
@@ -341,16 +334,9 @@ module InterfaceFileWriter =
             if tcConfig.printSignatureFile <> "" then
                 os.Dispose()
 
-        let extensionForFile (filePath: string) =
-            if (List.exists (FileSystemUtils.checkSuffix filePath) FSharpMLCompatFileSuffixes) then
-                ".mli"
-            else
-                ".fsi"
-
         let writeToSeparateFiles (declaredImpls: CheckedImplFile list) =
             for CheckedImplFile(qualifiedNameOfFile = name) as impl in declaredImpls do
-                let fileName =
-                    !!Path.ChangeExtension(name.Range.FileName, extensionForFile name.Range.FileName)
+                let fileName = !!Path.ChangeExtension(name.Range.FileName, ".fsi")
 
                 printfn "writing impl file to %s" fileName
                 use os = FileSystem.OpenFileForWriteShim(fileName, FileMode.Create).GetWriter()
@@ -406,7 +392,12 @@ let TryFindVersionAttribute g attrib attribName attribs deterministic =
     match AttributeHelpers.TryFindStringAttribute g attrib attribs with
     | Some versionString ->
         if deterministic && versionString.Contains("*") then
-            errorR (Error(FSComp.SR.fscAssemblyWildcardAndDeterminism (attribName, versionString), rangeStartup))
+            errorR (
+                Error(
+                    FSComp.SR.fscAssemblyWildcardAndDeterminism (RichText.mkClass attribName, RichText.mkText versionString),
+                    rangeStartup
+                )
+            )
 
         try
             Some(parseILVersion versionString)
@@ -590,7 +581,9 @@ let main1
     SetThreadDiagnosticsLoggerNoUnwind diagnosticsLogger
 
     // Forward all errors from flags
-    delayForFlagsLogger.CommitDelayedDiagnostics diagnosticsLogger
+    delayForFlagsLogger.CommitDelayedDiagnostics(
+        GetDiagnosticsLoggerFilteringByScopedNowarn(tcConfigB.diagnosticsOptions, diagnosticsLogger)
+    )
 
     if not tcConfigB.continueAfterParseFailure then
         AbortOnError(diagnosticsLogger, exiter)
@@ -605,7 +598,7 @@ let main1
     // Import basic assemblies
     let tcGlobals, frameworkTcImports =
         TcImports.BuildFrameworkTcImports(foundationalTcConfigP, sysRes, otherRes)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
 
     let ilSourceDocs =
         [
@@ -653,7 +646,7 @@ let main1
 
     let tcImports =
         TcImports.BuildNonFrameworkTcImports(tcConfigP, frameworkTcImports, otherRes, knownUnresolved, dependencyProvider)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
 
     // register tcImports to be disposed in future
     disposables.Register tcImports
@@ -848,7 +841,8 @@ let main3
             ApplyAllOptimizations(
                 tcConfig,
                 tcGlobals,
-                (LightweightTcValForUsingInBuildMethodCall tcGlobals),
+                // traitCtxtNone: post-typecheck codegen — SRTP constraints already resolved, no TcEnv available (audited for RFC FS-1043)
+                (LightweightTcValForUsingInBuildMethodCall tcGlobals traitCtxtNone),
                 outfile,
                 importMap,
                 false,
@@ -864,13 +858,13 @@ let main3
 
         optimizedImpls, EncodeOptimizationData(tcGlobals, tcConfig, outfile, exportRemapping, (generatedCcu, optimizationData), false)
 
-    if tcGlobals.langVersion.SupportsFeature LanguageFeature.WarningWhenTailRecAttributeButNonTailRecUsage then
-        match optimizedImpls with
-        | CheckedAssemblyAfterOptimization checkedImplFileAfterOptimizations ->
-            ReportTime tcConfig "TailCall Checks"
+    let (CheckedAssemblyAfterOptimization checkedImplFileAfterOptimizations) =
+        optimizedImpls
 
-            for f in checkedImplFileAfterOptimizations do
-                TailCallChecks.CheckImplFile(tcGlobals, tcImports.GetImportMap(), true, f.ImplFile.Contents)
+    ReportTime tcConfig "TailCall Checks"
+
+    for f in checkedImplFileAfterOptimizations do
+        TailCallChecks.CheckImplFile(tcGlobals, tcImports.GetImportMap(), f.ImplFile.Contents)
 
     let refAssemblySignatureHash =
         match tcConfig.emitMetadataAssembly with
@@ -878,11 +872,14 @@ let main3
         | MetadataAssemblyGeneration.ReferenceOnly
         | MetadataAssemblyGeneration.ReferenceOut _ ->
             let hasIvt =
-                TryFindFSharpStringAttribute tcGlobals tcGlobals.attrib_InternalsVisibleToAttribute topAttrs.assemblyAttrs
-                |> Option.isSome
+                topAttrs.assemblyAttrs
+                |> List.exists (fun attr ->
+                    hasFlag (classifyAssemblyAttrib tcGlobals attr) WellKnownAssemblyAttributes.InternalsVisibleToAttribute)
 
             let observer = if hasIvt then PublicAndInternal else PublicOnly
 
+            // `hash` here is on byte[] / int64, neither of which depends on
+            // String.GetHashCode; safe for deterministic output. See issue #19751.
             let optDataHash =
                 optDataResources
                 |> List.map (fun ilResource ->
@@ -890,7 +887,6 @@ let main3
                     let sha256 = System.Security.Cryptography.SHA256.Create()
                     sha256.ComputeHash s)
                 |> List.sumBy (hash >> int64)
-                |> hash
 
             try
                 Fsharp.Compiler.SignatureHash.calculateSignatureHashOfFiles typedImplFiles tcGlobals observer
@@ -964,9 +960,15 @@ let main4
     ReportTime tcConfig "TAST -> IL"
     use _ = UseBuildPhase BuildPhase.IlxGen
 
-    // Create the Abstract IL generator
+    // traitCtxtNone: post-typecheck codegen — SRTP constraints already resolved, no TcEnv available (audited for RFC FS-1043)
     let ilxGenerator =
-        CreateIlxAssemblyGenerator(tcConfig, tcImports, tcGlobals, (LightweightTcValForUsingInBuildMethodCall tcGlobals), generatedCcu)
+        CreateIlxAssemblyGenerator(
+            tcConfig,
+            tcImports,
+            tcGlobals,
+            (LightweightTcValForUsingInBuildMethodCall tcGlobals traitCtxtNone),
+            generatedCcu
+        )
 
     let codegenBackend =
         (if Option.isSome dynamicAssemblyCreator then
@@ -1157,6 +1159,8 @@ let main6
                             referenceAssemblyAttribOpt = referenceAssemblyAttribOpt
                             referenceAssemblySignatureHash = refAssemblySignatureHash
                             pathMap = tcConfig.pathMap
+                            moduleCustomDebugInfoRows = []
+                            methodCustomDebugInfoRows = Map.empty
                         },
                         ilxMainModule,
                         normalizeAssemblyRefs
@@ -1188,6 +1192,8 @@ let main6
                             referenceAssemblyAttribOpt = None
                             referenceAssemblySignatureHash = None
                             pathMap = tcConfig.pathMap
+                            moduleCustomDebugInfoRows = []
+                            methodCustomDebugInfoRows = Map.empty
                         },
                         ilxMainModule,
                         normalizeAssemblyRefs

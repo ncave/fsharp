@@ -16,26 +16,37 @@ type ObserverVisibility =
 [<AutoOpen>]
 module internal HashingPrimitives =
 
-    type Hash = int
+    type Hash = int64
 
-    let inline hashText (s: string) : Hash = hash s
-    let inline combineHash acc y : Hash = (acc <<< 1) + y + 631
+    /// FNV-1a 64-bit over UTF-16 code units – deterministic across processes
+    /// (unlike String.GetHashCode which is randomized in .NET 6+).
+    let hashStableString (s: string) : Hash =
+        let mutable h = 0xCBF29CE484222325UL
+
+        for c in s do
+            h <- (h ^^^ uint64 c) * 0x100000001B3UL
+
+        int64 h
+
+    let hashText (s: string) : Hash = hashStableString s
+
+    let inline combineHash (acc: Hash) (y: Hash) : Hash = (acc ^^^ y) * 1099511628211L
     let inline pipeToHash (value: Hash) (acc: Hash) = combineHash acc value
-    let inline addFullStructuralHash value (acc: Hash) = combineHash acc (hash value)
+    let inline addFullStructuralHash value (acc: Hash) = combineHash acc (int64 (hash value))
 
     let inline hashListOrderMatters ([<InlineIfLambda>] func) (items: #seq<'T>) : Hash =
-        let mutable acc = 0
+        let mutable acc = 0L
 
         for i in items do
             let valHash = func i
             // We are calling hashListOrderMatters for things like list of types, list of properties, list of fields etc. The ones which are visibility-hidden will return 0, and are omitted.
-            if valHash <> 0 then
+            if valHash <> 0L then
                 acc <- combineHash acc valHash
 
         acc
 
     let inline hashListOrderIndependent ([<InlineIfLambda>] func) (items: #seq<'T>) : Hash =
-        let mutable acc = 0
+        let mutable acc = 0L
 
         for i in items do
             let valHash = func i
@@ -44,6 +55,11 @@ module internal HashingPrimitives =
         acc
 
     let (@@) (h1: Hash) (h2: Hash) = combineHash h1 h2
+
+    /// Maximum number of tokens emitted when generating type structure fingerprints.
+    /// Limits memory usage and prevents infinite type loops.
+    [<Literal>]
+    let MaxTokenCount = 256
 
 [<AutoOpen>]
 module internal HashUtilities =
@@ -71,7 +87,7 @@ module internal HashUtilities =
             else
                 TextTag.Class
 
-        (hash tag) @@ (hashText name)
+        (int64 (hash tag)) @@ (hashText name)
 
     let hashTyconRefImpl (tcref: TyconRef) =
         let demangled = tcref.DisplayNameWithStaticParameters
@@ -86,20 +102,20 @@ module HashIL =
     let hashILTypeRef (tref: ILTypeRef) =
         tref.Enclosing
         |> hashListOrderMatters hashText
-        |> addFullStructuralHash tref.Name
+        |> pipeToHash (hashText tref.Name)
 
-    let private hashILArrayShape (sh: ILArrayShape) = sh.Rank
+    let private hashILArrayShape (sh: ILArrayShape) : Hash = int64 sh.Rank
 
     let rec hashILType (ty: ILType) : Hash =
         match ty with
-        | ILType.Void -> hash ILType.Void
+        | ILType.Void -> int64 (hash ILType.Void)
         | ILType.Array(sh, t) -> hashILType t @@ hashILArrayShape sh
         | ILType.Value t
         | ILType.Boxed t -> hashILTypeRef t.TypeRef @@ (t.GenericArgs |> hashListOrderMatters hashILType)
         | ILType.Ptr t
         | ILType.Byref t -> hashILType t
         | ILType.FunctionPointer t -> hashILCallingSignature t
-        | ILType.TypeVar n -> hash n
+        | ILType.TypeVar n -> int64 (hash n)
         | ILType.Modified(_, _, t) -> hashILType t
 
     and hashILCallingSignature (signature: ILCallingSignature) =
@@ -129,7 +145,7 @@ module rec HashTypes =
     let hashTyconRef tcref = hashTyconRefImpl tcref
 
     /// Hash the flags of a member
-    let hashMemberFlags (memFlags: SynMemberFlags) = hash memFlags
+    let hashMemberFlags (memFlags: SynMemberFlags) = int64 (hash memFlags)
 
     /// Hash an attribute 'Type(arg1, ..., argN)'
     let private hashAttrib (Attrib(tyconRef = tcref)) = hashTyconRefImpl tcref
@@ -194,11 +210,11 @@ module rec HashTypes =
 
         let varHash =
             measureVarsWithExponents
-            |> hashListOrderIndependent (fun (typar, exp: Rational) -> hashTyparRef typar @@ hash exp)
+            |> hashListOrderIndependent (fun (typar, exp: Rational) -> hashTyparRef typar @@ int64 (hash exp))
 
         let conHash =
             measureConsWithExponents
-            |> hashListOrderIndependent (fun (tcref, exp: Rational) -> hashTyconRef tcref @@ hash exp)
+            |> hashListOrderIndependent (fun (tcref, exp: Rational) -> hashTyconRef tcref @@ int64 (hash exp))
 
         varHash @@ conHash
 
@@ -228,12 +244,12 @@ module rec HashTypes =
     // Hash a single argument, including its name and type
     let private hashArgInfo (g: TcGlobals) (ty, argInfo: ArgReprInfo) =
 
-        let attributesHash = hashAttributeList argInfo.Attribs
+        let attributesHash = hashAttributeList (argInfo.Attribs.AsList())
 
         let nameHash =
             match argInfo.Name with
             | Some i -> hashText i.idText
-            | _ -> -1
+            | _ -> -1L
 
         let typeHash = hashTType g ty
 
@@ -288,7 +304,7 @@ module HashTastMemberOrVals =
         let vref = mkLocalValRef v
 
         if HashAccessibility.isHiddenToObserver vref.Accessibility observer then
-            0
+            0L
         else
             let membInfo = Option.get vref.MemberInfo
             let _tps, argInfos, retTy, _ = GetTypeOfMemberInFSharpForm g vref
@@ -296,7 +312,7 @@ module HashTastMemberOrVals =
             let memberFlagsHash = hashMemberFlags membInfo.MemberFlags
             let parentTypeHash = hashTyconRef membInfo.ApparentEnclosingEntity
             let memberTypeHash = hashMemberType g vref typarInst argInfos retTy
-            let flagsHash = hash v.val_flags.PickledBits
+            let flagsHash = int64 (hash v.val_flags.PickledBits)
             let nameHash = hashText v.DisplayNameCoreMangled
             let attribsHash = hashAttributeList v.Attribs
 
@@ -313,35 +329,35 @@ module HashTastMemberOrVals =
     /// Hash a constant value with exhaustive pattern matching over all Const cases
     let private hashConst (constVal: Const) : Hash =
         match constVal with
-        | Const.Bool b -> hash b
-        | Const.SByte x -> hash x
-        | Const.Byte x -> hash x
-        | Const.Int16 x -> hash x
-        | Const.UInt16 x -> hash x
-        | Const.Int32 x -> hash x
-        | Const.UInt32 x -> hash x
-        | Const.Int64 x -> hash x
-        | Const.UInt64 x -> hash x
-        | Const.IntPtr x -> hash x
-        | Const.UIntPtr x -> hash x
-        | Const.Single x -> hash x
-        | Const.Double x -> hash x
-        | Const.Char x -> hash x
+        | Const.Bool b -> int64 (hash b)
+        | Const.SByte x -> int64 (hash x)
+        | Const.Byte x -> int64 (hash x)
+        | Const.Int16 x -> int64 (hash x)
+        | Const.UInt16 x -> int64 (hash x)
+        | Const.Int32 x -> int64 (hash x)
+        | Const.UInt32 x -> int64 (hash x)
+        | Const.Int64 x -> int64 (hash x)
+        | Const.UInt64 x -> int64 (hash x)
+        | Const.IntPtr x -> int64 (hash x)
+        | Const.UIntPtr x -> int64 (hash x)
+        | Const.Single x -> int64 (hash x)
+        | Const.Double x -> int64 (hash x)
+        | Const.Char x -> int64 (hash x)
         | Const.String x -> hashText x
-        | Const.Decimal x -> hash x
-        | Const.Unit -> 0
-        | Const.Zero -> 0
+        | Const.Decimal x -> int64 (hash x)
+        | Const.Unit -> 0L
+        | Const.Zero -> 0L
 
     let private hashNonMemberVal (g: TcGlobals, observer) (tps, v: Val, tau, cxs) =
         if HashAccessibility.isHiddenToObserver v.Accessibility observer then
-            0
+            0L
         else
             let valReprInfo = arityOfValForDisplay v
             let nameHash = hashText v.DisplayNameCoreMangled
             let typarHash = hashTyparDecls g tps
             let argInfos, retTy = GetTopTauTypeInFSharpForm g valReprInfo.ArgInfos tau v.Range
             let typeHash = hashTopType g argInfos retTy cxs
-            let flagsHash = hash v.val_flags.PickledBits
+            let flagsHash = int64 (hash v.val_flags.PickledBits)
             let attribsHash = hashAttributeList v.Attribs
 
             let combinedHash = nameHash @@ typarHash @@ typeHash @@ flagsHash @@ attribsHash
@@ -389,147 +405,222 @@ module StructuralUtilities =
 
     [<Struct; NoComparison; RequireQualifiedAccess>]
     type TypeToken =
-        | Stamp of stamp: Stamp
-        | UCase of name: string
-        | Nullness of nullness: NullnessInfo
+        | Stamp of int
+        | UCase of int
+        | Nullness of int
         | NullnessUnsolved
-        | TupInfo of b: bool
+        | TupInfo of int
         | Forall of int
         | MeasureOne
-        | MeasureRational of int * int
+        | MeasureDenominator of int
+        | MeasureNumerator of int
         | Solved of int
         | Unsolved of int
         | Rigid of int
 
+    let private hashTokenArray (tokens: TypeToken[]) : int =
+        let mutable acc = 0L
+
+        for t in tokens do
+            acc <- combineHash acc (int64 (hash t))
+
+        int acc
+
+    [<CustomEquality; NoComparison>]
     type TypeStructure =
-        | Stable of TypeToken[]
-        | Unstable of TypeToken[]
+        | Stable of hash: int * tokens: TypeToken[]
+        // Unstable means that the type structure of a given TType may change because of constraint solving or Trace.Undo.
+        | Unstable of hash: int * tokens: TypeToken[]
         | PossiblyInfinite
 
-    type private EmitContext =
-        {
-            typarMap: System.Collections.Generic.Dictionary<Stamp, int>
-            emitNullness: bool
-            mutable stable: bool
-        }
+        override this.GetHashCode() =
+            match this with
+            | Stable(h, _) -> h
+            | Unstable(h, _) -> h ||| 0x40000000
+            | PossiblyInfinite -> 0
 
-    let private emitNullness env (n: Nullness) =
-        seq {
-            if env.emitNullness then
-                env.stable <- false //
+        override this.Equals(obj) =
+            match obj with
+            | :? TypeStructure as other ->
+                match this, other with
+                | Stable(h1, a), Stable(h2, b) -> h1 = h2 && a = b
+                | Unstable(h1, a), Unstable(h2, b) -> h1 = h2 && a = b
+                | PossiblyInfinite, PossiblyInfinite -> true
+                | _ -> false
+            | _ -> false
 
+    type private GenerationContext() =
+        member val TyparMap = System.Collections.Generic.Dictionary<Stamp, int>(4)
+        member val Tokens = ResizeArray<TypeToken>(MaxTokenCount)
+        member val EmitNullness = false with get, set
+        member val Stable = true with get, set
+
+        member this.Reset() =
+            this.TyparMap.Clear()
+            this.Tokens.Clear()
+            this.EmitNullness <- false
+            this.Stable <- true
+
+    let private context =
+        new System.Threading.ThreadLocal<GenerationContext>(fun () -> GenerationContext())
+
+    let private getContext () =
+        let ctx = context.Value
+        ctx.Reset()
+        ctx
+
+    let inline private encodeNullness (n: NullnessInfo) =
+        match n with
+        | NullnessInfo.AmbivalentToNull -> 0
+        | NullnessInfo.WithNull -> 1
+        | NullnessInfo.WithoutNull -> 2
+
+    let private emitNullness (ctx: GenerationContext) (n: Nullness) =
+        if ctx.EmitNullness then
+            ctx.Stable <- false
+
+            let out = ctx.Tokens
+
+            if out.Count < MaxTokenCount then
                 match n.TryEvaluate() with
-                | ValueSome k -> TypeToken.Nullness k
-                | ValueNone -> TypeToken.NullnessUnsolved
-        }
+                | ValueSome k -> out.Add(TypeToken.Nullness(encodeNullness k))
+                | ValueNone -> out.Add(TypeToken.NullnessUnsolved)
 
-    let rec private emitMeasure (m: Measure) =
-        seq {
+    let inline private emitStamp (ctx: GenerationContext) (stamp: Stamp) =
+        let out = ctx.Tokens
+
+        if out.Count < MaxTokenCount then
+            // Emit low 32 bits first
+            let lo = int (stamp &&& 0xFFFFFFFFL)
+            out.Add(TypeToken.Stamp lo)
+            // If high 32 bits are non-zero, emit them as another token
+            let hi64 = stamp >>> 32
+
+            if hi64 <> 0L && out.Count < MaxTokenCount then
+                out.Add(TypeToken.Stamp(int hi64))
+
+    let rec private emitMeasure (ctx: GenerationContext) (m: Measure) =
+        let out = ctx.Tokens
+
+        if out.Count >= MaxTokenCount then
+            ()
+        else
             match m with
-            | Measure.Var mv -> TypeToken.Stamp mv.Stamp
-            | Measure.Const(tcref, _) -> TypeToken.Stamp tcref.Stamp
+            | Measure.Var mv -> emitStamp ctx mv.Stamp
+            | Measure.Const(tcref, _) -> emitStamp ctx tcref.Stamp
             | Measure.Prod(m1, m2, _) ->
-                yield! emitMeasure m1
-                yield! emitMeasure m2
-            | Measure.Inv m1 -> yield! emitMeasure m1
-            | Measure.One _ -> TypeToken.MeasureOne
+                emitMeasure ctx m1
+                emitMeasure ctx m2
+            | Measure.Inv m1 -> emitMeasure ctx m1
+            | Measure.One _ -> out.Add(TypeToken.MeasureOne)
             | Measure.RationalPower(m1, r) ->
-                yield! emitMeasure m1
-                TypeToken.MeasureRational(GetNumerator r, GetDenominator r)
-        }
+                emitMeasure ctx m1
 
-    and private emitTType (env: EmitContext) (ty: TType) =
-        seq {
+                if out.Count < MaxTokenCount then
+                    out.Add(TypeToken.MeasureNumerator(GetNumerator r))
+                    out.Add(TypeToken.MeasureDenominator(GetDenominator r))
+
+    let rec private emitTType (ctx: GenerationContext) (ty: TType) =
+        let out = ctx.Tokens
+
+        if out.Count >= MaxTokenCount then
+            ()
+        else
             match ty with
             | TType_ucase(u, tinst) ->
-                TypeToken.Stamp u.TyconRef.Stamp
-                TypeToken.UCase u.CaseName
+                emitStamp ctx u.TyconRef.Stamp
+
+                if out.Count < MaxTokenCount then
+                    out.Add(TypeToken.UCase(int (hashText u.CaseName)))
 
                 for arg in tinst do
-                    yield! emitTType env arg
+                    emitTType ctx arg
 
             | TType_app(tcref, tinst, n) ->
-                TypeToken.Stamp tcref.Stamp
-                yield! emitNullness env n
+                emitStamp ctx tcref.Stamp
+                emitNullness ctx n
 
                 for arg in tinst do
-                    yield! emitTType env arg
+                    emitTType ctx arg
 
             | TType_anon(info, tys) ->
-                TypeToken.Stamp info.Stamp
+                emitStamp ctx info.Stamp
 
                 for arg in tys do
-                    yield! emitTType env arg
+                    emitTType ctx arg
 
             | TType_tuple(tupInfo, tys) ->
-                TypeToken.TupInfo(evalTupInfoIsStruct tupInfo)
+                out.Add(TypeToken.TupInfo(if evalTupInfoIsStruct tupInfo then 1 else 0))
 
                 for arg in tys do
-                    yield! emitTType env arg
+                    emitTType ctx arg
 
             | TType_forall(tps, tau) ->
                 for tp in tps do
-                    env.typarMap.[tp.Stamp] <- env.typarMap.Count
+                    ctx.TyparMap.[tp.Stamp] <- ctx.TyparMap.Count
 
-                TypeToken.Forall tps.Length
+                out.Add(TypeToken.Forall tps.Length)
 
-                yield! emitTType env tau
+                emitTType ctx tau
 
             | TType_fun(d, r, n) ->
-                yield! emitTType env d
-                yield! emitTType env r
-                yield! emitNullness env n
+                emitTType ctx d
+                emitTType ctx r
+                emitNullness ctx n
 
             | TType_var(r, n) ->
-                yield! emitNullness env n
+                emitNullness ctx n
 
                 let typarId =
-                    match env.typarMap.TryGetValue r.Stamp with
+                    match ctx.TyparMap.TryGetValue r.Stamp with
                     | true, idx -> idx
                     | _ ->
-                        let idx = env.typarMap.Count
-                        env.typarMap.[r.Stamp] <- idx
+                        let idx = ctx.TyparMap.Count
+                        ctx.TyparMap.[r.Stamp] <- idx
                         idx
 
                 // Solved may become unsolved, in case of Trace.Undo.
-                env.stable <- false
+                if not r.IsFromError then
+                    ctx.Stable <- false
 
                 match r.Solution with
-                | Some ty -> yield! emitTType env ty
+                | Some ty -> emitTType ctx ty
                 | None ->
-                    if r.Rigidity = TyparRigidity.Rigid then
-                        TypeToken.Rigid typarId
-                    else
-                        TypeToken.Unsolved typarId
+                    if out.Count < MaxTokenCount then
+                        if r.Rigidity = TyparRigidity.Rigid then
+                            out.Add(TypeToken.Rigid typarId)
+                        else
+                            out.Add(TypeToken.Unsolved typarId)
 
-            | TType_measure m -> yield! emitMeasure m
-        }
+            | TType_measure m -> emitMeasure ctx m
 
-    let private getTypeStructureOfStrippedType (ty: TType) =
+    let private getTypeStructureOfStrippedTypeUncached (ty: TType) =
+        let ctx = getContext ()
+        emitTType ctx ty
 
-        let env =
-            {
-                typarMap = System.Collections.Generic.Dictionary<Stamp, int>()
-                emitNullness = false
-                stable = true
-            }
-
-        let tokens = emitTType env ty |> Seq.truncate 256 |> Seq.toArray
+        let out = ctx.Tokens
 
         // If the sequence got too long, just drop it, we could be dealing with an infinite type.
-        if tokens.Length = 256 then PossiblyInfinite
-        elif not env.stable then Unstable tokens
-        else Stable tokens
+        if out.Count >= MaxTokenCount then
+            PossiblyInfinite
+        else
+            let tokens = out.ToArray()
+            let h = hashTokenArray tokens
+
+            if not ctx.Stable then
+                Unstable(h, tokens)
+            else
+                Stable(h, tokens)
 
     // Speed up repeated calls by memoizing results for types that yield a stable structure.
-    let private memoize =
+    let private getTypeStructureOfStrippedType =
         WeakMap.cacheConditionally
             (function
             | Stable _ -> true
             | _ -> false)
-            getTypeStructureOfStrippedType
+            getTypeStructureOfStrippedTypeUncached
 
     let tryGetTypeStructureOfStrippedType ty =
-        match memoize ty with
+        match getTypeStructureOfStrippedType ty with
         | PossiblyInfinite -> ValueNone
         | ts -> ValueSome ts

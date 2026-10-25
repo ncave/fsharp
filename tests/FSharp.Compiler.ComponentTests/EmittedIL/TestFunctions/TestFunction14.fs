@@ -1,5 +1,5 @@
-// #NoMono #NoMT #CodeGen #EmittedIL   
-#light
-              
+// #NoMono #NoMT #CodeGen #EmittedIL
+
+
 let TestFunction14() =
-    List.map (fun f -> f 2) [(fun x -> x + 1)] 
+    List.map (fun f -> f 2) [(fun x -> x + 1)]

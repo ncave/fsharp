@@ -24,6 +24,7 @@ type IdentTrivia =
 [<RequireQualifiedAccess; NoEquality; NoComparison>]
 type ConditionalDirectiveTrivia =
     | If of expr: IfDirectiveExpression * range: range
+    | Elif of expr: IfDirectiveExpression * range: range
     | Else of range: range
     | EndIf of range: range
 
@@ -48,7 +49,7 @@ type CommentTrivia =
 [<NoEquality; NoComparison>]
 type ParsedInputTrivia =
     {
-        /// Preprocessor directives of type #if, #else or #endif
+        /// Preprocessor directives of type #if, #elif, #else or #endif
         ConditionalDirectives: ConditionalDirectiveTrivia list
 
         /// Warn directives (#nowarn / #warnon)
@@ -126,17 +127,13 @@ type SynExprDotLambdaTrivia =
 
 /// Represents additional information for SynExpr.LetOrUse
 [<NoEquality; NoComparison>]
-type SynExprLetOrUseTrivia =
+type SynLetOrUseTrivia =
     {
-        /// The syntax range of the `let` or `use` keyword.
-        LetOrUseKeyword: range
         /// The syntax range of the `in` keyword.
         InKeyword: range option
-
-        EqualsRange: range option
     }
 
-    static member Zero: SynExprLetOrUseTrivia
+    static member Zero: SynLetOrUseTrivia
 
 /// Represents additional information for SynExpr.Match
 [<NoEquality; NoComparison>]
@@ -216,6 +213,9 @@ type SynMatchClauseTrivia =
 
         /// The syntax range of the `|` token.
         BarRange: range option
+
+        /// The syntax range of the `when` keyword.
+        WhenKeyword: range option
     }
 
     static member Zero: SynMatchClauseTrivia
@@ -237,6 +237,17 @@ type SynUnionCaseTrivia =
     {
         /// The syntax range of the `|` token.
         BarRange: range option
+
+        /// The syntax range of the `of` keyword.
+        OfKeyword: range option
+    }
+
+/// Represents additional information for SynExceptionDefnRepr
+[<NoEquality; NoComparison>]
+type SynExceptionDefnReprTrivia =
+    {
+        /// The syntax range of the `exception` keyword.
+        ExceptionKeyword: range
     }
 
 /// Represents additional information for SynPat.Or
@@ -306,9 +317,12 @@ type SynTypeDefnSigTrivia =
 [<NoEquality; NoComparison; RequireQualifiedAccess>]
 type SynLeadingKeyword =
     | Let of letRange: range
+    | LetBang of letBangRange: range
     | LetRec of letRange: range * recRange: range
     | And of andRange: range
+    | AndBang of andBangRange: range
     | Use of useRange: range
+    | UseBang of useBangRange: range
     | UseRec of useRange: range * recRange: range
     | Extern of externRange: range
     | Member of memberRange: range
@@ -376,6 +390,16 @@ type SynModuleSigDeclNestedModuleTrivia =
     }
 
     static member Zero: SynModuleSigDeclNestedModuleTrivia
+
+/// Represents additional information for SynModuleDecl.Let
+[<NoEquality; NoComparison>]
+type SynModuleDeclLetTrivia =
+    {
+        /// The syntax range of the `in` keyword.
+        InKeyword: range option
+    }
+
+    static member Zero: SynModuleDeclLetTrivia
 
 /// Represents the leading keyword in a SynModuleOrNamespace or SynModuleOrNamespaceSig
 [<NoEquality; NoComparison; RequireQualifiedAccess>]
@@ -490,6 +514,13 @@ type SynMemberDefnAutoPropertyTrivia =
         /// The syntax range of 'get, set'
         GetSetKeywords: GetSetKeywords option
     }
+
+/// Represents additional information for SynMemberDefn.LetBindings
+[<NoEquality; NoComparison>]
+type SynMemberDefnLetBindingsTrivia =
+    { InKeyword: range option }
+
+    static member Zero: SynMemberDefnLetBindingsTrivia
 
 ///  Represents additional information for SynMemberDefn.AbstractSlot
 [<NoEquality; NoComparison>]

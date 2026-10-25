@@ -1,5 +1,5 @@
-// #Regression #Conformance #DeclarationElements #Modules 
-#light
+// #Regression #Conformance #DeclarationElements #Modules
+
 
 
 

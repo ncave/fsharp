@@ -1,5 +1,5 @@
-// #Conformance #PatternMatching #PatternMatchingGuards 
-#light
+// #Conformance #PatternMatching #PatternMatchingGuards
+
 
 open System
 

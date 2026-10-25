@@ -5,7 +5,7 @@
 #if TESTS_AS_APP
 module Core_attributes
 #endif
-#light
+
 
 #if !TESTS_AS_APP && !NETCOREAPP
 #load "testlib.fsi" "testlib.fs" // a warning is expected here
@@ -501,8 +501,8 @@ module ThreadStaticTest = begin
     let safe_fail (s:string) = 
         lock lock_obj
             (fun () ->
-                stdout.WriteLine s);
-        exit 1
+                stderr.WriteLine (sprintf " NO: %s" s)
+                failures.Value <- failures.Value @ [s])
      
 
     type C() = 
@@ -1319,7 +1319,7 @@ module TestFsiLoadOfNonExistentAssembly =
       try 
         let log4netType = System.Type.GetType("ThisTypeDoes.Not.Exist, thisAssemblyDoesNotExist")
         let exists = log4netType <> null
-        if exists then report_failure (sprintf "type existed!")
+        if exists then report_failure "type existed!"
         do printfn "%A" exists
        with e -> 
          report_failure (sprintf "exception unexpected: %s" e.Message)
@@ -1360,8 +1360,10 @@ let aa =
       stdout.WriteLine "Test Passed"
       printf "TEST PASSED OK" ;
       exit 0
-  | _ -> 
+  | fails -> 
       stdout.WriteLine "Test Failed"
+      for f in fails do
+          stderr.WriteLine (sprintf "  FAILED: %s" f)
       exit 1
 #endif
 

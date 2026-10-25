@@ -142,7 +142,6 @@ type internal TcGlobals =
         ilg: FSharp.Compiler.AbstractIL.IL.ILGlobals *
         fslibCcu: TypedTree.CcuThunk *
         directoryToResolveRelativePaths: string *
-        mlCompatibility: bool *
         isInteractive: bool *
         checkNullness: bool *
         useReflectionFreeCodeGen: bool *
@@ -191,8 +190,6 @@ type internal TcGlobals =
 
     member FindSysTyconRef: path: string list -> nm: string -> TypedTree.EntityRef
 
-    member HasTailCallAttrib: attribs: TypedTree.Attribs -> bool
-
     /// Find an FSharp.Core LanguagePrimitives dynamic function that corresponds to a trait witness, e.g.
     /// AdditionDynamic for op_Addition.  Also work out the type instantiation of the dynamic function.
     member MakeBuiltInWitnessInfo: t: TypedTree.TraitConstraintInfo -> IntrinsicValRef * TypedTree.TType list
@@ -238,6 +235,9 @@ type internal TcGlobals =
     member mk_ArrayCollector_ty: seqElemTy: TypedTree.TType -> TypedTree.TType
 
     member mk_GeneratedSequenceBase_ty: seqElemTy: TypedTree.TType -> TypedTree.TType
+    member mk_GeneratedRuntimeAsyncSequenceBase_ty: seqElemTy: TypedTree.TType -> TypedTree.TType
+    member mk_IAsyncEnumerable_ty: seqElemTy: TypedTree.TType -> TypedTree.TType
+    member mk_IAsyncEnumerator_ty: seqElemTy: TypedTree.TType -> TypedTree.TType
 
     member mk_IResumableStateMachine_ty: dataTy: TypedTree.TType -> TypedTree.TType
 
@@ -271,15 +271,17 @@ type internal TcGlobals =
 
     member ResumableCode_tcr: TypedTree.EntityRef
 
+    member ResumableStateMachine_tcr: TypedTree.EntityRef
+
     member System_Runtime_CompilerServices_RuntimeFeature_ty: TypedTree.TType option
+
+    member System_Runtime_CompilerServices_MethodImplOptions_ty: TypedTree.TType option
 
     member addrof2_vref: TypedTree.ValRef
 
     member addrof_vref: TypedTree.ValRef
 
     member and2_vref: TypedTree.ValRef
-
-    member and_vref: TypedTree.ValRef
 
     member array2D_get_info: IntrinsicValRef
 
@@ -309,31 +311,13 @@ type internal TcGlobals =
 
     member array_tcr_nice: TypedTree.EntityRef
 
-    member attrib_AbstractClassAttribute: BuiltinAttribInfo
-
     member attrib_AllowNullLiteralAttribute: BuiltinAttribInfo
 
     member attrib_AttributeUsageAttribute: BuiltinAttribInfo
 
     member attrib_AutoOpenAttribute: BuiltinAttribInfo
 
-    member attrib_AutoSerializableAttribute: BuiltinAttribInfo
-
-    member attrib_CLIEventAttribute: BuiltinAttribInfo
-
-    member attrib_CLIMutableAttribute: BuiltinAttribInfo
-
-    member attrib_CallerFilePathAttribute: BuiltinAttribInfo
-
-    member attrib_CallerLineNumberAttribute: BuiltinAttribInfo
-
-    member attrib_CallerMemberNameAttribute: BuiltinAttribInfo
-
-    member attrib_ClassAttribute: BuiltinAttribInfo
-
-    member attrib_ComImportAttribute: BuiltinAttribInfo option
-
-    member attrib_ComVisibleAttribute: BuiltinAttribInfo
+    member attrib_AllowOverloadOnReturnTypeAttribute: BuiltinAttribInfo
 
     member attrib_ComparisonConditionalOnAttribute: BuiltinAttribInfo
 
@@ -341,35 +325,13 @@ type internal TcGlobals =
 
     member attrib_CompilationMappingAttribute: BuiltinAttribInfo
 
-    member attrib_CompilationRepresentationAttribute: BuiltinAttribInfo
-
     member attrib_CompiledNameAttribute: BuiltinAttribInfo
-
-    member attrib_CompilerFeatureRequiredAttribute: BuiltinAttribInfo
-
-    member attrib_CompilerMessageAttribute: BuiltinAttribInfo
-
-    member attrib_ComponentModelEditorBrowsableAttribute: BuiltinAttribInfo
 
     member attrib_ConditionalAttribute: BuiltinAttribInfo
 
-    member attrib_ContextStaticAttribute: BuiltinAttribInfo option
-
-    member attrib_CustomComparisonAttribute: BuiltinAttribInfo
-
-    member attrib_CustomEqualityAttribute: BuiltinAttribInfo
-
     member attrib_CustomOperationAttribute: BuiltinAttribInfo
 
-    member attrib_DebuggerDisplayAttribute: BuiltinAttribInfo
-
-    member attrib_DebuggerTypeProxyAttribute: BuiltinAttribInfo
-
-    member attrib_DefaultAugmentationAttribute: BuiltinAttribInfo
-
     member attrib_DefaultMemberAttribute: BuiltinAttribInfo
-
-    member attrib_DefaultParameterValueAttribute: BuiltinAttribInfo option
 
     member attrib_DefaultValueAttribute: BuiltinAttribInfo
 
@@ -377,91 +339,31 @@ type internal TcGlobals =
 
     member attrib_DynamicDependencyAttribute: BuiltinAttribInfo
 
-    member attrib_EntryPointAttribute: BuiltinAttribInfo
-
     member attrib_EqualityConditionalOnAttribute: BuiltinAttribInfo
-
-    member attrib_ExperimentalAttribute: BuiltinAttribInfo
 
     member attrib_ExtensionAttribute: BuiltinAttribInfo
 
-    member attrib_FieldOffsetAttribute: BuiltinAttribInfo
-
     member attrib_FlagsAttribute: BuiltinAttribInfo
 
-    member attrib_GeneralizableValueAttribute: BuiltinAttribInfo
-
-    member attrib_IDispatchConstantAttribute: BuiltinAttribInfo option
-
-    member attrib_IUnknownConstantAttribute: BuiltinAttribInfo option
-
     member attrib_InAttribute: BuiltinAttribInfo
-
-    member attrib_InlineIfLambdaAttribute: BuiltinAttribInfo
-
-    member attrib_InterfaceAttribute: BuiltinAttribInfo
-
-    member attrib_InternalsVisibleToAttribute: BuiltinAttribInfo
 
     member attrib_IsReadOnlyAttribute: BuiltinAttribInfo
 
     member attrib_IsUnmanagedAttribute: BuiltinAttribInfo
 
-    member attrib_LiteralAttribute: BuiltinAttribInfo
-
-    member attrib_MarshalAsAttribute: BuiltinAttribInfo option
-
     member attrib_MeasureAttribute: BuiltinAttribInfo
-
-    member attrib_MeasureableAttribute: BuiltinAttribInfo
 
     member attrib_MemberNotNullWhenAttribute: BuiltinAttribInfo
 
-    member attrib_MethodImplAttribute: BuiltinAttribInfo
-
-    member attrib_NoComparisonAttribute: BuiltinAttribInfo
-
-    member attrib_NoCompilerInliningAttribute: BuiltinAttribInfo
-
-    member attrib_NoDynamicInvocationAttribute: BuiltinAttribInfo
-
     member attrib_NoEagerConstraintApplicationAttribute: BuiltinAttribInfo
-
-    member attrib_NoEqualityAttribute: BuiltinAttribInfo
-
-    member attrib_NonSerializedAttribute: BuiltinAttribInfo option
 
     member attrib_NullableAttribute: BuiltinAttribInfo
 
-    member attrib_NullableAttribute_opt: BuiltinAttribInfo option
-
     member attrib_NullableContextAttribute: BuiltinAttribInfo
-
-    member attrib_NullableContextAttribute_opt: BuiltinAttribInfo option
-
-    member attrib_OptionalArgumentAttribute: BuiltinAttribInfo
-
-    member attrib_OptionalAttribute: BuiltinAttribInfo option
-
-    member attrib_OutAttribute: BuiltinAttribInfo
 
     member attrib_ParamArrayAttribute: BuiltinAttribInfo
 
-    member attrib_PreserveSigAttribute: BuiltinAttribInfo option
-
-    member attrib_ProjectionParameterAttribute: BuiltinAttribInfo
-
-    member attrib_ReferenceEqualityAttribute: BuiltinAttribInfo
-
     member attrib_ReflectedDefinitionAttribute: BuiltinAttribInfo
-
-    member attrib_RequireQualifiedAccessAttribute: BuiltinAttribInfo
-
-    member attrib_RequiredMemberAttribute: BuiltinAttribInfo
-
-    member attrib_RequiresExplicitTypeArgumentsAttribute: BuiltinAttribInfo
-
-    member attrib_RequiresLocationAttribute: BuiltinAttribInfo
 
     member attrib_SealedAttribute: BuiltinAttribInfo
 
@@ -471,35 +373,13 @@ type internal TcGlobals =
 
     member attrib_SecuritySafeCriticalAttribute: BuiltinAttribInfo
 
-    member attrib_SetsRequiredMembersAttribute: BuiltinAttribInfo
-
-    member attrib_SkipLocalsInitAttribute: BuiltinAttribInfo
-
     member attrib_DecimalConstantAttribute: BuiltinAttribInfo
-
-    member attrib_StructAttribute: BuiltinAttribInfo
-
-    member attrib_StructLayoutAttribute: BuiltinAttribInfo
-
-    member attrib_StructuralComparisonAttribute: BuiltinAttribInfo
-
-    member attrib_StructuralEqualityAttribute: BuiltinAttribInfo
 
     member attrib_SystemObsolete: BuiltinAttribInfo
 
     member attrib_IsByRefLikeAttribute_opt: BuiltinAttribInfo option
 
-    member attrib_ThreadStaticAttribute: BuiltinAttribInfo option
-
     member attrib_TypeForwardedToAttribute: BuiltinAttribInfo
-
-    member attrib_UnverifiableAttribute: BuiltinAttribInfo
-
-    member attrib_VolatileFieldAttribute: BuiltinAttribInfo
-
-    member attrib_WarnOnWithoutNullArgumentAttribute: BuiltinAttribInfo
-
-    member attrib_IlExperimentalAttribute: BuiltinAttribInfo
 
     member attribs_Unsupported: TypedTree.TyconRef list
 
@@ -562,6 +442,17 @@ type internal TcGlobals =
     member cgh__resumeAt_vref: TypedTree.ValRef
 
     member cgh__stateMachine_vref: TypedTree.ValRef
+
+    member cgh__runtimeAsyncReturn_vref: TypedTree.ValRef
+
+    member cgh__runtimeAsyncReturnValueTask_vref: TypedTree.ValRef
+
+    member cgh__runtimeAsyncReturnUnit_vref: TypedTree.ValRef
+
+    member cgh__runtimeAsyncReturnValueTaskUnit_vref: TypedTree.ValRef
+    member cgh__runtimeAsyncSequence_vref: TypedTree.ValRef
+
+    member cgh__runtimeAsyncSequenceCancellationToken_vref: TypedTree.ValRef
 
     member cgh__useResumableCode_vref: TypedTree.ValRef
 
@@ -650,6 +541,8 @@ type internal TcGlobals =
     member failwithf_vref: TypedTree.ValRef
 
     member fastFunc_tcr: TypedTree.EntityRef
+
+    member optimizedClosures_FSharpFunc_tcref: int -> TypedTree.EntityRef
 
     member float32_operator_info: IntrinsicValRef
 
@@ -827,6 +720,8 @@ type internal TcGlobals =
 
     member knownFSharpCoreModules: System.Collections.Generic.IDictionary<string, TypedTree.EntityRef>
 
+    member fslibForceInlineModules: System.Collections.Generic.IDictionary<string, TypedTree.EntityRef>
+
     member knownIntrinsics:
         System.Collections.Concurrent.ConcurrentDictionary<string * string option * string * int, TypedTree.ValRef>
 
@@ -882,8 +777,6 @@ type internal TcGlobals =
 
     member mk_IStructuralEquatable_ty: TypedTree.TType
 
-    member mlCompatibility: bool
-
     member nameof_vref: TypedTree.ValRef
 
     member nativeint_checked_info: IntrinsicValRef
@@ -899,6 +792,8 @@ type internal TcGlobals =
     member nativeptr_tobyref_vref: TypedTree.ValRef
 
     member new_decimal_info: IntrinsicValRef
+
+    member sprintf_info: IntrinsicValRef
 
     member new_format_info: IntrinsicValRef
 
@@ -933,8 +828,6 @@ type internal TcGlobals =
     member option_toNullable_info: IntrinsicValRef
 
     member or2_vref: TypedTree.ValRef
-
-    member or_vref: TypedTree.ValRef
 
     member outref_tcr: TypedTree.EntityRef
 
@@ -1072,6 +965,8 @@ type internal TcGlobals =
 
     member sbyte_operator_info: IntrinsicValRef
 
+    member string_operator_info: IntrinsicValRef
+
     member sbyte_tcr: TypedTree.EntityRef
 
     member sbyte_ty: TypedTree.TType
@@ -1136,8 +1031,6 @@ type internal TcGlobals =
 
     member splice_raw_expr_vref: TypedTree.ValRef
 
-    member sprintf_info: IntrinsicValRef
-
     member sprintf_vref: TypedTree.ValRef
 
     member string_ty: TypedTree.TType
@@ -1169,6 +1062,8 @@ type internal TcGlobals =
     member system_Bool_tcref: TypedTree.EntityRef
 
     member system_Byte_tcref: TypedTree.EntityRef
+
+    member system_CancellationToken_ty: TypedTree.TType
 
     member system_Char_tcref: TypedTree.EntityRef
 

@@ -51,6 +51,14 @@ type RecordContext =
     | Declaration of isInIdentifier: bool
 
 [<RequireQualifiedAccess>]
+type RecordSpreadContext =
+    /// type R = { ...| }
+    | Declaration
+
+    /// let r = { ...| }
+    | Construction
+
+[<RequireQualifiedAccess>]
 type PatternContext =
     /// <summary>Completing union case field pattern (e.g. fun (Some v| ) -> ) or fun (Some (v| )) -> ). In theory, this could also be parameterized active pattern usage.</summary>
     /// <param name="fieldIndex">Position in the tuple. <see cref="None">None</see> if there is no tuple, with only one field outside of parentheses - `Some v|`</param>
@@ -86,6 +94,9 @@ type CompletionContext =
 
     /// Completing records field
     | RecordField of context: RecordContext
+
+    /// Completing a record spread: { ...| }
+    | RecordSpread of context: RecordSpreadContext
 
     | RangeOperator
 
@@ -193,10 +204,28 @@ module Entity =
 
         candidateNs[0 .. nsCount - 1]
 
+    let getOpenableNamespace (requiresQualifiedAccessParent: ShortIdents option) autoOpenParent (candidate: ShortIdents) =
+        let openableNsCount =
+            match requiresQualifiedAccessParent with
+            | Some parent -> min parent.Length candidate.Length
+            | None -> candidate.Length
+
+        let fullOpenableNs = candidate[0 .. openableNsCount - 2]
+        struct (fullOpenableNs, cutAutoOpenModules autoOpenParent fullOpenableNs, candidate[openableNsCount - 1 ..])
+
+    let formatIdents hasCandidateLeaf (idents: ShortIdents) =
+        idents
+        |> Array.mapi (fun index ident ->
+            if hasCandidateLeaf && index = idents.Length - 1 && IsOperatorDisplayName ident then
+                ident
+            else
+                NormalizeIdentifierBackticks ident)
+        |> String.concat "."
+
     let tryCreate
         (
             targetNamespace: ShortIdents option,
-            targetScope: ShortIdents,
+            targetScope: unit -> ShortIdents,
             partiallyQualifiedName: MaybeUnresolvedIdent[],
             requiresQualifiedAccessParent: ShortIdents option,
             autoOpenParent: ShortIdents option,
@@ -218,16 +247,10 @@ module Entity =
                     None
                 else
                     let identCount = parts.Length
+                    let targetScope = targetScope ()
 
-                    let fullOpenableNs, restIdents =
-                        let openableNsCount =
-                            match requiresQualifiedAccessParent with
-                            | Some parent -> min parent.Length candidate.Length
-                            | None -> candidate.Length
-
-                        candidate[0 .. openableNsCount - 2], candidate[openableNsCount - 1 ..]
-
-                    let openableNs = cutAutoOpenModules autoOpenParent fullOpenableNs
+                    let struct (fullOpenableNs, openableNs, restIdents) =
+                        getOpenableNamespace requiresQualifiedAccessParent autoOpenParent candidate
 
                     let getRelativeNs ns =
                         match targetNamespace, candidateNamespace with
@@ -247,8 +270,8 @@ module Entity =
                             match relativeNs with
                             | [||] -> None
                             | _ when identCount > 1 && relativeNs.Length >= identCount ->
-                                Some(relativeNs[0 .. relativeNs.Length - identCount] |> String.concat ".")
-                            | _ -> Some(relativeNs |> String.concat ".")
+                                Some(relativeNs[0 .. relativeNs.Length - identCount] |> formatIdents false)
+                            | _ -> Some(formatIdents false relativeNs)
 
                         let qualifier =
                             if fullRelativeName.Length > 1 && fullRelativeName.Length >= identCount then
@@ -258,30 +281,17 @@ module Entity =
 
                         Some
                             {
-                                FullRelativeName = String.concat "." fullRelativeName //.[0..fullRelativeName.Length - identCount - 1]
-                                Qualifier = String.concat "." qualifier
+                                FullRelativeName = formatIdents true fullRelativeName
+                                Qualifier = formatIdents (qualifier.Length = fullRelativeName.Length) qualifier
                                 Namespace = ns
                                 FullDisplayName =
                                     match restIdents with
                                     | [| _ |] -> ""
-                                    | _ -> String.concat "." restIdents
+                                    | _ -> formatIdents true restIdents
                                 LastIdent = Array.tryLast restIdents |> Option.defaultValue ""
                             })
 
 module ParsedInput =
-
-    /// A pattern that collects all sequential expressions to avoid StackOverflowException
-    let internal (|Sequentials|_|) expr =
-
-        let rec collect expr acc =
-            match expr with
-            | SynExpr.Sequential(expr1 = e1; expr2 = SynExpr.Sequential _ as e2) -> collect e2 (e1 :: acc)
-            | SynExpr.Sequential(expr1 = e1; expr2 = e2) -> e2 :: e1 :: acc
-            | _ -> acc
-
-        match collect expr [] with
-        | [] -> None
-        | exprs -> Some(List.rev exprs)
 
     let emptyStringSet = HashSet<string>()
 
@@ -821,7 +831,10 @@ module ParsedInput =
             | SynExpr.Record(_, _, fields, r) ->
                 ifPosInRange r (fun _ ->
                     fields
-                    |> List.tryPick (fun (SynExprRecordField(expr = e)) -> e |> Option.bind (walkExprWithKind parentKind)))
+                    |> List.tryPick (function
+                        | SynExprRecordFieldOrSpread.Field(SynExprRecordField(expr = e), _) ->
+                            e |> Option.bind (walkExprWithKind parentKind)
+                        | SynExprRecordFieldOrSpread.Spread(spread = SynExprSpread(expr = e)) -> walkExprWithKind parentKind e))
 
             | SynExpr.ObjExpr(objType = ty; bindings = bindings; members = ms; extraImpls = ifaces) ->
                 let bindings = unionBindingAndMembers bindings ms
@@ -834,7 +847,7 @@ module ParsedInput =
                 walkExprWithKind (Some EntityKind.Type) e
                 |> Option.orElseWith (fun () -> List.tryPick walkType tys)
 
-            | SynExpr.LetOrUse(bindings = bindings; body = e) ->
+            | SynExpr.LetOrUse({ Bindings = bindings; Body = e }) ->
                 List.tryPick walkBinding bindings
                 |> Option.orElseWith (fun () -> walkExprWithKind parentKind e)
 
@@ -868,6 +881,8 @@ module ParsedInput =
         and walkField synField =
             let (SynField(attributes = Attributes attrs; fieldType = t)) = synField
             List.tryPick walkAttribute attrs |> Option.orElseWith (fun () -> walkType t)
+
+        and walkTypeSpread (SynTypeSpread(ty = ty)) = walkType ty
 
         and walkValSig synValSig =
             let (SynValSig(attributes = Attributes attrs; synType = t)) = synValSig
@@ -906,7 +921,7 @@ module ParsedInput =
 
             | SynMemberDefn.ImplicitInherit(t, e, _, _, _) -> walkType t |> Option.orElseWith (fun () -> walkExpr e)
 
-            | SynMemberDefn.LetBindings(bindings, _, _, _) -> List.tryPick walkBinding bindings
+            | SynMemberDefn.LetBindings(bindings = bindings) -> List.tryPick walkBinding bindings
 
             | SynMemberDefn.Interface(interfaceType = t; members = members) ->
                 walkType t
@@ -942,7 +957,12 @@ module ParsedInput =
             match synTypeDefn with
             | SynTypeDefnSimpleRepr.Enum(cases, _) -> List.tryPick walkEnumCase cases
             | SynTypeDefnSimpleRepr.Union(_, cases, _) -> List.tryPick walkUnionCase cases
-            | SynTypeDefnSimpleRepr.Record(_, fields, _) -> List.tryPick walkField fields
+            | SynTypeDefnSimpleRepr.Record(_, fields, _) ->
+                List.tryPick
+                    (function
+                    | SynFieldOrSpread.Field field -> walkField field
+                    | SynFieldOrSpread.Spread spread -> walkTypeSpread spread)
+                    fields
             | SynTypeDefnSimpleRepr.TypeAbbrev(_, t, _) -> walkType t
             | _ -> None
 
@@ -990,7 +1010,7 @@ module ParsedInput =
 
             | SynModuleDecl.Open _ -> None
 
-            | SynModuleDecl.Let(_, bindings, _) -> List.tryPick walkBinding bindings
+            | SynModuleDecl.Let(bindings = bindings) -> List.tryPick walkBinding bindings
 
             | SynModuleDecl.Expr(expr, _) -> walkExpr expr
 
@@ -1492,6 +1512,26 @@ module ParsedInput =
                             ->
                             Some(CompletionContext.Inherit(InheritanceContext.Unknown, ([], None)))
 
+                        // { ...$ }
+                        | SynExpr.Record(recordFields = fields) ->
+                            fields
+                            |> List.tryPick (function
+                                | SynExprRecordFieldOrSpread.Spread(SynExprSpread(expr = expr), _) when rangeContainsPos expr.Range pos ->
+                                    Some(CompletionContext.RecordSpread RecordSpreadContext.Construction)
+                                | SynExprRecordFieldOrSpread.Spread _
+                                | SynExprRecordFieldOrSpread.Field _ -> None)
+                            |> Option.orElseWith (fun () -> defaultTraverse expr)
+
+                        // {| ...$ |}
+                        | SynExpr.AnonRecd(recordFields = fields) ->
+                            fields
+                            |> List.tryPick (function
+                                | SynExprAnonRecordFieldOrSpread.Spread(SynExprSpread(expr = expr), _) when rangeContainsPos expr.Range pos ->
+                                    Some(CompletionContext.RecordSpread RecordSpreadContext.Construction)
+                                | SynExprAnonRecordFieldOrSpread.Spread _
+                                | SynExprAnonRecordFieldOrSpread.Field _ -> None)
+                            |> Option.orElseWith (fun () -> defaultTraverse expr)
+
                         | _ -> defaultTraverse expr
 
                 member _.VisitRecordField(path, copyOpt, field) =
@@ -1499,12 +1539,15 @@ module ParsedInput =
                         // detect records usage in constructor
                         match path with
                         | SyntaxNode.SynExpr _ :: SyntaxNode.SynBinding _ :: SyntaxNode.SynMemberDefn _ :: SyntaxNode.SynTypeDefn(SynTypeDefn(
-                            typeInfo = SynComponentInfo(longId = [ id ]))) :: _ -> RecordContext.Constructor(id.idText)
+                            typeInfo = compInfo)) :: _ when compInfo.LongIdent.Length = 1 ->
+                            RecordContext.Constructor(compInfo.LongIdent.Head.idText)
 
-                        | SyntaxNode.SynExpr(SynExpr.Record(None, _, fields, _)) :: _ ->
+                        | SyntaxNode.SynExpr(SynExpr.Record(None, _, fieldsAndSpreads, _)) :: _ ->
                             let isFirstField =
-                                match field, fields with
-                                | Some contextLid, SynExprRecordField(fieldName = lid, _) :: _ -> contextLid.Range = lid.Range
+                                match field, fieldsAndSpreads with
+                                | Some contextLid, SynExprRecordFieldOrSpread.Field(SynExprRecordField(fieldName = lid, _), _) :: _ ->
+                                    contextLid.Range = lid.Range
+                                | Some _, SynExprRecordFieldOrSpread.Spread _ :: _ -> false
                                 | _ -> false
 
                             RecordContext.New(completionPath, isFirstField)
@@ -1564,10 +1607,11 @@ module ParsedInput =
 
                     let overrideContext path (mOverride: range) hasThis isStatic isMember =
                         match path with
-                        | _ :: SyntaxNode.SynTypeDefn(SynTypeDefn(
-                            typeInfo = SynComponentInfo(longId = [ enclosingType ]); trivia = { LeadingKeyword = keyword })) :: _ when
-                            not isMember
+                        | _ :: SyntaxNode.SynTypeDefn(SynTypeDefn(typeInfo = compInfo; trivia = { LeadingKeyword = keyword })) :: _ when
+                            not isMember && compInfo.LongIdent.Length = 1
                             ->
+                            let enclosingType = compInfo.LongIdent.Head
+
                             Some(
                                 CompletionContext.MethodOverride(
                                     MethodOverrideCompletionContext.Class,
@@ -1579,9 +1623,11 @@ module ParsedInput =
                                 )
                             )
                         | SyntaxNode.SynMemberDefn(SynMemberDefn.Interface(interfaceType = ty) as enclosingDefn) :: SyntaxNode.SynTypeDefn(SynTypeDefn(
-                            typeInfo = SynComponentInfo(longId = [ enclosingType ]))) :: _
+                            typeInfo = compInfo)) :: _
                         | _ :: SyntaxNode.SynMemberDefn(SynMemberDefn.Interface(interfaceType = ty) as enclosingDefn) :: SyntaxNode.SynTypeDefn(SynTypeDefn(
-                            typeInfo = SynComponentInfo(longId = [ enclosingType ]))) :: _ ->
+                            typeInfo = compInfo)) :: _ when compInfo.LongIdent.Length = 1 ->
+                            let enclosingType = compInfo.LongIdent.Head
+
                             let ty =
                                 match ty with
                                 | SynType.App(typeName = ty) -> ty
@@ -1781,7 +1827,10 @@ module ParsedInput =
 
                     // module Namespace.Top
                     // module Nested
-                    | SynModuleDecl.NestedModule(moduleInfo = SynComponentInfo(longId = [ ident ])) when rangeContainsPos ident.idRange pos ->
+                    | SynModuleDecl.NestedModule(moduleInfo = compInfo) when
+                        compInfo.LongIdent.Length = 1
+                        && rangeContainsPos compInfo.LongIdent.Head.idRange pos
+                        ->
                         Some CompletionContext.Invalid
 
                     | _ -> defaultTraverse decl
@@ -1793,13 +1842,19 @@ module ParsedInput =
 
                 member _.VisitRecordDefn(_, fields, range) =
                     fields
-                    |> List.tryPick (fun (SynField(idOpt = idOpt; range = fieldRange; fieldType = fieldType)) ->
-                        match idOpt, fieldType with
-                        | Some id, _ when rangeContainsPos id.idRange pos ->
-                            Some(CompletionContext.RecordField(RecordContext.Declaration true))
-                        | _ when rangeContainsPos fieldRange pos -> Some(CompletionContext.RecordField(RecordContext.Declaration false))
-                        | _, SynType.FromParseError _ -> Some(CompletionContext.RecordField(RecordContext.Declaration false))
-                        | _ -> None)
+                    |> List.tryPick (function
+                        | SynFieldOrSpread.Field(SynField(idOpt = idOpt; range = fieldRange; fieldType = fieldType)) ->
+                            match idOpt, fieldType with
+                            | Some id, _ when rangeContainsPos id.idRange pos ->
+                                Some(CompletionContext.RecordField(RecordContext.Declaration true))
+                            | _ when rangeContainsPos fieldRange pos -> Some(CompletionContext.RecordField(RecordContext.Declaration false))
+                            | _, SynType.FromParseError _ -> Some(CompletionContext.RecordField(RecordContext.Declaration false))
+                            | _ -> None
+                        | SynFieldOrSpread.Spread(SynTypeSpread(ty = ty)) ->
+                            if rangeContainsPos ty.Range pos then
+                                Some(CompletionContext.RecordSpread RecordSpreadContext.Declaration)
+                            else
+                                None)
                     // No completions in a record outside of all fields, except in attributes, which is established earlier in VisitAttributeApplication
                     |> Option.orElseWith (fun _ ->
                         if rangeContainsPos range pos then
@@ -1872,9 +1927,9 @@ module ParsedInput =
     //--------------------------------------------------------------------------------------------
     // TryGetInsertionContext
 
-    /// Check if we are at an "open" declaration
-    let GetFullNameOfSmallestModuleOrNamespaceAtPoint (pos: pos, parsedInput: ParsedInput) =
+    let getScopeInfo (pos: pos, parsedInput: ParsedInput) =
         let mutable path = []
+        let mutable scope = []
 
         let visitor =
             { new SyntaxVisitorBase<bool>() with
@@ -1885,12 +1940,26 @@ module ParsedInput =
                 override this.VisitModuleOrNamespace(_, SynModuleOrNamespace(longId = longId; range = range)) =
                     if rangeContainsPos range pos then
                         path <- path @ longId
+                        scope <- scope @ longId
 
                     None // we should traverse the rest of the AST to find the smallest module
+
+                override _.VisitModuleDecl(_, defaultTraverse, decl) =
+                    match decl with
+                    | SynModuleDecl.NestedModule(moduleInfo = info; range = range) when rangeContainsPos range pos ->
+                        scope <- scope @ info.LongIdent
+                    | _ -> ()
+
+                    defaultTraverse decl
             }
 
         SyntaxTraversal.Traverse(pos, parsedInput, visitor) |> ignore
-        path |> List.map (fun x -> x.idText) |> List.toArray
+
+        struct (arrPathOfLid path, arrPathOfLid scope)
+
+    let GetFullNameOfSmallestModuleOrNamespaceAtPoint (pos: pos, parsedInput: ParsedInput) =
+        let struct (path, _) = getScopeInfo (pos, parsedInput)
+        path
 
     let (|ConstructorPats|) pats =
         match pats with
@@ -2085,9 +2154,11 @@ module ParsedInput =
 
             | SynExpr.Record(recordFields = fields) ->
                 fields
-                |> List.iter (fun (SynExprRecordField(fieldName = (ident, _); expr = e)) ->
-                    addLongIdentWithDots ident
-                    e |> Option.iter walkExpr)
+                |> List.iter (function
+                    | SynExprRecordFieldOrSpread.Field(SynExprRecordField(fieldName = (ident, _); expr = e), _) ->
+                        addLongIdentWithDots ident
+                        e |> Option.iter walkExpr
+                    | SynExprRecordFieldOrSpread.Spread(spread = SynExprSpread(expr = e)) -> walkExpr e)
 
             | SynExpr.Ident ident -> addIdent ident
 
@@ -2127,7 +2198,7 @@ module ParsedInput =
                 List.iter walkType tys
                 walkExpr e
 
-            | SynExpr.LetOrUse(bindings = bindings; body = e) ->
+            | SynExpr.LetOrUse({ Bindings = bindings; Body = e }) ->
                 List.iter walkBinding bindings
                 walkExpr e
 
@@ -2210,6 +2281,8 @@ module ParsedInput =
             List.iter walkAttribute attrs
             walkType t
 
+        and walkTypeSpread (SynTypeSpread(ty = ty)) = walkType ty
+
         and walkValSig (SynValSig(attributes = Attributes attrs; synType = t; arity = SynValInfo(argInfos, argInfo))) =
             List.iter walkAttribute attrs
             walkType t
@@ -2252,7 +2325,7 @@ module ParsedInput =
             | SynMemberDefn.ImplicitInherit(t, e, _, _, _) ->
                 walkType t
                 walkExpr e
-            | SynMemberDefn.LetBindings(bindings, _, _, _) -> List.iter walkBinding bindings
+            | SynMemberDefn.LetBindings(bindings = bindings) -> List.iter walkBinding bindings
             | SynMemberDefn.Interface(interfaceType = t; members = members) ->
                 walkType t
                 members |> Option.iter (List.iter walkMember)
@@ -2281,12 +2354,17 @@ module ParsedInput =
             match typeDefn with
             | SynTypeDefnSimpleRepr.Enum(cases, _) -> List.iter walkEnumCase cases
             | SynTypeDefnSimpleRepr.Union(_, cases, _) -> List.iter walkUnionCase cases
-            | SynTypeDefnSimpleRepr.Record(_, fields, _) -> List.iter walkField fields
+            | SynTypeDefnSimpleRepr.Record(_, fields, _) ->
+                List.iter
+                    (function
+                    | SynFieldOrSpread.Field field -> walkField field
+                    | SynFieldOrSpread.Spread spread -> walkTypeSpread spread)
+                    fields
             | SynTypeDefnSimpleRepr.TypeAbbrev(_, t, _) -> walkType t
             | _ -> ()
 
         and walkComponentInfo isTypeExtensionOrAlias compInfo =
-            let (SynComponentInfo(Attributes attrs, TyparsAndConstraints(typars, cs1), cs2, longIdent, _, _, _, _)) =
+            let (SynComponentInfo(Attributes attrs, TyparsAndConstraints(typars, cs1), cs2, _, _, _, _, _)) =
                 compInfo
 
             let constraints = cs1 @ cs2
@@ -2295,7 +2373,7 @@ module ParsedInput =
             List.iter walkTypeConstraint constraints
 
             if isTypeExtensionOrAlias then
-                addLongIdent longIdent
+                addLongIdent compInfo.LongIdent
 
         and walkTypeDefnRepr inp =
             match inp with
@@ -2331,7 +2409,7 @@ module ParsedInput =
             | SynModuleDecl.NestedModule(moduleInfo = info; decls = modules) ->
                 walkComponentInfo false info
                 List.iter walkSynModuleDecl modules
-            | SynModuleDecl.Let(_, bindings, _) -> List.iter walkBinding bindings
+            | SynModuleDecl.Let(bindings = bindings) -> List.iter walkBinding bindings
             | SynModuleDecl.Expr(expr, _) -> walkExpr expr
             | SynModuleDecl.Types(types, _) -> List.iter walkTypeDefn types
             | SynModuleDecl.Attributes(Attributes attrs, _) -> List.iter walkAttribute attrs
@@ -2466,8 +2544,8 @@ module ParsedInput =
         and walkSynModuleDecl (parent: LongIdent) (decl: SynModuleDecl) =
             match decl with
             | SynModuleDecl.NamespaceFragment fragment -> walkSynModuleOrNamespace parent fragment
-            | SynModuleDecl.NestedModule(moduleInfo = SynComponentInfo(longId = ident); decls = decls; range = range; trivia = trivia) ->
-
+            | SynModuleDecl.NestedModule(moduleInfo = compInfo; decls = decls; range = range; trivia = trivia) ->
+                let ident = compInfo.LongIdent
                 let fullIdent = parent @ ident
                 addModule (fullIdent, range)
 
@@ -2506,19 +2584,25 @@ module ParsedInput =
         res, modules
 
     let findBestPositionToInsertOpenDeclaration (modules: FSharpModule list) scope pos (entity: ShortIdents) =
-        match modules |> List.filter (fun x -> entity |> Array.startsWith x.Idents) with
-        | [] -> { ScopeKind = scope.Kind; Pos = pos }
-        | m :: _ ->
+        match modules |> List.tryFind (fun x -> entity |> Array.startsWith x.Idents) with
+        | None -> struct (scope, { ScopeKind = scope.Kind; Pos = pos })
+        | Some m ->
             //printfn "All modules: %A, Win module: %A" modules m
             let scopeKind =
                 match scope.Kind with
                 | TopModule -> NestedModule
                 | x -> x
 
-            {
-                ScopeKind = scopeKind
-                Pos = mkPos (Line.fromZ m.Range.EndLine) m.Range.StartColumn
-            }
+            let targetScope =
+                { scope with
+                    ShortIdents = m.Idents[0 .. m.Idents.Length - 2]
+                }
+
+            struct (targetScope,
+                    {
+                        ScopeKind = scopeKind
+                        Pos = mkPos (Line.fromZ m.Range.EndLine) m.Range.StartColumn
+                    })
 
     let TryFindInsertionContext
         (currentLine: int)
@@ -2528,6 +2612,16 @@ module ParsedInput =
         =
         let res, modules =
             tryFindNearestPointAndModules currentLine parsedInput insertionPoint
+
+        let res =
+            res
+            |> Option.map (fun (scope, ns, pos) ->
+                let namingScope =
+                    { scope with
+                        ShortIdents = ns |> Option.defaultValue scope.ShortIdents
+                    }
+
+                namingScope, ns, pos)
 
         fun
             (requiresQualifiedAccessParent: ShortIdents option,
@@ -2542,11 +2636,16 @@ module ParsedInput =
 
             match res with
             | None -> [||]
-            | Some(scope, ns, pos) ->
+            | Some(namingScope, ns, pos) ->
+                let find () =
+                    findBestPositionToInsertOpenDeclaration modules namingScope pos entity
+
                 let entities =
                     Entity.tryCreate (
                         ns,
-                        scope.ShortIdents,
+                        (fun () ->
+                            match find () with
+                            | struct (targetScope, _) -> targetScope.ShortIdents),
                         partiallyQualifiedName,
                         requiresQualifiedAccessParent,
                         autoOpenParent,
@@ -2555,7 +2654,9 @@ module ParsedInput =
                     )
 
                 entities
-                |> Array.map (fun e -> e, findBestPositionToInsertOpenDeclaration modules scope pos entity)
+                |> Array.map (fun e ->
+                    match find () with
+                    | struct (_, context) -> e, context)
 
     /// Corrects insertion line number based on kind of scope and text surrounding the insertion point.
     let AdjustInsertionPoint (getLineStr: int -> string) ctx =
@@ -2608,11 +2709,57 @@ module ParsedInput =
         (entity: ShortIdents)
         (insertionPoint: OpenStatementInsertionPoint)
         =
-        match tryFindNearestPointAndModules currentLine parsedInput insertionPoint with
-        | Some(scope, _, point), modules -> findBestPositionToInsertOpenDeclaration modules scope point entity
-        | _ ->
-            // we failed to find insertion point because ast is empty for some reason, return top left point in this case
-            {
-                ScopeKind = ScopeKind.TopModule
-                Pos = mkPos 1 0
-            }
+        let ctx =
+            match tryFindNearestPointAndModules currentLine parsedInput insertionPoint with
+            | Some(scope, _, point), modules ->
+                let struct (_, context) =
+                    findBestPositionToInsertOpenDeclaration modules scope point entity
+
+                context
+            | _ ->
+                // we failed to find insertion point because ast is empty for some reason, return top left point in this case
+                {
+                    ScopeKind = ScopeKind.TopModule
+                    Pos = mkPos 1 0
+                }
+
+        // In scripts, leading `#r`/`#reference`/`#load` directives must precede any `open`.
+        match parsedInput with
+        | ParsedInput.ImplFile impl when impl.IsScript ->
+            let isReferenceOrLoad =
+                function
+                | "r"
+                | "reference"
+                | "load" -> true
+                | _ -> false
+
+            let lastReferenceLine =
+                match impl.Contents with
+                | SynModuleOrNamespace(decls = decls) :: _ ->
+                    decls
+                    |> List.takeWhile (function
+                        | SynModuleDecl.HashDirective _ -> true
+                        | _ -> false)
+                    |> List.choose (function
+                        | SynModuleDecl.HashDirective(ParsedHashDirective(ident, _, _), range) when isReferenceOrLoad ident ->
+                            Some range.EndLine
+                        | _ -> None)
+                    |> List.fold max 0
+                | _ -> 0
+
+            if lastReferenceLine > 0 then
+                // `AdjustInsertionPoint` snaps a `TopModule` position up to line 1, above the directives;
+                // remap it to `HashDirective`, which (like the other scopes) it passes through unchanged.
+                let scopeKind =
+                    if ctx.ScopeKind = ScopeKind.TopModule then
+                        ScopeKind.HashDirective
+                    else
+                        ctx.ScopeKind
+
+                {
+                    ScopeKind = scopeKind
+                    Pos = mkPos (max (lastReferenceLine + 1) ctx.Pos.Line) ctx.Pos.Column
+                }
+            else
+                ctx
+        | _ -> ctx

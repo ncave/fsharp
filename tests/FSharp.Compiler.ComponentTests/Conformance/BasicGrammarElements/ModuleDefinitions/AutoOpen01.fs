@@ -1,5 +1,5 @@
-// #Conformance #TypesAndModules #Modules 
-#light
+// #Conformance #TypesAndModules #Modules
+
 
 // Sanity check AutoOpen
 

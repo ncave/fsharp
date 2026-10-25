@@ -22,7 +22,7 @@ module internal FSharpEnvironment =
 
     let FSharpProductName = UtilsStrings.SR.buildProductName (FSharpBannerVersion)
 
-    let versionOf<'t> : MaybeNull<string> =
+    let versionOf<'t> : (string | null) =
         match typeof<'t>.Assembly.GetName().Version with
         | null -> null
         | v -> v.ToString()
@@ -67,12 +67,12 @@ module internal FSharpEnvironment =
     //     - default F# binaries directory in service.fs (REVIEW: check this)
     //     - default location of fsi.exe in FSharp.VS.FSI.dll (REVIEW: check this)
     //     - default F# binaries directory in (project system) Project.fs
-    let BinFolderOfDefaultFSharpCompiler (probePoint: string option) =
+    let BinFolderOfDefaultFSharpCompilerUsingEnvironment (getEnvironmentVariable: string -> string | null) (probePoint: string option) =
         // Check for an app.config setting to redirect the default compiler location
         // Like fsharp-compiler-location
         try
             // We let you set FSHARP_COMPILER_BIN. I've rarely seen this used and its not documented in the install instructions.
-            match Environment.GetEnvironmentVariable("FSHARP_COMPILER_BIN") with
+            match getEnvironmentVariable "FSHARP_COMPILER_BIN" with
             | result when not (String.IsNullOrWhiteSpace result) -> Some !!result
             | _ ->
                 let safeExists f =
@@ -95,6 +95,9 @@ module internal FSharpEnvironment =
                     | Some path -> Some path
         with e ->
             None
+
+    let BinFolderOfDefaultFSharpCompiler (probePoint: string option) =
+        BinFolderOfDefaultFSharpCompilerUsingEnvironment Environment.GetEnvironmentVariable probePoint
 
     // Specify the tooling-compatible fragments of a path such as:
     //     typeproviders/fsharp41/net461/MyProvider.DesignTime.dll
@@ -122,20 +125,21 @@ module internal FSharpEnvironment =
                 "netstandard2.0"
             |]
         elif typeof<obj>.Assembly.GetName().Name = "System.Private.CoreLib" then
+            let productMajor = FSharp.BuildProperties.fsProductTfmMajorVersion
+            let runningMajor = Environment.Version.Major
+
             [|
-                "net10.0"
-                "net9.0"
-                "net8.0"
-                "net7.0"
-                "net6.0"
-                "net5.0"
-                "netcoreapp3.1"
-                "netcoreapp3.0"
-                "netstandard2.1"
-                "netcoreapp2.2"
-                "netcoreapp2.1"
-                "netcoreapp2.0"
-                "netstandard2.0"
+                for v in max productMajor runningMajor .. -1 .. 5 -> $"net{v}.0"
+                yield!
+                    [|
+                        "netcoreapp3.1"
+                        "netcoreapp3.0"
+                        "netstandard2.1"
+                        "netcoreapp2.2"
+                        "netcoreapp2.1"
+                        "netcoreapp2.0"
+                        "netstandard2.0"
+                    |]
             |]
         else
             Debug.Assert(false, "Couldn't determine runtime tooling context, assuming it supports at least .NET Standard 2.0")

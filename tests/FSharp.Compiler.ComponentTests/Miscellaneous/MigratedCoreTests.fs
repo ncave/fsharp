@@ -4,7 +4,7 @@ module Miscellaneous.FsharpSuiteMigrated_CoreTests
 
 open Xunit
 open FSharp.Test
-open FSharp.Test.ScriptHelpers 
+open FSharp.Test.ScriptHelpers
 open System.Runtime.InteropServices
 open Miscellaneous.FsharpSuiteMigrated.TestFrameworkAdapter
 
@@ -28,13 +28,13 @@ let ``apporder-FSC_OPTIMIZED`` () = singleTestBuildAndRun "core/apporder" FSC_OP
 let ``apporder-FSI`` () = singleTestBuildAndRun "core/apporder" FSI
 
 [<Fact>]
-let ``array-FSC_DEBUG-5_0`` () = singleTestBuildAndRunVersion "core/array" FSC_DEBUG LangVersion.V50
+let ``array-FSC_DEBUG-8_0`` () = singleTestBuildAndRunVersion "core/array" FSC_DEBUG LangVersion.V80
 
 [<Fact>]
-let ``array-FSC_OPTIMIZED-5_0`` () = singleTestBuildAndRunVersion "core/array" FSC_OPTIMIZED LangVersion.V50
+let ``array-FSC_OPTIMIZED-8_0`` () = singleTestBuildAndRunVersion "core/array" FSC_OPTIMIZED LangVersion.V80
 
 [<Fact>]
-let ``array-FSI-5_0`` () = singleTestBuildAndRunVersion "core/array" FSI LangVersion.V50
+let ``array-FSI-8_0`` () = singleTestBuildAndRunVersion "core/array" FSI LangVersion.V80
 
 [<Fact>]
 let ``array-FSC_OPTIMIZED-preview`` () = singleTestBuildAndRunVersion "core/array" FSC_OPTIMIZED LangVersion.Preview
@@ -49,20 +49,23 @@ let ``array-no-dot-FSC_OPTIMIZED`` () = singleTestBuildAndRunVersion "core/array
 let ``array-no-dot-FSI`` () = singleTestBuildAndRunVersion "core/array-no-dot" FSI LangVersion.Preview
 
 [<Fact>]
-let ``array-no-dot-warnings-langversion-default`` () =     
+let ``array-no-dot-warnings-langversion-default`` () =
     singleVersionedNegTest "core/array-no-dot-warnings" LangVersion.Latest "test-langversion-default"
 
 [<Fact>]
-let ``array-no-dot-warnings-langversion-5_0`` () =       
-    singleVersionedNegTest "core/array-no-dot-warnings" LangVersion.V50 "test-langversion-5.0"
+let ``array-no-dot-warnings-langversion-8_0`` () =
+    singleVersionedNegTest "core/array-no-dot-warnings" LangVersion.V80 "test-langversion-8.0"
+
+[<Fact>]
+let ``ref-ops-deprecation-langversion-8_0`` () =
+    singleVersionedNegTest "core/ref-ops-deprecation" LangVersion.V80 "test-langversion-preview"
 
 [<Fact>]
 let ``ref-ops-deprecation-langversion-preview`` () =
     singleVersionedNegTest "core/ref-ops-deprecation" LangVersion.Preview "test-langversion-preview"
 
-[<Fact>]
-let ``auto-widen-version-5_0``() = 
-    singleVersionedNegTest "core/auto-widen/5.0" LangVersion.V50 "test"
+// Note: auto-widen-version-5_0 test was removed as it tested behavior when auto-widen was disabled (langversion < 8.0)
+// Now that minimum is 8.0, auto-widen is always enabled and the test folder core/auto-widen/5.0 can be removed
 
 [<Fact>]
 let ``auto-widen-version-FSC_DEBUG-preview``() =
@@ -74,14 +77,14 @@ let ``auto-widen-version-FSC_OPTIMIZED-preview``() =
 
 [<Fact>]
 let ``auto-widen-minimal``() =
-    singleTestBuildAndRunVersion "core/auto-widen/minimal" FSC_OPTIMIZED LangVersion.V70
+    singleTestBuildAndRunVersion "core/auto-widen/minimal" FSC_OPTIMIZED LangVersion.V80
 
 [<Fact>]
-let ``auto-widen-version-preview-warns-on``() = 
+let ``auto-widen-version-preview-warns-on``() =
     singleVersionedNegTestAux "core/auto-widen/preview" ["--warnon:3388";"--warnon:3389";"--warnon:3395";"--warnaserror+";"--define:NEGATIVE"] LangVersion.V80 "test"
 
 [<Fact>]
-let ``auto-widen-version-preview-default-warns``() = 
+let ``auto-widen-version-preview-default-warns``() =
     singleVersionedNegTestAux "core/auto-widen/preview-default-warns" ["--warnaserror+";"--define:NEGATIVE"] LangVersion.V80 "test"
 
 [<Fact>]
@@ -292,24 +295,6 @@ let ``members-factors-mutrec-FSC_OPTIMIZED`` () = singleTestBuildAndRun "core/me
 let ``members-factors-mutrec-FSI`` () = singleTestBuildAndRun "core/members/factors-mutrec" FSI
 
 [<Fact>]
-let ``graph-FSC_DEBUG`` () = singleTestBuildAndRunVersion "perf/graph" FSC_DEBUG LangVersion.SupportsMl
-
-[<Fact>]
-let ``graph-FSC_OPTIMIZED`` () = singleTestBuildAndRunVersion "perf/graph" FSC_OPTIMIZED LangVersion.SupportsMl
-
-[<Fact>]
-let ``graph-FSI`` () = singleTestBuildAndRunVersion "perf/graph" FSI LangVersion.SupportsMl
-
-[<Fact>]
-let ``nbody-FSC_DEBUG`` () = singleTestBuildAndRunVersion "perf/nbody" FSC_DEBUG LangVersion.SupportsMl
-
-[<Fact>]
-let ``nbody-FSC_OPTIMIZED`` () = singleTestBuildAndRunVersion "perf/nbody" FSC_OPTIMIZED LangVersion.SupportsMl
-
-[<Fact>]
-let ``nbody-FSI`` () = singleTestBuildAndRunVersion "perf/nbody" FSI LangVersion.SupportsMl
-
-[<Fact>]
 let ``forexpression-FSC_DEBUG`` () = singleTestBuildAndRun "core/forexpression" FSC_DEBUG
 
 [<Fact>]
@@ -461,7 +446,7 @@ let ``reflect-FSI`` () = singleTestBuildAndRunIsolated "core/reflect" FSI
 let isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
 
 [<Fact()>]
-let ``pinvoke-FSC_OPTIMIZED`` () =   
+let ``pinvoke-FSC_OPTIMIZED`` () =
     if isWindows then
         singleTestBuildAndRun "core/pinvoke" FSC_OPTIMIZED
 

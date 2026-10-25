@@ -1,18 +1,18 @@
-// #Conformance #DeclarationElements #Import 
-#light
+// #Conformance #DeclarationElements #Import
+
 
 module ABC =
 
     type Foo1 =
         | A
         | B
-        
+
     module ABC =
-    
+
         type Foo2 =
             | A
             | B
-            
+
 
 open ABC
 open ABC.ABC

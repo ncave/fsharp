@@ -44,6 +44,10 @@ module internal FSharpConstants =
     let FSharpLanguageServiceCallbackName = "F# Language Service"
 
     [<Literal>]
+    let copilotSymbolProviderName =
+        "Microsoft.VisualStudio.FSharp.CopilotSymbolContextProvider"
+
+    [<Literal>]
     /// "FSharp"
     let FSharpLanguageLongName = "FSharp"
 
@@ -100,6 +104,13 @@ module internal CodeFix =
 
     [<Literal>]
     let AddParentheses = "AddParentheses"
+
+    [<Literal>]
+    let AddMissingAttributeToSignature = "AddMissingAttributeToSignature"
+
+    [<Literal>]
+    let RemoveExtraAttributeFromImplementation =
+        "RemoveExtraAttributeFromImplementation"
 
     [<Literal>]
     let AddTypeAnnotationToObjectOfIndeterminateType =

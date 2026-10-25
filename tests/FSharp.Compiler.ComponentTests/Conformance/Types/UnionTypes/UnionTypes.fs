@@ -172,9 +172,9 @@ module UnionTypes =
         |> shouldFail
         |> withDiagnostics [
             (Error 39, Line 17, Col 15, Line 17, Col 30, "The type 'IStructuralHash' is not defined.")
-            (Error 72, Line 18, Col 1, Line 18, Col 25, "Lookup on object of indeterminate type based on information prior to this program point. A type annotation may be needed prior to this program point to constrain the type of the object. This may allow the lookup to be resolved.")
+            (Error 72, Line 18, Col 1, Line 18, Col 25, "The type of this expression could not be inferred before accessing its members. Add a type annotation, e.g. (expr: SomeType), to constrain the type before this point.")
             (Error 39, Line 21, Col 15, Line 21, Col 30, "The type 'IStructuralHash' is not defined.")
-            (Error 72, Line 22, Col 1, Line 22, Col 25, "Lookup on object of indeterminate type based on information prior to this program point. A type annotation may be needed prior to this program point to constrain the type of the object. This may allow the lookup to be resolved.")
+            (Error 72, Line 22, Col 1, Line 22, Col 25, "The type of this expression could not be inferred before accessing its members. Add a type annotation, e.g. (expr: SomeType), to constrain the type before this point.")
         ]
 
     //SOURCE=E_FieldNameUsedMulti.fs SCFLAGS="--test:ErrorRanges"                                 # E_FieldNameUsedMulti.fs
@@ -517,16 +517,6 @@ module UnionTypes =
         |> verifyCompileAndRun
         |> shouldSucceed
 
-    //SOURCE=SampleFromSpec01b.fsx SCFLAGS=                                                       # SampleFromSpec01b.fsx
-    [<Theory; FileInlineData("SampleFromSpec01b.fsx")>]
-    let ``SampleFromSpec01b_fsx`` compilation =
-        compilation
-        |> getCompilation
-        |> withOcamlCompat
-        |> withLangVersion50
-        |> verifyCompileAndRun
-        |> shouldSucceed
-
     //SOURCE=SampleFromSpec01d.fsx SCFLAGS=                                                       # SampleFromSpec01d.fsx
     [<Theory; FileInlineData("SampleFromSpec01d.fsx")>]
     let ``SampleFromSpec01d_fsx`` compilation =
@@ -569,19 +559,10 @@ module UnionTypes =
 
     //SOURCE=LowercaseWhenRequireQualifiedAccess.fsx                                                                 # LowercaseWhenRequireQualifiedAccess.fsx
     [<Theory; FileInlineData("LowercaseWhenRequireQualifiedAccess.fsx")>]
-    let ``LowercaseWhenRequireQualifiedAccess_fs in langversion 6`` compilation =
-        compilation
-        |> getCompilation
-        |> withLangVersion60
-        |> verifyCompile
-        |> shouldFail
-
-    //SOURCE=LowercaseWhenRequireQualifiedAccess.fsx                                                                 # LowercaseWhenRequireQualifiedAccess.fsx
-    [<Theory; FileInlineData("LowercaseWhenRequireQualifiedAccess.fsx")>]
     let ``LowercaseWhenRequireQualifiedAccess_fs in preview`` compilation =
         compilation
         |> getCompilation
-        |> withLangVersion70
+        |> withLangVersion80
         |> verifyCompileAndRun
         |> shouldSucceed
 
@@ -590,7 +571,7 @@ module UnionTypes =
     let ``E_LowercaseWhenRequireQualifiedAccess_fs in preview`` compilation =
         compilation
         |> getCompilation
-        |> withLangVersion70
+        |> withLangVersion80
         |> verifyCompile
         |> shouldFail
         |> withDiagnostics [
@@ -605,36 +586,6 @@ module UnionTypes =
             (Error 53, Line 20, Col 12, Line 20, Col 15, "Lowercase discriminated union cases are only allowed when using RequireQualifiedAccess attribute");
             (Error 53, Line 22, Col 14, Line 22, Col 17, "Lowercase discriminated union cases are only allowed when using RequireQualifiedAccess attribute")
             (Error 883, Line 32, Col 7, Line 32, Col 14, "Invalid namespace, module, type or union case name");
-            (Error 883, Line 37, Col 7, Line 37, Col 14, "Invalid namespace, module, type or union case name")
-        ]
-
-    //SOURCE=E_LowercaseWhenRequireQualifiedAccess.fsx                                                                 # E_LowercaseWhenRequireQualifiedAccess.fsx
-    [<Theory; FileInlineData("E_LowercaseWhenRequireQualifiedAccess.fsx")>]
-    let ``E_LowercaseWhenRequireQualifiedAccess_fs in langversion 6`` compilation =
-        compilation
-        |> getCompilation
-        |> withLangVersion60
-        |> verifyCompile
-        |> shouldFail
-        |> withDiagnostics [
-            (Error 883, Line 6, Col 14, Line 6, Col 29, "Invalid namespace, module, type or union case name");
-            (Error 53, Line 6, Col 14, Line 6, Col 29, "Discriminated union cases and exception labels must be uppercase identifiers");
-            (Error 883, Line 8, Col 12, Line 8, Col 27, "Invalid namespace, module, type or union case name");
-            (Error 53, Line 8, Col 12, Line 8, Col 27, "Discriminated union cases and exception labels must be uppercase identifiers");
-            (Error 883, Line 11, Col 14, Line 11, Col 29, "Invalid namespace, module, type or union case name");
-            (Error 53, Line 11, Col 14, Line 11, Col 29, "Discriminated union cases and exception labels must be uppercase identifiers");
-            (Error 883, Line 14, Col 12, Line 14, Col 27, "Invalid namespace, module, type or union case name");
-            (Error 53, Line 14, Col 12, Line 14, Col 27, "Discriminated union cases and exception labels must be uppercase identifiers");
-            (Error 53, Line 16, Col 14, Line 16, Col 15, "Discriminated union cases and exception labels must be uppercase identifiers");
-            (Error 53, Line 18, Col 12, Line 18, Col 13, "Discriminated union cases and exception labels must be uppercase identifiers");
-            (Error 53, Line 20, Col 12, Line 20, Col 15, "Discriminated union cases and exception labels must be uppercase identifiers");
-            (Error 53, Line 22, Col 14, Line 22, Col 17, "Discriminated union cases and exception labels must be uppercase identifiers")
-            (Error 53, Line 26, Col 7, Line 26, Col 8, "Discriminated union cases and exception labels must be uppercase identifiers");
-            (Error 53, Line 27, Col 7, Line 27, Col 12, "Discriminated union cases and exception labels must be uppercase identifiers")
-            (Error 53, Line 31, Col 7, Line 31, Col 8, "Discriminated union cases and exception labels must be uppercase identifiers");
-            (Error 883, Line 32, Col 7, Line 32, Col 14, "Invalid namespace, module, type or union case name");
-            (Error 53, Line 32, Col 7, Line 32, Col 14, "Discriminated union cases and exception labels must be uppercase identifiers");
-            (Error 53, Line 36, Col 7, Line 36, Col 8, "Discriminated union cases and exception labels must be uppercase identifiers");
             (Error 883, Line 37, Col 7, Line 37, Col 14, "Invalid namespace, module, type or union case name")
         ]
 
@@ -657,7 +608,7 @@ module UnionTypes =
         |> verifyCompile
         |> shouldFail
         |> withDiagnostics [
-            (Error 58, Line 9, Col 1, Line 9, Col 2, "Unexpected syntax or possible incorrect indentation: this token is offside of context started at position (8:19). Try indenting this further.\nTo continue using non-conforming indentation, pass the '--strict-indentation-' flag to the compiler, or set the language version to F# 7.")
+            (Error 58, Line 9, Col 1, Line 9, Col 2, "Unexpected syntax or possible incorrect indentation: this token is offside of context started at position (8:19). Try indenting this further.")
             (Error 547, Line 8, Col 24, Line 8, Col 33, "A type definition requires one or more members or other declarations. If you intend to define an empty class, struct or interface, then use 'type ... = class end', 'interface end' or 'struct end'.")
             (Error 10, Line 9, Col 1, Line 9, Col 2, "Unexpected symbol '|' in implementation file")
         ]
@@ -770,7 +721,7 @@ if (sprintf "%%A" ABC.ab) <> "[A; B]" then failwith (sprintf "Failed: printing '
         |> asExe
         |> compileAndRun
         |> shouldSucceed
-        
+
     [<Fact>]
     let ``Error when declaring an abstract member in union type`` () =
         Fsx """
@@ -778,11 +729,11 @@ type U =
   | A | B
   abstract M : unit -> unit
        """
-        |> typecheck 
+        |> typecheck
         |> shouldFail
         |>  withSingleDiagnostic (Error 912, Line 4, Col 3, Line 4, Col 28, "This declaration element is not permitted in an augmentation")
-        
-        
+
+
     [<Fact>]
     let ``Error when property has same name as DU case`` () =
         Fsx """
@@ -806,13 +757,13 @@ type MyId =
         | IdC x -> Some x
         | _ -> None
        """
-        |> typecheck 
+        |> typecheck
         |> shouldFail
         |> withDiagnostics [
             (Error 23, Line 7, Col 17, Line 7, Col 20, "The member 'IdA' cannot be defined because the name 'IdA' clashes with the union case 'IdA' in this type or module")
             (Error 23, Line 17, Col 17, Line 17, Col 20, "The member 'IdC' cannot be defined because the name 'IdC' clashes with the union case 'IdC' in this type or module")
         ]
-        
+
 
     [<Fact>]
     let ``Union field appears multiple times in union declaration`` () =

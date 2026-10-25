@@ -81,7 +81,7 @@ module internal WarnScopes =
                 None
             | false, _ -> Some(s, s)
 
-        let parseInt (intString: string, argString) =
+        let parseInt (intString: string, argString: string) =
             match System.Int32.TryParse intString with
             | true, i -> Some i
             | false, _ ->
@@ -117,7 +117,8 @@ module internal WarnScopes =
         let startPos = lexbuf.StartPos
 
         let mGroups = (regex.Match text).Groups
-        let totalLength = mGroups[0].Length
+        let indentation = mGroups[1].Length
+        let directiveLength = mGroups[0].Length - indentation
         let dIdent = mGroups[2].Value
         let argCaptures = [ for c in mGroups[3].Captures -> c ]
 
@@ -128,7 +129,7 @@ module internal WarnScopes =
             positions lexbuf.StartPos.Line offset length
             ||> mkFileIndexRange startPos.FileIndex
 
-        let directiveRange = mkRange 0 totalLength
+        let directiveRange = mkRange indentation directiveLength
 
         if argCaptures.IsEmpty then
             errorR (Error(FSComp.SR.lexWarnDirectiveMustHaveArgs (), directiveRange))
@@ -142,7 +143,7 @@ module internal WarnScopes =
             | "warnon" -> argCaptures |> List.choose (mkDirective WarnCmd.Warnon)
             | "nowarn" -> argCaptures |> List.choose (mkDirective WarnCmd.Nowarn)
             | _ -> // like "warnonx"
-                errorR (Error(FSComp.SR.fsiInvalidDirective ($"#{dIdent}", ""), directiveRange))
+                errorR (Error(FSComp.SR.fsiInvalidDirective (RichText.mkKeyword $"#{dIdent}", RichText.empty), directiveRange))
                 []
 
         {
@@ -243,7 +244,7 @@ module internal WarnScopes =
                 | WarnScope.OpenOff m' :: _
                 | WarnScope.On m' :: _ ->
                     if scopedNowarnFeatureIsSupported then
-                        informationalWarning (Error(FSComp.SR.lexWarnDirectivesMustMatch ("#nowarn", m'.StartLine), m))
+                        informationalWarning (Error(FSComp.SR.lexWarnDirectivesMustMatch (RichText.mkKeyword "#nowarn", m'.StartLine), m))
 
                     warnScopeMap
                 | scopes -> warnScopeMap.Add(n, WarnScope.OpenOff(mkScope m m) :: scopes)
@@ -252,7 +253,7 @@ module internal WarnScopes =
                 | WarnScope.OpenOff m' :: t -> warnScopeMap.Add(n, WarnScope.Off(mkScope m' m) :: t)
                 | WarnScope.OpenOn m' :: _
                 | WarnScope.Off m' :: _ ->
-                    warning (Error(FSComp.SR.lexWarnDirectivesMustMatch ("#warnon", m'.EndLine), m))
+                    warning (Error(FSComp.SR.lexWarnDirectivesMustMatch (RichText.mkKeyword "#warnon", m'.EndLine), m))
                     warnScopeMap
                 | scopes -> warnScopeMap.Add(n, WarnScope.OpenOn(mkScope m m) :: scopes)
 

@@ -3,7 +3,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.0</TargetFrameworks>
+    <!-- fickle: net10 only, so FCS can use modern runtime APIs; the netstandard2.0 build is dropped -->
+    <TargetFrameworks>$(FSharpNetCoreProductTargetFramework)</TargetFrameworks>
     <OutputType>Library</OutputType>
     <NoWarn>$(NoWarn);44</NoWarn> <!-- Obsolete -->
     <NoWarn>$(NoWarn);57</NoWarn> <!-- Experimental -->
@@ -15,6 +16,7 @@
     <AllowCrossTargeting>true</AllowCrossTargeting>
     <DefineConstants>$(DefineConstants);FABLE_CLI</DefineConstants>
     <DefineConstants>$(DefineConstants);COMPILER</DefineConstants>
+	<DefineConstants Condition="$(DotNetBuildUseMonoRuntime) == 'true'">$(DefineConstants);BUILD_USING_MONO</DefineConstants>
 	<Nullable>enable</Nullable>
 	<!-- Nullness checking against ns20 base class libraries is very weak, the APIs were not updated with annotations.
 	     Therefore we want to use the latest BCL APIs from NetCurrent.
@@ -23,7 +25,6 @@
 
      OSX and Linux has problems with Xliff targets for net9, skipping via SKIP_NETCURRENT_FSC_BUILD until resolved ( The target "UpdateXlf" does not exist in the project.)
 	-->
-    <TargetFrameworks Condition=" '$(OfficialBuildId)' == '' AND '$(FSharpNetCoreProductTargetFramework)' != '' AND '$(Configuration)' != 'Proto' AND '$(SKIP_NETCURRENT_FSC_BUILD)' != 'true' ">$(FSharpNetCoreProductTargetFramework);$(TargetFrameworks)</TargetFrameworks>
     <DefineConstants Condition="'$(FSHARPCORE_USE_PACKAGE)' == 'true'">$(DefineConstants);FSHARPCORE_USE_PACKAGE</DefineConstants>
     <OtherFlags>$(OtherFlags) --extraoptimizationloops:1</OtherFlags>
     <!-- 3218: ArgumentsInSigAndImplMismatch -->
@@ -40,6 +41,8 @@
     <FsLexOutputFolder>$(IntermediateOutputPath)$(TargetFramework)\</FsLexOutputFolder>
     <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
     <Configurations>Debug;Release</Configurations>
+    <!-- FSComp.txt needs the classified accessors, which the SDK's FSharp.Build cannot generate -->
+    <UseBootstrappedFSharpBuildTasks>true</UseBootstrappedFSharpBuildTasks>
   </PropertyGroup>
 
   <!--  The FSharp.Compiler.Service dll provides a referencable public interface for tool builders -->
@@ -102,27 +105,31 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="Utilities\NullnessShims.fs" />
     <EmbeddedText Include="FSComp.txt">
       <Link>FSComp.txt</Link>
+      <RichText>true</RichText>
     </EmbeddedText>
     <EmbeddedText Include="Interactive\FSIstrings.txt">
       <Link>FSIstrings.txt</Link>
+      <RichText>true</RichText>
     </EmbeddedText>
     <EmbeddedResource Include="FSStrings.resx">
       <Link>FSStrings.resx</Link>
       <LogicalName>FSStrings.resources</LogicalName>
     </EmbeddedResource>
+    <Compile Include="Utilities\NullHelpers.fs" CompileOrder="CompileFirst" />
+    <Compile Include="Utilities\sformat.fsi" CompileOrder="CompileFirst" />
+    <Compile Include="Utilities\sformat.fs" CompileOrder="CompileFirst" />
+    <Compile Include="Utilities\sr.fsi" CompileOrder="CompileFirst" />
+    <Compile Include="Utilities\sr.fs" CompileOrder="CompileFirst" />
+    <Compile Include="Facilities\RichText.fsi" CompileOrder="CompileFirst" />
+    <Compile Include="Facilities\RichText.fs" CompileOrder="CompileFirst" />
     <Compile Include="Utilities\Activity.fsi" />
     <Compile Include="Utilities\Activity.fs" />
 	<Compile Include="Utilities\Caches.fsi" />
     <Compile Include="Utilities\Caches.fs" />
     <Compile Include="Utilities\illib.fsi" />
     <Compile Include="Utilities\illib.fs" />
-    <Compile Include="Utilities\sformat.fsi" />
-    <Compile Include="Utilities\sformat.fs" />
-    <Compile Include="Utilities\sr.fsi" />
-    <Compile Include="Utilities\sr.fs" />
     <Compile Include="Utilities\ResizeArray.fsi" />
     <Compile Include="Utilities\ResizeArray.fs" />
     <Compile Include="Utilities\HashMultiMap.fsi" />
@@ -238,8 +245,24 @@
     <Compile Include="AbstractIL\ilread.fs" />
     <Compile Include="AbstractIL\ilwritepdb.fsi" />
     <Compile Include="AbstractIL\ilwritepdb.fs" />
+    <Compile Include="AbstractIL\EncMethodDebugInformation.fsi" />
+    <Compile Include="AbstractIL\EncMethodDebugInformation.fs" />
     <Compile Include="AbstractIL\ilwrite.fsi" />
     <Compile Include="AbstractIL\ilwrite.fs" />
+    <!-- ECMA-335 Edit-and-Continue metadata delta writer. See PR #TBD.
+         Placed after ilwrite.fs/.fsi (not immediately after ilwritepdb) because
+         IlxDeltaStreams.fs and DeltaMetadataTables.fs reuse ilwrite.fs's
+         markerForUnicodeBytes helper for #US heap encoding. -->
+    <Compile Include="AbstractIL\ILDeltaHandles.fs" />
+    <Compile Include="AbstractIL\ILMetadataHeaps.fs" />
+    <Compile Include="AbstractIL\IlxDeltaStreams.fs" />
+    <Compile Include="AbstractIL\DeltaMetadataEncoding.fs" />
+    <Compile Include="AbstractIL\DeltaMetadataTypes.fs" />
+    <Compile Include="AbstractIL\DeltaMetadataTables.fs" />
+    <Compile Include="AbstractIL\DeltaTableLayout.fs" />
+    <Compile Include="AbstractIL\DeltaIndexSizing.fs" />
+    <Compile Include="AbstractIL\DeltaMetadataSerializer.fs" />
+    <Compile Include="AbstractIL\FSharpDeltaMetadataWriter.fs" />
     <Compile Include="AbstractIL\ilreflect.fsi" />
     <Compile Include="AbstractIL\ilreflect.fs" />
     <Compile Include="SyntaxTree\PrettyNaming.fsi" />
@@ -274,6 +297,8 @@
     </None>
     <Compile Include="SyntaxTree\UnicodeLexing.fsi" />
     <Compile Include="SyntaxTree\UnicodeLexing.fs" />
+    <Compile Include="SyntaxTree\XmlDocIncludeExpander.fsi" />
+    <Compile Include="SyntaxTree\XmlDocIncludeExpander.fs" />
     <Compile Include="SyntaxTree\XmlDoc.fsi" />
     <Compile Include="SyntaxTree\XmlDoc.fs" />
     <Compile Include="SyntaxTree\SyntaxTrivia.fsi" />
@@ -306,6 +331,8 @@
     <Compile Include="SyntaxTree\LexHelpers.fs">
       <Link>SyntaxTree\LexHelpers.fs</Link>
     </Compile>
+    <Compile Include="TypedTree\GeneratedNames.fs" />
+    <Compile Include="TypedTree\CompilerGeneratedNameMapState.fs" />
     <Compile Include="$(FsYaccOutputFolder)pplex.fsi">
       <Link>SyntaxTree\FsLexOutput\pplex.fsi</Link>
     </Compile>
@@ -326,16 +353,33 @@
     <Compile Include="TypedTree\TypeProviders.fs" />
     <Compile Include="TypedTree\QuotationPickler.fsi" />
     <Compile Include="TypedTree\QuotationPickler.fs" />
+    <Compile Include="TypedTree\SynthesizedTypeMaps.fs" />
     <Compile Include="TypedTree\CompilerGlobalState.fsi" />
     <Compile Include="TypedTree\CompilerGlobalState.fs" />
+    <Compile Include="TypedTree\WellKnownAttribs.fsi" />
+    <Compile Include="TypedTree\WellKnownAttribs.fs" />
     <Compile Include="TypedTree\TypedTree.fsi" />
     <Compile Include="TypedTree\TypedTree.fs" />
     <Compile Include="TypedTree\TypedTreeBasics.fsi" />
     <Compile Include="TypedTree\TypedTreeBasics.fs" />
     <Compile Include="TypedTree\TcGlobals.fsi" />
     <Compile Include="TypedTree\TcGlobals.fs" />
-    <Compile Include="TypedTree\TypedTreeOps.fsi" />
-    <Compile Include="TypedTree\TypedTreeOps.fs" />
+    <Compile Include="TypedTree\TypedTreeOps.Remap.fsi" />
+    <Compile Include="TypedTree\TypedTreeOps.Remap.fs" />
+    <Compile Include="TypedTree\TypedTreeOps.ExprConstruction.fsi" />
+    <Compile Include="TypedTree\TypedTreeOps.ExprConstruction.fs" />
+    <Compile Include="TypedTree\TypedTreeOps.FreeVars.fsi" />
+    <Compile Include="TypedTree\TypedTreeOps.FreeVars.fs" />
+    <Compile Include="TypedTree\TypedTreeOps.Attributes.fsi" />
+    <Compile Include="TypedTree\TypedTreeOps.Attributes.fs" />
+    <Compile Include="TypedTree\TypedTreeOps.Remapping.fsi" />
+    <Compile Include="TypedTree\TypedTreeOps.Remapping.fs" />
+    <Compile Include="TypedTree\TypedTreeOps.ExprOps.fsi" />
+    <Compile Include="TypedTree\TypedTreeOps.ExprOps.fs" />
+    <Compile Include="TypedTree\TypedTreeOps.Transforms.fsi" />
+    <Compile Include="TypedTree\TypedTreeOps.Transforms.fs" />
+    <Compile Include="TypedTree\RuntimeAsync.fsi" />
+    <Compile Include="TypedTree\RuntimeAsync.fs" />
     <Compile Include="TypedTree\TypedTreePickle.fsi" />
     <Compile Include="TypedTree\TypedTreePickle.fs" />
     <Compile Include="TypedTree\UpdatePrettyTyparNames.fsi" />
@@ -359,8 +403,11 @@
     <Compile Include="Checking\NicePrint.fs" />
     <Compile Include="Checking\AugmentWithHashCompare.fsi" />
     <Compile Include="Checking\AugmentWithHashCompare.fs" />
+    <Compile Include="Checking\RelatedSymbolUse.fs" />
     <Compile Include="Checking\NameResolution.fsi" />
     <Compile Include="Checking\NameResolution.fs" />
+    <Compile Include="Checking\TraitConstraintScope.fsi" />
+    <Compile Include="Checking\TraitConstraintScope.fs" />
     <Compile Include="Checking\SignatureConformance.fsi" />
     <Compile Include="Checking\SignatureConformance.fs" />
     <Compile Include="Checking\MethodOverrides.fsi" />
@@ -369,6 +416,10 @@
     <Compile Include="Checking\MethodCalls.fs" />
     <Compile Include="Checking\PatternMatchCompilation.fsi" />
     <Compile Include="Checking\PatternMatchCompilation.fs" />
+    <Compile Include="Checking\OverloadResolutionRules.fsi" />
+    <Compile Include="Checking\OverloadResolutionRules.fs" />
+    <Compile Include="Checking\OverloadResolutionCache.fsi" />
+    <Compile Include="Checking\OverloadResolutionCache.fs" />
     <Compile Include="Checking\ConstraintSolver.fsi" />
     <Compile Include="Checking\ConstraintSolver.fs" />
     <Compile Include="Checking\CheckFormatStrings.fsi" />
@@ -385,11 +436,13 @@
     <Compile Include="Checking\CheckBasics.fs" />
     <Compile Include="Checking\CheckRecordSyntaxHelpers.fsi" />
     <Compile Include="Checking\CheckRecordSyntaxHelpers.fs" />
+    <Compile Include="Checking\Spreads.fs" />
     <Compile Include="Checking\Expressions\CheckExpressionsOps.fs" />
     <Compile Include="Checking\Expressions\CheckExpressions.fsi" />
     <Compile Include="Checking\Expressions\CheckExpressions.fs" />
     <Compile Include="Checking\CheckPatterns.fsi" />
     <Compile Include="Checking\CheckPatterns.fs" />
+    <Compile Include="Checking\Expressions\CheckComputationExpressionsCustomOps.fs" />
     <Compile Include="Checking\Expressions\CheckComputationExpressions.fsi" />
     <Compile Include="Checking\Expressions\CheckComputationExpressions.fs" />
     <Compile Include="Checking\Expressions\CheckSequenceExpressions.fs" />
@@ -400,6 +453,11 @@
     <Compile Include="Checking\CheckDeclarations.fs" />
     <Compile Include="Checking\SignatureHash.fsi" />
     <Compile Include="Checking\SignatureHash.fs" />
+    <Compile Include="Optimize\DelegateForwarding.fs" />
+    <Compile Include="Optimize\RuntimeAsyncAnalysis.fsi" />
+    <Compile Include="Optimize\RuntimeAsyncAnalysis.fs" />
+    <Compile Include="Optimize\RuntimeAsyncExceptionRewrite.fsi" />
+    <Compile Include="Optimize\RuntimeAsyncExceptionRewrite.fs" />
     <Compile Include="Optimize\Optimizer.fsi" />
     <Compile Include="Optimize\Optimizer.fs" />
     <Compile Include="Optimize\DetupleArgs.fsi" />
@@ -410,20 +468,28 @@
     <Compile Include="Optimize\LowerCalls.fs" />
     <Compile Include="Optimize\LowerSequences.fsi" />
     <Compile Include="Optimize\LowerSequences.fs" />
+    <Compile Include="Optimize\LowerAsyncSeq.fsi" />
+    <Compile Include="Optimize\LowerAsyncSeq.fs" />
     <Compile Include="Optimize\LowerComputedCollections.fsi" />
     <Compile Include="Optimize\LowerComputedCollections.fs" />
     <Compile Include="Optimize\LowerStateMachines.fsi" />
     <Compile Include="Optimize\LowerStateMachines.fs" />
+    <Compile Include="Optimize\LowerRuntimeAsync.fsi" />
+    <Compile Include="Optimize\LowerRuntimeAsync.fs" />
     <Compile Include="Optimize\LowerLocalMutables.fsi" />
     <Compile Include="Optimize\LowerLocalMutables.fs" />
     <Compile Include="CodeGen\IlxGenSupport.fsi" />
     <Compile Include="CodeGen\IlxGenSupport.fs" />
     <Compile Include="CodeGen\EraseClosures.fsi" />
     <Compile Include="CodeGen\EraseClosures.fs" />
+    <Compile Include="CodeGen\EraseUnions.Types.fs" />
+    <Compile Include="CodeGen\EraseUnions.Emit.fs" />
     <Compile Include="CodeGen\EraseUnions.fsi" />
     <Compile Include="CodeGen\EraseUnions.fs" />
     <Compile Include="CodeGen\IlxGen.fsi" />
     <Compile Include="CodeGen\IlxGen.fs" />
+    <Compile Include="CodeGen\ILBaselineReader.fs" />
+    <Compile Include="CodeGen\HotReloadBaseline.fs" />
     <Compile Include="Driver\FxResolver.fsi" />
     <Compile Include="Driver\FxResolver.fs" />
     <Compile Include="DependencyManager/AssemblyResolveHandler.fsi">
@@ -473,10 +539,15 @@
     <Compile Include="Driver\CompilerOptions.fs" />
     <Compile Include="Driver\OptimizeInputs.fsi" />
     <Compile Include="Driver\OptimizeInputs.fs" />
+    <Compile Include="Symbols\XmlDocSigParser.fsi" />
+    <Compile Include="Symbols\XmlDocSigParser.fs" />
+    <Compile Include="Symbols\XmlDocInheritance.fsi" />
+    <Compile Include="Symbols\XmlDocInheritance.fs" />
     <Compile Include="Driver\XmlDocFileWriter.fsi" />
     <Compile Include="Driver\XmlDocFileWriter.fs" />
     <Compile Include="Driver\BinaryResourceFormats.fsi" />
     <Compile Include="Driver\BinaryResourceFormats.fs" />
+    <Compile Include="Driver\ILLinkSubstitutions.fs" />
     <Compile Include="Driver\StaticLinking.fsi" />
     <Compile Include="Driver\StaticLinking.fs" />
     <Compile Include="Driver\CreateILModule.fsi" />
@@ -510,8 +581,6 @@
     <Compile Include="Service\ServiceCompilerDiagnostics.fsi" />
     <Compile Include="Service\ServiceCompilerDiagnostics.fs" />
     <Compile Include="Service\ServiceConstants.fs" />
-    <Compile Include="Service\ServiceDeclarationLists.fsi" />
-    <Compile Include="Service\ServiceDeclarationLists.fs" />
     <Compile Include="Service\ServiceLexing.fsi" />
     <Compile Include="Service\ServiceLexing.fs" />
     <Compile Include="Service\ServiceParseTreeWalk.fsi" />
@@ -528,6 +597,8 @@
     <Compile Include="Service\FSharpParseFileResults.fs" />
     <Compile Include="Service\ServiceParsedInputOps.fsi" />
     <Compile Include="Service\ServiceParsedInputOps.fs" />
+    <Compile Include="Service\ServiceDeclarationLists.fsi" />
+    <Compile Include="Service\ServiceDeclarationLists.fs" />
     <Compile Include="Service\ServiceAssemblyContent.fsi" />
     <Compile Include="Service\ServiceAssemblyContent.fs" />
     <Compile Include="Service\ServiceXmlDocParser.fsi" />
@@ -575,17 +646,21 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(BUILDING_USING_DOTNET)' == 'true'">
-    <!-- We are setting TFM explicitly here, since we are only using fslexyacc's dlls in msbuild -->
+    <!-- We are setting TFM explicitly here, since we are only using fslexyacc's dlls in msbuild.
+         GlobalPropertiesToRemove prevents duplicate builds when FCS builds for multiple TFMs in parallel. -->
     <ProjectReference Include="$(RepoRoot)\buildtools\fslex\fslex.fsproj" ReferenceOutputAssembly="False">
       <SetTargetFramework>TargetFramework=$(FSharpNetCoreProductTargetFramework)</SetTargetFramework>
+      <GlobalPropertiesToRemove>TargetFramework</GlobalPropertiesToRemove>
       <ExcludeAssets>compile</ExcludeAssets>
     </ProjectReference>
     <ProjectReference Include="$(RepoRoot)\buildtools\fsyacc\fsyacc.fsproj" ReferenceOutputAssembly="False">
       <SetTargetFramework>TargetFramework=$(FSharpNetCoreProductTargetFramework)</SetTargetFramework>
+      <GlobalPropertiesToRemove>TargetFramework</GlobalPropertiesToRemove>
       <ExcludeAssets>compile</ExcludeAssets>
     </ProjectReference>
     <ProjectReference Include="$(RepoRoot)\buildtools\AssemblyCheck\AssemblyCheck.fsproj" ReferenceOutputAssembly="False">
       <SetTargetFramework>TargetFramework=$(FSharpNetCoreProductTargetFramework)</SetTargetFramework>
+      <GlobalPropertiesToRemove>TargetFramework</GlobalPropertiesToRemove>
       <ExcludeAssets>compile</ExcludeAssets>
     </ProjectReference>
   </ItemGroup>
@@ -599,17 +674,17 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(FSHARPCORE_USE_PACKAGE)' == 'true'">
-    <PackageReference Include="FSharp.Core" Version="$(FSharpCoreShippedPackageVersionValue)" />
+    <PackageReference Include="FSharp.Core" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFrameworkIdentifier)' != '.NETCoreApp'">
-    <PackageReference Include="System.Collections.Immutable" Version="$(SystemCollectionsImmutableVersion)" />
-    <PackageReference Include="System.Reflection.Emit" Version="$(SystemReflectionEmitVersion)" />
-    <PackageReference Include="System.Reflection.Metadata" Version="$(SystemReflectionMetadataVersion)" />
-    <PackageReference Include="System.Buffers" Version="$(SystemBuffersVersion)" />
-    <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="$(SystemDiagnosticsDiagnosticSourceVersion)" />
-    <PackageReference Include="System.Memory" Version="$(SystemMemoryVersion)" />
-    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="$(SystemRuntimeCompilerServicesUnsafeVersion)" />
+    <PackageReference Include="System.Collections.Immutable" />
+    <PackageReference Include="System.Reflection.Emit" />
+    <PackageReference Include="System.Reflection.Metadata" />
+    <PackageReference Include="System.Buffers" />
+    <PackageReference Include="System.Diagnostics.DiagnosticSource" />
+    <PackageReference Include="System.Memory" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" />
   </ItemGroup>
 
   <ItemGroup>

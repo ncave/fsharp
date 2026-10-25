@@ -31,7 +31,7 @@
   </Target>
 
   <ItemGroup>
-    <Compile Include="$(FSharpSourcesRoot)\Compiler\Utilities\NullnessShims.fs" />
+    <Compile Include="$(FSharpSourcesRoot)\Compiler\Utilities\NullHelpers.fs" />
     <EmbeddedText Include="FSDependencyManager.txt" />
     <EmbeddedText Include="$(FSharpSourcesRoot)\Compiler\Facilities\UtilsStrings.txt" />
     <Compile Include="$(FSharpSourcesRoot)\Compiler\Facilities\CompilerLocation.fsi" />
@@ -51,13 +51,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(FSHARPCORE_USE_PACKAGE)' == 'true'">
-    <PackageReference Include="FSharp.Core" Version="$(FSharpCoreShippedPackageVersionValue)" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="System.Reflection.Emit" Version="$(SystemReflectionEmitVersion)" />
-    <PackageReference Include="System.Reflection.Metadata" Version="$(SystemReflectionMetadataVersion)" />
-    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="$(SystemRuntimeCompilerServicesUnsafeVersion)" />
+    <PackageReference Include="FSharp.Core" />
   </ItemGroup>
 
 </Project>

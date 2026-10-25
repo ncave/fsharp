@@ -1,5 +1,5 @@
-// #Conformance #PatternMatching #TypeTests 
-#light
+// #Conformance #PatternMatching #TypeTests
+
 
 let mutable testPassed = false
 try

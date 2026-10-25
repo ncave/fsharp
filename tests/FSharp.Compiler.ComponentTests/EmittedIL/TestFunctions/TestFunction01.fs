@@ -1,5 +1,5 @@
-// #NoMono #NoMT #CodeGen #EmittedIL 
-#light
+// #NoMono #NoMT #CodeGen #EmittedIL
+
 
 let TestFunction1() =
     printfn "Hello";

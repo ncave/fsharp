@@ -78,10 +78,10 @@ let (|StopProcessing|_|) exn =
 let StopProcessing<'T> = StopProcessingExn None
 
 // int is e.g. 191 in FS0191
-exception DiagnosticWithText of number: int * message: string * range: range with
+exception DiagnosticWithText of number: int * message: RichText * range: range with
     override this.Message =
         match this :> exn with
-        | DiagnosticWithText(_, msg, _) -> msg
+        | DiagnosticWithText(_, msg, _) -> msg.Text
         | _ -> "impossible"
 
 exception InternalError of message: string * range: range with
@@ -101,11 +101,11 @@ exception InternalException of exn: Exception * msg: string * range: range with
         | InternalException(exn, _, _) -> exn.ToString()
         | _ -> "impossible"
 
-exception UserCompilerMessage of message: string * number: int * range: range
+exception UserCompilerMessage of message: RichText * number: int * range: range
 
 exception LibraryUseOnly of range: range
 
-exception Deprecated of message: string * range: range
+exception Deprecated of message: RichText * range: range
 
 exception Experimental of message: string option * diagnosticId: string option * urlFormat: string option * range: range
 
@@ -123,20 +123,19 @@ exception UnresolvedPathReferenceNoRange of assemblyName: string * path: string 
 
 exception UnresolvedPathReference of assemblyName: string * path: string * range: range
 
-exception DiagnosticWithSuggestions of number: int * message: string * range: range * identifier: string * suggestions: Suggestions with // int is e.g. 191 in FS0191
+exception DiagnosticWithSuggestions of number: int * message: RichText * range: range * identifier: string * suggestions: Suggestions with // int is e.g. 191 in FS0191
     override this.Message =
         match this :> exn with
-        | DiagnosticWithSuggestions(_, msg, _, _, _) -> msg
+        | DiagnosticWithSuggestions(_, msg, _, _, _) -> msg.Text
         | _ -> "impossible"
 
-/// A diagnostic that is raised when enabled manually, or by default with a language feature
-exception DiagnosticEnabledWithLanguageFeature of number: int * message: string * range: range * enabledByLangFeature: bool
+type ObsoleteDiagnosticInfo =
+    | ObsoleteDiagnosticInfo of isError: bool * diagnosticId: string option * message: string option * urlFormat: string option
 
-/// A diagnostic that is raised when a diagnostic is obsolete
 exception ObsoleteDiagnostic of
     isError: bool *
     diagnosticId: string option *
-    message: string option *
+    message: RichText option *
     urlFormat: string option *
     range: range
 
@@ -144,7 +143,7 @@ exception ObsoleteDiagnostic of
 /// an DiagnosticWithText as an exception even if it's a warning.
 ///
 /// We will eventually rename this to remove this use of "Error"
-let Error ((n, text), m) = DiagnosticWithText(n, text, m)
+let Error ((n, text): int * RichText, m) = DiagnosticWithText(n, text, m)
 
 /// The F# compiler code currently uses 'ErrorWithSuggestions(...)' in many places to create
 /// an DiagnosticWithText as an exception even if it's a warning.
@@ -152,9 +151,6 @@ let Error ((n, text), m) = DiagnosticWithText(n, text, m)
 /// We will eventually rename this to remove this use of "Error"
 let ErrorWithSuggestions ((n, message), m, id, suggestions) =
     DiagnosticWithSuggestions(n, message, m, id, suggestions)
-
-let ErrorEnabledWithLanguageFeature ((n, message), m, enabledByLangFeature) =
-    DiagnosticEnabledWithLanguageFeature(n, message, m, enabledByLangFeature)
 
 let inline protectAssemblyExploration dflt ([<InlineIfLambda>] f) =
     try
@@ -179,7 +175,7 @@ let inline protectAssemblyExplorationNoReraise dflt1 dflt2 ([<InlineIfLambda>] f
 
 // Attach a range if this is a range dual exception.
 let rec AttachRange m (exn: exn) =
-    if equals m range0 then
+    if Range.equals m range0 then
         exn
     else
         match exn with
@@ -286,10 +282,18 @@ type PhasedDiagnostic =
     {
         Exception: exn
         Phase: BuildPhase
+        Severity: FSharpDiagnosticSeverity
+        DefaultSeverity: FSharpDiagnosticSeverity
     }
 
     /// Construct a phased error
-    static member Create(exn: exn, phase: BuildPhase) : PhasedDiagnostic = { Exception = exn; Phase = phase }
+    static member Create(exn: exn, phase: BuildPhase, severity: FSharpDiagnosticSeverity) : PhasedDiagnostic =
+        {
+            Exception = exn
+            Phase = phase
+            Severity = severity
+            DefaultSeverity = severity
+        }
 
     member this.DebugDisplay() =
         sprintf "%s: %s" (this.Subcategory()) this.Exception.Message
@@ -355,7 +359,7 @@ type DiagnosticsLogger(nameForDebugging: string) =
 
     // The 'Impl' factoring enables a developer to place a breakpoint at the non-Impl
     // code just below and get a breakpoint for all error logger implementations.
-    abstract DiagnosticSink: diagnostic: PhasedDiagnostic * severity: FSharpDiagnosticSeverity -> unit
+    abstract DiagnosticSink: diagnostic: PhasedDiagnostic -> unit
 
     member x.CheckForErrors() = (x.ErrorCount > 0)
 
@@ -367,14 +371,14 @@ type DiagnosticsLogger(nameForDebugging: string) =
 
 let DiscardErrorsLogger =
     { new DiagnosticsLogger("DiscardErrorsLogger") with
-        member _.DiagnosticSink(diagnostic, severity) = ()
+        member _.DiagnosticSink(diagnostic) = ()
         member _.ErrorCount = 0
     }
 
 let AssertFalseDiagnosticsLogger =
     { new DiagnosticsLogger("AssertFalseDiagnosticsLogger") with
         // TODO: reenable these asserts in the compiler service
-        member _.DiagnosticSink(diagnostic, severity) = (* assert false; *) ()
+        member _.DiagnosticSink(diagnostic) = (* assert false; *) ()
         member _.ErrorCount = (* assert false; *) 0
     }
 
@@ -383,25 +387,25 @@ type CapturingDiagnosticsLogger(nm, ?eagerFormat) =
     let mutable errorCount = 0
     let diagnostics = ResizeArray()
 
-    override _.DiagnosticSink(diagnostic, severity) =
+    override _.DiagnosticSink(diagnostic) =
         let diagnostic =
             match eagerFormat with
             | None -> diagnostic
             | Some f -> f diagnostic
 
-        if severity = FSharpDiagnosticSeverity.Error then
+        if diagnostic.Severity = FSharpDiagnosticSeverity.Error then
             errorCount <- errorCount + 1
 
-        diagnostics.Add(diagnostic, severity)
+        diagnostics.Add(diagnostic)
 
     override _.ErrorCount = errorCount
 
     member _.Diagnostics = diagnostics |> Seq.toList
 
     member _.CommitDelayedDiagnostics(diagnosticsLogger: DiagnosticsLogger) =
-        // Eagerly grab all the errors and warnings from the mutable collection
-        let errors = diagnostics.ToArray()
-        errors |> Array.iter diagnosticsLogger.DiagnosticSink
+        // A sink can report back into this logger while replaying, so iterate a snapshot.
+        let snapshot = diagnostics.ToArray()
+        snapshot |> Array.iter diagnosticsLogger.DiagnosticSink
 
 let buildPhase = AsyncLocal<BuildPhase voption>()
 let diagnosticsLogger = AsyncLocal<DiagnosticsLogger voption>()
@@ -457,7 +461,7 @@ module DiagnosticsLoggerExtensions =
             | ReportedError _ ->
                 PreserveStackTrace exn
                 raise exn
-            | _ -> x.DiagnosticSink(PhasedDiagnostic.Create(exn, DiagnosticsThreadStatics.BuildPhase), severity)
+            | _ -> x.DiagnosticSink(PhasedDiagnostic.Create(exn, DiagnosticsThreadStatics.BuildPhase, severity))
 
         member x.ErrorR exn =
             x.EmitDiagnostic(exn, FSharpDiagnosticSeverity.Error)
@@ -472,8 +476,8 @@ module DiagnosticsLoggerExtensions =
             x.ErrorR exn
             raise (ReportedError(Some exn))
 
-        member x.SimulateError diagnostic =
-            x.DiagnosticSink(diagnostic, FSharpDiagnosticSeverity.Error)
+        member x.SimulateError(diagnostic) =
+            x.DiagnosticSink(diagnostic)
             raise (ReportedError(Some diagnostic.Exception))
 
         member x.ErrorRecovery (exn: exn) (m: range) =
@@ -580,17 +584,11 @@ let error exn =
     DiagnosticsThreadStatics.DiagnosticsLogger.Error exn
 
 /// Simulates an error. For test purposes only.
-let simulateError (diagnostic: PhasedDiagnostic) =
-    DiagnosticsThreadStatics.DiagnosticsLogger.SimulateError diagnostic
+let simulateError diagnostic =
+    DiagnosticsThreadStatics.DiagnosticsLogger.SimulateError(diagnostic)
 
-let diagnosticSink (diagnostic, severity) =
-    DiagnosticsThreadStatics.DiagnosticsLogger.DiagnosticSink(diagnostic, severity)
-
-let errorSink diagnostic =
-    diagnosticSink (diagnostic, FSharpDiagnosticSeverity.Error)
-
-let warnSink diagnostic =
-    diagnosticSink (diagnostic, FSharpDiagnosticSeverity.Warning)
+let diagnosticSink diagnostic =
+    DiagnosticsThreadStatics.DiagnosticsLogger.DiagnosticSink(diagnostic)
 
 let errorRecovery exn m =
     DiagnosticsThreadStatics.DiagnosticsLogger.ErrorRecovery exn m
@@ -601,20 +599,14 @@ let stopProcessingRecovery exn m =
 let errorRecoveryNoRange exn =
     DiagnosticsThreadStatics.DiagnosticsLogger.ErrorRecoveryNoRange exn
 
-let deprecatedWithError s m = errorR (Deprecated(s, m))
+let deprecatedWithError (s: RichText) m = errorR (Deprecated(s, m))
 
 let libraryOnlyError m = errorR (LibraryUseOnly m)
 
 let libraryOnlyWarning m = warning (LibraryUseOnly m)
 
 let deprecatedOperator m =
-    deprecatedWithError (FSComp.SR.elDeprecatedOperator ()) m
-
-let mlCompatWarning s m =
-    warning (UserCompilerMessage(FSComp.SR.mlCompatMessage s, 62, m))
-
-let mlCompatError s m =
-    errorR (UserCompilerMessage(FSComp.SR.mlCompatError s, 62, m))
+    deprecatedWithError (RichText.mkText (FSComp.SR.elDeprecatedOperator ())) m
 
 [<DebuggerStepThrough>]
 let suppressErrorReporting f =
@@ -623,7 +615,7 @@ let suppressErrorReporting f =
     try
         let diagnosticsLogger =
             { new DiagnosticsLogger("suppressErrorReporting") with
-                member _.DiagnosticSink(_phasedError, _isError) = ()
+                member _.DiagnosticSink(_diagnostic) = ()
                 member _.ErrorCount = 0
             }
 
@@ -749,7 +741,7 @@ let rec Iterate2D f xs ys =
 
 /// Keep the warnings, propagate the error to the exception continuation.
 [<DebuggerHidden; DebuggerStepThrough>]
-let TryD f g =
+let inline TryD ([<InlineIfLambda>] f) g =
     match f () with
     | ErrorResult(warns, err) ->
         trackErrors {
@@ -828,12 +820,48 @@ let NormalizeErrorString (text: string) =
 
     buf.ToString()
 
-/// Indicates whether a language feature check should be skipped. Typically used in recursive functions
-/// where we don't want repeated recursive calls to raise the same diagnostic multiple times.
-[<RequireQualifiedAccess>]
-type internal SuppressLanguageFeatureCheck =
-    | Yes
-    | No
+let NormalizeErrorRichText (text: RichText) =
+    let full = text.Text
+
+    // 'NormalizeErrorString' trims the message as a whole, so the trimmed range is computed over all
+    // parts rather than over each part on its own.
+    let mutable startIndex = 0
+    let mutable endIndex = full.Length
+
+    while startIndex < endIndex && Char.IsWhiteSpace full[startIndex] do
+        startIndex <- startIndex + 1
+
+    while endIndex > startIndex && Char.IsWhiteSpace full[endIndex - 1] do
+        endIndex <- endIndex - 1
+
+    let parts = ResizeArray()
+    let buf = System.Text.StringBuilder()
+    let mutable index = 0
+    // Set once a '\r' was replaced, so that a '\n' completing the sequence produces no second proxy,
+    // even when it belongs to the next part
+    let mutable skipLineFeed = false
+
+    for part in text.Parts do
+        buf.Clear() |> ignore
+
+        for c in part.Text do
+            if index >= startIndex && index < endIndex then
+                match c with
+                | '\n' when skipLineFeed -> ()
+                | '\r'
+                | '\n' -> buf.Append stringThatIsAProxyForANewlineInFlatErrors |> ignore
+                | c ->
+                    // handle remaining chars: control - replace with space, others - keep unchanged
+                    buf.Append(if Char.IsControl c then ' ' else c) |> ignore
+
+                skipLineFeed <- c = '\r'
+
+            index <- index + 1
+
+        if buf.Length > 0 then
+            parts.Add(TaggedText(part.Tag, buf.ToString()))
+
+    RichText.ofParts (parts.ToArray())
 
 let internal languageFeatureError (langVersion: LanguageVersion) (langFeature: LanguageFeature) (m: range) =
     let featureStr = LanguageVersion.GetFeatureString langFeature
@@ -861,11 +889,6 @@ let internal tryCheckLanguageFeatureAndRecover langVersion langFeature m =
 
 let internal checkLanguageFeatureAndRecover langVersion langFeature m =
     tryCheckLanguageFeatureAndRecover langVersion langFeature m |> ignore
-
-let internal languageFeatureNotSupportedInLibraryError (langFeature: LanguageFeature) (m: range) =
-    let featureStr = LanguageVersion.GetFeatureString langFeature
-    let suggestedVersionStr = LanguageVersion.GetFeatureVersionString langFeature
-    error (Error(FSComp.SR.chkFeatureNotSupportedInLibrary (featureStr, suggestedVersionStr), m))
 
 module StackGuardMetrics =
 
@@ -954,33 +977,43 @@ type StackGuard(name: string) =
 #endif
 
     [<DebuggerHidden; DebuggerStepThrough>]
-    member _.Guard
+    member _.EnterGuard() = depth.Value <- depth.Value + 1
+
+    [<DebuggerHidden; DebuggerStepThrough>]
+    member _.ExitGuard() = depth.Value <- depth.Value - 1
+
+    [<DebuggerHidden; DebuggerStepThrough>]
+    member _.RunOnNewStack(f: unit -> 'T, memberName: string, path: string, line: int) : 'T =
+        let fileName = System.IO.Path.GetFileName(path)
+        let depthWhenJump = depth.Value
+
+        StackGuardMetrics.countJump memberName $"{fileName}:{line}" depthWhenJump
+
+        async {
+            do! Async.SwitchToNewThread()
+            Thread.CurrentThread.Name <- $"F# Extra Compilation Thread for {name} (depth {depthWhenJump})"
+            return f ()
+        }
+        |> Async.RunSynchronouslyImmediate
+
+    [<DebuggerHidden; DebuggerStepThrough>]
+    member inline this.Guard
         (
-            f,
+            [<InlineIfLambda>] f: unit -> 'T,
             [<CallerMemberName; Optional; DefaultParameterValue("")>] memberName: string,
             [<CallerFilePath; Optional; DefaultParameterValue("")>] path: string,
             [<CallerLineNumber; Optional; DefaultParameterValue(0)>] line: int
-        ) =
+        ) : 'T =
 
-        depth.Value <- depth.Value + 1
+        this.EnterGuard()
 
         try
             if StackGuard.IsStackSufficient() then
                 f ()
             else
-                let fileName = System.IO.Path.GetFileName(path)
-                let depthWhenJump = depth.Value
-
-                StackGuardMetrics.countJump memberName $"{fileName}:{line}" depthWhenJump
-
-                async {
-                    do! Async.SwitchToNewThread()
-                    Thread.CurrentThread.Name <- $"F# Extra Compilation Thread for {name} (depth {depthWhenJump})"
-                    return f ()
-                }
-                |> Async.RunImmediate
+                this.RunOnNewStack(f, memberName, path, line)
         finally
-            depth.Value <- depth.Value - 1
+            this.ExitGuard()
 
     [<DebuggerHidden; DebuggerStepThrough>]
     member x.GuardCancellable(original: Cancellable<'T>) =

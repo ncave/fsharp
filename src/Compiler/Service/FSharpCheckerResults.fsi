@@ -3,12 +3,14 @@
 namespace FSharp.Compiler.CodeAnalysis
 
 open System
+open System.ComponentModel
 open System.IO
 open System.Threading
 open Internal.Utilities.Library
 open FSharp.Compiler.AbstractIL.IL
 open FSharp.Compiler.AbstractIL.ILBinaryReader
 open FSharp.Compiler.AccessibilityLogic
+open FSharp.Compiler.AttributeChecking
 open FSharp.Compiler.CodeAnalysis
 open FSharp.Compiler.CheckDeclarations
 open FSharp.Compiler.CompilerConfig
@@ -224,10 +226,6 @@ type public FSharpParsingOptions =
 
         IsInteractive: bool
 
-        IndentationAwareSyntax: bool option
-
-        StrictIndentation: bool option
-
         CompilingFSharpCore: bool
 
         IsExe: bool
@@ -244,10 +242,13 @@ type public FSharpParsingOptions =
 type public FSharpCodeCompletionOptions =
     { SuggestPatternNames: bool
       SuggestObsoleteSymbols: bool
+      SuggestEditorBrowsableSymbols: EditorBrowsableState
       SuggestGeneratedOverrides: bool
       SuggestOverrideBodies: bool }
 
     static member Default: FSharpCodeCompletionOptions
+
+    member internal AllowUnseen: UnseenItems
 
 [<Sealed>]
 type internal TypeCheckInfo =
@@ -255,6 +256,7 @@ type internal TypeCheckInfo =
         _sTcConfig: TcConfig *
         g: TcGlobals *
         ccuSigForFile: ModuleOrNamespaceType *
+        ownSigForFile: ModuleOrNamespaceType *
         thisCcu: CcuThunk *
         tcImports: TcImports *
         tcAccessRights: AccessorDomain *
@@ -291,8 +293,13 @@ type public FSharpCheckFileResults =
     /// The errors returned by parsing a source file.
     member Diagnostics: FSharpDiagnostic[]
 
+    member HasErrors: bool
+
     /// Get a view of the contents of the assembly up to and including the file just checked
     member PartialAssemblySignature: FSharpAssemblySignature
+
+    /// Get a view of the contents of the file just checked, inferred even when a signature file hides them
+    member FileSignature: FSharpAssemblySignature
 
     /// Get the resolution of the ProjectOptions
     member ProjectContext: FSharpProjectContext
@@ -311,6 +318,9 @@ type public FSharpCheckFileResults =
 
     member TryGetCapturedType: range -> FSharpType option
     member TryGetCapturedDisplayContext: range -> FSharpDisplayContext option
+
+    /// Imports a compiled type for subsequent Symbols API use
+    member ImportILType: ILType -> FSharpType option
 
     /// <summary>Get the items for a declaration list</summary>
     ///
@@ -456,7 +466,8 @@ type public FSharpCheckFileResults =
         line: int * colAtEndOfNames: int * lineText: string * names: string list -> FSharpSymbolUse list
 
     /// <summary>Get any extra colorization info that is available after the typecheck</summary>
-    member GetSemanticClassification: range option -> SemanticClassificationItem[]
+    member GetSemanticClassification:
+        range option * ?relatedSymbolKinds: RelatedSymbolUseKind -> SemanticClassificationItem[]
 
     /// <summary>Get the locations of format specifiers</summary>
     [<Obsolete("This member has been replaced by GetFormatSpecifierLocationsAndArity, which returns both range and arity of specifiers")>]
@@ -469,7 +480,9 @@ type public FSharpCheckFileResults =
     member GetAllUsesOfAllSymbolsInFile: ?cancellationToken: CancellationToken -> seq<FSharpSymbolUse>
 
     /// Get the textual usages that resolved to the given symbol throughout the file
-    member GetUsesOfSymbolInFile: symbol: FSharpSymbol * ?cancellationToken: CancellationToken -> FSharpSymbolUse[]
+    member GetUsesOfSymbolInFile:
+        symbol: FSharpSymbol * ?relatedSymbolKinds: RelatedSymbolUseKind * ?cancellationToken: CancellationToken ->
+            FSharpSymbolUse[]
 
     member internal GetVisibleNamespacesAndModulesAtPoint: pos -> ModuleOrNamespaceRef[]
 
@@ -491,7 +504,7 @@ type public FSharpCheckFileResults =
     /// Lays out and returns the formatted signature for the typechecked file as source text.
     member GenerateSignature: ?pageWidth: int -> ISourceText option
 
-    member internal CalculateSignatureHash: unit -> int option
+    member internal CalculateSignatureHash: unit -> int64 option
 
     /// Internal constructor
     static member internal MakeEmpty:
@@ -512,6 +525,7 @@ type public FSharpCheckFileResults =
         tcErrors: FSharpDiagnostic[] *
         keepAssemblyContents: bool *
         ccuSigForFile: ModuleOrNamespaceType *
+        ownSigForFile: ModuleOrNamespaceType *
         thisCcu: CcuThunk *
         tcImports: TcImports *
         tcAccessRights: AccessorDomain *
@@ -535,7 +549,7 @@ type public FSharpCheckFileResults =
         tcState: TcState *
         moduleNamesDict: ModuleNamesDict *
         loadClosure: LoadClosure option *
-        backgroundDiagnostics: (PhasedDiagnostic * FSharpDiagnosticSeverity)[] *
+        backgroundDiagnostics: PhasedDiagnostic[] *
         isIncompleteTypeCheckEnvironment: bool *
         projectOptions: FSharpProjectOptions *
         builder: IncrementalBuilder option *
@@ -648,7 +662,7 @@ module internal ParseAndCheckFile =
 
         member AnyErrors: bool
 
-        member CollectedPhasedDiagnostics: (PhasedDiagnostic * FSharpDiagnosticSeverity) array
+        member CollectedPhasedDiagnostics: PhasedDiagnostic array
 
         member CollectedDiagnostics: symbolEnv: SymbolEnv option -> FSharpDiagnostic array
 
@@ -656,11 +670,16 @@ module internal ParseAndCheckFile =
 // Used internally to provide intellisense over F# Interactive.
 type internal FsiInteractiveChecker =
     internal new:
-        LegacyReferenceResolver * tcConfig: TcConfig * tcGlobals: TcGlobals * tcImports: TcImports * tcState: TcState ->
+        LegacyReferenceResolver *
+        tcConfig: TcConfig *
+        tcGlobals: TcGlobals *
+        tcImports: TcImports *
+        tcState: TcState *
+        ?keepAssemblyContents: bool ->
             FsiInteractiveChecker
 
     member internal ParseAndCheckInteraction:
-        sourceText: ISourceText * ?userOpName: string ->
+        sourceText: ISourceText * ?userOpName: string * ?asmName: string ->
             Cancellable<FSharpParseFileResults * FSharpCheckFileResults * FSharpCheckProjectResults>
 
 module internal FSharpCheckerResultsSettings =

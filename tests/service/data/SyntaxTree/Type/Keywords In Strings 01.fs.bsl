@@ -7,7 +7,8 @@ ImplFile
           [Types
              ([SynTypeDefn
                  (SynComponentInfo
-                    ([], None, [], [MyClass],
+                    ([], None, [],
+                     Some (LongIdent (SynLongIdent ([MyClass], [], [None]))),
                      PreXmlDoc ((4,0), FSharp.Compiler.Xml.XmlDocCollector),
                      false, None, (4,5--4,12)),
                   ObjectModel
@@ -31,7 +32,7 @@ ImplFile
                              { LeadingKeyword = Let (5,4--5,7)
                                InlineKeyword = None
                                EqualsRange = Some (5,16--5,17) })], false, false,
-                         (5,4--5,44));
+                         (5,4--5,44), { InKeyword = None });
                       Member
                         (SynBinding
                            (None, Normal, false, false, [],

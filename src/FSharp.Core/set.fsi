@@ -13,7 +13,7 @@ open Microsoft.FSharp.Collections
 /// <remarks>See the <see cref="T:Microsoft.FSharp.Collections.SetModule"/> module for further operations on sets.
 ///
 /// All members of this class are thread-safe and may be used concurrently from multiple threads.</remarks>
-#if NETSTANDARD2_1_OR_GREATER
+#if NETSTANDARD2_1_OR_GREATER || NET
 [<System.Runtime.CompilerServices.CollectionBuilder(typeof<Set>, "Create")>]
 #endif
 [<Sealed>]
@@ -29,9 +29,11 @@ type Set<[<EqualityConditionalOn>] 'T when 'T: comparison> =
     /// <code lang="fsharp">
     /// let sequenceOfNumbers = seq { 1 .. 3 }
     /// let numbersInSet = Set(sequenceOfNumbers)
-    /// printfn $"The set is {numbersInSet}"
+    /// printn $"The set is {numbersInSet}"
     /// </code>
     /// </example>
+    ///
+    /// <remarks>This is an O(n log n) operation, where n is the number of elements in the sequence.</remarks>
     /// Creates a new Set containing the elements of the given sequence. <c> set [1; 2; 3]</c>
     new: elements: seq<'T> -> Set<'T>
 
@@ -46,10 +48,12 @@ type Set<[<EqualityConditionalOn>] 'T when 'T: comparison> =
     /// <example>
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(1).Add(2)
-    /// printfn $"The new set is: {set}"
+    /// printn $"The new set is: {set}"
     /// </code>
     /// The sample evaluates to the following output: <c>The new set is: set [1; 2]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(log n) operation, where n is the number of elements in the set.</remarks>
     member Add: value: 'T -> Set<'T>
 
     /// <summary>A useful shortcut for Set.remove. Note this operation produces a new set
@@ -63,10 +67,12 @@ type Set<[<EqualityConditionalOn>] 'T when 'T: comparison> =
     /// <example id="set-remove">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(1).Add(2)
-    /// printfn $"The new set is: {set}"
+    /// printn $"The new set is: {set}"
     /// </code>
     /// The sample evaluates to the following output: <c>The new set is: set [2]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(log n) operation, where n is the number of elements in the set.</remarks>
     member Remove: value: 'T -> Set<'T>
 
     /// <summary>The number of elements in the set</summary>
@@ -74,10 +80,12 @@ type Set<[<EqualityConditionalOn>] 'T when 'T: comparison> =
     /// <example id="set-count">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(1).Add(2)
-    /// printfn $"The set has {set.Count} elements"
+    /// printn $"The set has {set.Count} elements"
     /// </code>
     /// The sample evaluates to the following output: <c>The set has 3 elements</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation.</remarks>
     member Count: int
 
     /// <summary>A useful shortcut for Set.contains. See the Set module for further operations on sets.</summary>
@@ -89,10 +97,12 @@ type Set<[<EqualityConditionalOn>] 'T when 'T: comparison> =
     /// <example id="set-contains">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(2).Add(3)
-    /// printfn $"Does the set contain 1? {set.Contains(1)}"
+    /// printn $"Does the set contain 1? {set.Contains(1)}"
     /// </code>
     /// The sample evaluates to the following output: <c>Does the set contain 1? false</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(log n) operation, where n is the number of elements in the set.</remarks>
     member Contains: value: 'T -> bool
 
     /// <summary>A useful shortcut for Set.isEmpty. See the Set module for further operations on sets.</summary>
@@ -100,10 +110,12 @@ type Set<[<EqualityConditionalOn>] 'T when 'T: comparison> =
     /// <example id="set-isempty">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(2).Add(3)
-    /// printfn $"Is the set empty? {set.IsEmpty}"
+    /// printn $"Is the set empty? {set.IsEmpty}"
     /// </code>
     /// The sample evaluates to the following output: <c>Is the set empty? false</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     member IsEmpty: bool
 
     /// <summary>Returns a new set with the elements of the second set removed from the first.</summary>
@@ -117,10 +129,12 @@ type Set<[<EqualityConditionalOn>] 'T when 'T: comparison> =
     /// <code lang="fsharp">
     /// let set1 = Set.empty.Add(1).Add(2).Add(3)
     /// let set2 = Set.empty.Add(2).Add(3).Add(4)
-    /// printfn $"The new set is: {set1 - set2}"
+    /// printn $"The new set is: {set1 - set2}"
     /// </code>
     /// The sample evaluates to the following output: <c>The new set is: set [1]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(m log n) operation, where m is the number of elements in the second set and n is the number of elements in the first set.</remarks>
     static member (-): set1: Set<'T> * set2: Set<'T> -> Set<'T>
 
     /// <summary>Compute the union of the two sets.</summary>
@@ -134,10 +148,12 @@ type Set<[<EqualityConditionalOn>] 'T when 'T: comparison> =
     /// <code lang="fsharp">
     /// let set1 = Set.empty.Add(1).Add(2).Add(3)
     /// let set2 = Set.empty.Add(2).Add(3).Add(4)
-    /// printfn $"Output is %A" {set1 + set2}"
+    /// printn $"Output is %A" {set1 + set2}"
     /// </code>
     /// The sample evaluates to the following output: <c>The new set is: set [1; 2; 3; 4]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(m log n) operation, where m is the number of elements in the second set and n is the number of elements in the first set.</remarks>
     static member (+): set1: Set<'T> * set2: Set<'T> -> Set<'T>
 
     /// <summary>Evaluates to "true" if all elements of the first set are in the second.</summary>
@@ -150,10 +166,12 @@ type Set<[<EqualityConditionalOn>] 'T when 'T: comparison> =
     /// <code lang="fsharp">
     /// let set1 = Set.empty.Add(1).Add(2).Add(3)
     /// let set2 = Set.empty.Add(1).Add(2).Add(3).Add(4)
-    /// printfn $"Is {set1} a subset of {set2}? {Set.isSubset set1 set2}"
+    /// printn $"Is {set1} a subset of {set2}? {Set.isSubset set1 set2}"
     /// </code>
     /// The sample evaluates to the following output: <c>Is set [1; 2; 3] a subset of set [1; 2; 3; 4]? true</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n log m) operation, where n is the number of elements in this set and m is the number of elements in <c>otherSet</c>.</remarks>
     member IsSubsetOf: otherSet: Set<'T> -> bool
 
     /// <summary>Evaluates to "true" if all elements of the first set are in the second, and at least
@@ -167,10 +185,12 @@ type Set<[<EqualityConditionalOn>] 'T when 'T: comparison> =
     /// <code lang="fsharp">
     /// let set1 = Set.empty.Add(1).Add(2).Add(3)
     /// let set2 = Set.empty.Add(1).Add(2).Add(3).Add(4)
-    /// printfn $"Is {set1} a proper superset of {set2}? {Set.isProperSuperset set1 set2}"
+    /// printn $"Is {set1} a proper superset of {set2}? {Set.isProperSuperset set1 set2}"
     /// </code>
     /// The sample evaluates to the following output: <c>Is set [1; 2; 3] a proper subset of set [1; 2; 3; 4]? true</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n log m) operation, where n is the number of elements in this set and m is the number of elements in <c>otherSet</c>.</remarks>
     member IsProperSubsetOf: otherSet: Set<'T> -> bool
 
     /// <summary>Evaluates to "true" if all elements of the second set are in the first.</summary>
@@ -183,10 +203,12 @@ type Set<[<EqualityConditionalOn>] 'T when 'T: comparison> =
     /// <code lang="fsharp">
     /// let set1 = Set.empty.Add(1).Add(2).Add(3)
     /// let set2 = Set.empty.Add(1).Add(2).Add(3).Add(4)
-    /// printfn $"Is {set1} a superset of {set2}? {Set.isSuperset set1 set2}"
+    /// printn $"Is {set1} a superset of {set2}? {Set.isSuperset set1 set2}"
     /// </code>
     /// The sample evaluates to the following output: <c>Is set [1; 2; 3] a superset of set [1; 2; 3; 4]? false</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(m log n) operation, where m is the number of elements in <c>otherSet</c> and n is the number of elements in this set.</remarks>
     member IsSupersetOf: otherSet: Set<'T> -> bool
 
     /// <summary>Evaluates to "true" if all elements of the second set are in the first, and at least
@@ -200,10 +222,12 @@ type Set<[<EqualityConditionalOn>] 'T when 'T: comparison> =
     /// <code lang="fsharp">
     /// let set1 = Set.empty.Add(1).Add(2).Add(3)
     /// let set2 = Set.empty.Add(1).Add(2).Add(3).Add(4)
-    /// printfn $"Is {set1} a proper superset of {set2}? {Set.isProperSuperset set1 set2}"
+    /// printn $"Is {set1} a proper superset of {set2}? {Set.isProperSuperset set1 set2}"
     /// </code>
     /// The sample evaluates to the following output: <c>Is set [1; 2; 3] a proper superset of set [1; 2; 3; 4]? false</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(m log n) operation, where m is the number of elements in <c>otherSet</c> and n is the number of elements in this set.</remarks>
     member IsProperSupersetOf: otherSet: Set<'T> -> bool
 
     /// <summary>Returns the lowest element in the set according to the ordering being used for the set.</summary>
@@ -211,10 +235,12 @@ type Set<[<EqualityConditionalOn>] 'T when 'T: comparison> =
     /// <example id="set-minimumelement">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(2).Add(3)
-    /// printfn $"MinimumElement: {set.MinimumElement}"
+    /// printn $"MinimumElement: {set.MinimumElement}"
     /// </code>
     /// The sample evaluates to the following output: <c>MinimumElement: 1</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(log n) operation, where n is the number of elements in the set.</remarks>
     member MinimumElement: 'T
 
     /// <summary>Returns the highest element in the set according to the ordering being used for the set.</summary>
@@ -222,10 +248,12 @@ type Set<[<EqualityConditionalOn>] 'T when 'T: comparison> =
     /// <example id="set-maximumelement">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(2).Add(3)
-    /// printfn $"MaximumElement: {set.MaximumElement}"
+    /// printn $"MaximumElement: {set.MaximumElement}"
     /// </code>
     /// The sample evaluates to the following output: <c>MaximumElement: 3</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(log n) operation, where n is the number of elements in the set.</remarks>
     member MaximumElement: 'T
 
     interface ICollection<'T>
@@ -235,7 +263,7 @@ type Set<[<EqualityConditionalOn>] 'T when 'T: comparison> =
     interface System.Collections.IStructuralEquatable
     interface IReadOnlyCollection<'T>
 
-#if NETSTANDARD2_1_OR_GREATER
+#if NETSTANDARD2_1_OR_GREATER || NET
 /// <summary>Contains methods for compiler use related to sets.</summary>
 and [<CompilerMessage("This type is for compiler use and should not be used directly", 1204, IsHidden = true);
       Sealed;
@@ -246,6 +274,8 @@ and [<CompilerMessage("This type is for compiler use and should not be used dire
     /// <param name="items">The items to store in the set.</param>
     ///
     /// <returns>A set containing the specified items.</returns>
+    ///
+    /// <remarks>This is an O(n log n) operation, where n is the number of items in the span.</remarks>
     [<CompilerMessage("This method is for compiler use and should not be used directly", 1204, IsHidden = true)>]
     static member Create: [<System.Runtime.CompilerServices.ScopedRef>] items: ReadOnlySpan<'T> -> Set<'T>
 #endif
@@ -268,6 +298,8 @@ module Set =
     /// </code>
     /// Evaluates to <c>set [ ]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<GeneralizableValue>]
     [<CompiledName("Empty")>]
     val empty<'T> : Set<'T> when 'T: comparison
@@ -284,6 +316,8 @@ module Set =
     /// </code>
     /// Evaluates to <c>set [ 7 ]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("Singleton")>]
     val singleton: value: 'T -> Set<'T>
 
@@ -298,10 +332,12 @@ module Set =
     /// <example id="set-add">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(1).Add(2)
-    /// printfn $"The new set is: {set}"
+    /// printn $"The new set is: {set}"
     /// </code>
     /// The sample evaluates to the following output: <c>The new set is: set [1; 2]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(log n) operation, where n is the number of elements in the set.</remarks>
     [<CompiledName("Add")>]
     val add: value: 'T -> set: Set<'T> -> Set<'T>
 
@@ -315,10 +351,12 @@ module Set =
     /// <example id="set-contains">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(2).Add(3)
-    /// printfn $"Does the set contain 1? {set.Contains(1))}"
+    /// printn $"Does the set contain 1? {set.Contains(1))}"
     /// </code>
     /// The sample evaluates to the following output: <c>Does the set contain 1? false</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(log n) operation, where n is the number of elements in the set.</remarks>
     [<CompiledName("Contains")>]
     val contains: element: 'T -> set: Set<'T> -> bool
 
@@ -333,10 +371,12 @@ module Set =
     /// <code lang="fsharp">
     /// let set1 = Set.empty.Add(1).Add(2).Add(3)
     /// let set2 = Set.empty.Add(1).Add(2).Add(3).Add(4)
-    /// printfn $"Is {set1} a subset of {set2}? {Set.isSubset set1 set2}"
+    /// printn $"Is {set1} a subset of {set2}? {Set.isSubset set1 set2}"
     /// </code>
     /// The sample evaluates to the following output: <c>Is set [1; 2; 3] a subset of set [1; 2; 3; 4]? true</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(m log n) operation, where m is the number of elements in <c>set1</c> and n is the number of elements in <c>set2</c>.</remarks>
     [<CompiledName("IsSubset")>]
     val isSubset: set1: Set<'T> -> set2: Set<'T> -> bool
 
@@ -352,10 +392,12 @@ module Set =
     /// <code lang="fsharp">
     /// let set1 = Set.empty.Add(1).Add(2).Add(3)
     /// let set2 = Set.empty.Add(1).Add(2).Add(3).Add(4)
-    /// printfn $"Is {set1} a proper subset of {set2}? {Set.isProperSubset set1 set2}"
+    /// printn $"Is {set1} a proper subset of {set2}? {Set.isProperSubset set1 set2}"
     /// </code>
     /// The sample evaluates to the following output: <c>Is set [1; 2; 3] a proper subset of set [1; 2; 3; 4]? true</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(m log n) operation, where m is the number of elements in <c>set1</c> and n is the number of elements in <c>set2</c>.</remarks>
     [<CompiledName("IsProperSubset")>]
     val isProperSubset: set1: Set<'T> -> set2: Set<'T> -> bool
 
@@ -370,10 +412,12 @@ module Set =
     /// <code lang="fsharp">
     /// let set1 = Set.empty.Add(1).Add(2).Add(3)
     /// let set2 = Set.empty.Add(1).Add(2).Add(3).Add(4)
-    /// printfn $"Is {set1} a superset of {set2}? {Set.isSuperset set1 set2}"
+    /// printn $"Is {set1} a superset of {set2}? {Set.isSuperset set1 set2}"
     /// </code>
     /// The sample evaluates to the following output: <c>Is set [1; 2; 3] a superset of set [1; 2; 3; 4]? false</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(m log n) operation, where m is the number of elements in <c>set2</c> and n is the number of elements in <c>set1</c>.</remarks>
     [<CompiledName("IsSuperset")>]
     val isSuperset: set1: Set<'T> -> set2: Set<'T> -> bool
 
@@ -389,10 +433,12 @@ module Set =
     /// <code lang="fsharp">
     /// let set1 = Set.empty.Add(1).Add(2).Add(3)
     /// let set2 = Set.empty.Add(1).Add(2).Add(3).Add(4)
-    /// printfn $"Is {set1} a proper superset of {set2}? {Set.isProperSuperset set1 set2}"
+    /// printn $"Is {set1} a proper superset of {set2}? {Set.isProperSuperset set1 set2}"
     /// </code>
     /// The sample evaluates to the following output: <c>Is set [1; 2; 3] a proper superset of set [1; 2; 3; 4]? false</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(m log n) operation, where m is the number of elements in <c>set2</c> and n is the number of elements in <c>set1</c>.</remarks>
     [<CompiledName("IsProperSuperset")>]
     val isProperSuperset: set1: Set<'T> -> set2: Set<'T> -> bool
 
@@ -405,10 +451,12 @@ module Set =
     /// <example id="set-count">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(2).Add(3)
-    /// printfn $"The set has {set.Count} elements"
+    /// printn $"The set has {set.Count} elements"
     /// </code>
     /// The sample evaluates to the following output: <c>The set has 3 elements</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation.</remarks>
     [<CompiledName("Count")>]
     val count: set: Set<'T> -> int
 
@@ -424,10 +472,12 @@ module Set =
     /// <example id="set-exists">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(2).Add(3)
-    /// printfn $"Does the set contain 1? {Set.exists (fun x -> x = 1) set}"
+    /// printn $"Does the set contain 1? {Set.exists (fun x -> x = 1) set}"
     /// </code>
     /// The sample evaluates to the following output: <c>Does the set contain 1? true</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the number of elements in the set.</remarks>
     [<CompiledName("Exists")>]
     val exists: predicate: ('T -> bool) -> set: Set<'T> -> bool
 
@@ -442,10 +492,12 @@ module Set =
     /// <example id="set-filter">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(2).Add(3).Add(4)
-    /// printfn $"The set with even numbers is {Set.filter (fun x -> x % 2 = 0) set}"
+    /// printn $"The set with even numbers is {Set.filter (fun x -> x % 2 = 0) set}"
     /// </code>
     /// The sample evaluates to the following output: <c>The set with even numbers is set [2; 4]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n log n) operation, where n is the number of elements in the set.</remarks>
     [<CompiledName("Filter")>]
     val filter: predicate: ('T -> bool) -> set: Set<'T> -> Set<'T>
 
@@ -460,10 +512,12 @@ module Set =
     /// <example id="set-map">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(2).Add(3)
-    /// printfn $"The set with doubled values is {Set.map (fun x -> x * 2) set}"
+    /// printn $"The set with doubled values is {Set.map (fun x -> x * 2) set}"
     /// </code>
     /// The sample evaluates to the following output: <c>The set with doubled values is set [2; 4; 6]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n log n) operation, where n is the number of elements in the set.</remarks>
     [<CompiledName("Map")>]
     val map: mapping: ('T -> 'U) -> set: Set<'T> -> Set<'U>
 
@@ -478,14 +532,16 @@ module Set =
     /// <example id="set-fold">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(2).Add(3)
-    /// printfn $"The sum of the set is {Set.fold (+) 0 set}"
-    /// printfn $"The product of the set is {Set.fold (*) 1 set}"
-    /// printfn $"The reverse of the set is {Set.fold (fun x y -> y :: x) [] set}"
+    /// printn $"The sum of the set is {Set.fold (+) 0 set}"
+    /// printn $"The product of the set is {Set.fold (*) 1 set}"
+    /// printn $"The reverse of the set is {Set.fold (fun x y -> y :: x) [] set}"
     /// </code>
     /// The sample evaluates to the following output: <c>The sum of the set is 6
     /// The product of the set is 6
     /// The reverse of the set is [3; 2; 1]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the number of elements in the set.</remarks>
     [<CompiledName("Fold")>]
     val fold<'T, 'State> :
         folder: ('State -> 'T -> 'State) -> state: 'State -> set: Set<'T> -> 'State when 'T: comparison
@@ -501,12 +557,14 @@ module Set =
     /// <example id="set-foldback">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(2).Add(3)
-    /// printfn $"The sum of the set is {Set.foldBack (+) set 0}"
-    /// printfn $"The set is {Set.foldBack (fun x acc -> x :: acc) set []}"
+    /// printn $"The sum of the set is {Set.foldBack (+) set 0}"
+    /// printn $"The set is {Set.foldBack (fun x acc -> x :: acc) set []}"
     /// </code>
     /// The sample evaluates to the following output: <c>The sum of the set is 6
     /// The set is [1; 2; 3]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the number of elements in the set.</remarks>
     [<CompiledName("FoldBack")>]
     val foldBack<'T, 'State> :
         folder: ('T -> 'State -> 'State) -> set: Set<'T> -> state: 'State -> 'State when 'T: comparison
@@ -523,10 +581,12 @@ module Set =
     /// <example id="set-forall">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(2).Add(3)
-    /// printfn $"Does the set contain even numbers? {Set.forall (fun x -> x % 2 = 0) set}"
+    /// printn $"Does the set contain even numbers? {Set.forall (fun x -> x % 2 = 0) set}"
     /// </code>
     /// The sample evaluates to the following output: <c>Does the set contain even numbers? false</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the number of elements in the set.</remarks>
     [<CompiledName("ForAll")>]
     val forall: predicate: ('T -> bool) -> set: Set<'T> -> bool
 
@@ -541,10 +601,12 @@ module Set =
     /// <code lang="fsharp">
     /// let set1 = Set.empty.Add(1).Add(2).Add(3)
     /// let set2 = Set.empty.Add(2).Add(3).Add(4)
-    /// printfn $"The intersection of {set1} and {set2} is {Set.intersect set1 set2}"
+    /// printn $"The intersection of {set1} and {set2} is {Set.intersect set1 set2}"
     /// </code>
     /// The sample evaluates to the following output: <c>The intersection of set [1; 2; 3] and set [2; 3; 4] is set [2; 3]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(m log n) operation, where m is the number of elements in the first set and n is the number of elements in the second set.</remarks>
     [<CompiledName("Intersect")>]
     val intersect: set1: Set<'T> -> set2: Set<'T> -> Set<'T>
 
@@ -570,6 +632,8 @@ module Set =
     /// [["id"; "name"; "date"; "color"]; ["id"; "age"; "date"];
     /// ["id"; "sex"; "date"; "animal"]] is set ["date"; "id"]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O((k-1) * m log n) operation, where k is the number of sets in the sequence, m is the size of each set, and n is the size of the accumulated intersection.</remarks>
     [<CompiledName("IntersectMany")>]
     val intersectMany: sets: seq<Set<'T>> -> Set<'T>
 
@@ -584,10 +648,12 @@ module Set =
     /// <code lang="fsharp">
     /// let set1 = Set.empty.Add(1).Add(2).Add(3)
     /// let set2 = Set.empty.Add(2).Add(3).Add(4)
-    /// printfn $"The union of {set1} and {set2} is {(Set.union set1 set2)}"
+    /// printn $"The union of {set1} and {set2} is {(Set.union set1 set2)}"
     /// </code>
     /// The sample evaluates to the following output: <c>The union of set [1; 2; 3] and set [2; 3; 4] is set [1; 2; 3; 4]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(m log n) operation, where m is the number of elements in the first set and n is the number of elements in the second set.</remarks>
     [<CompiledName("Union")>]
     val union: set1: Set<'T> -> set2: Set<'T> -> Set<'T>
 
@@ -613,6 +679,8 @@ module Set =
     /// [["id"; "name"; "date"; "color"]; ["id"; "age"; "date"];
     /// ["id"; "sex"; "date"; "animal"]] is set ["age"; "animal"; "color"; "date"; "id"; "name"; "sex"]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(k * m log n) operation, where k is the number of sets in the sequence, m is the average size of each set, and n is the size of the accumulated union.</remarks>
     [<CompiledName("UnionMany")>]
     val unionMany: sets: seq<Set<'T>> -> Set<'T>
 
@@ -625,10 +693,12 @@ module Set =
     /// <example id="set-isempty">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(2).Add(3)
-    /// printfn $"Is the set empty? {set.IsEmpty}"
+    /// printn $"Is the set empty? {set.IsEmpty}"
     /// </code>
     /// The sample evaluates to the following output: <c>Is the set empty? false</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("IsEmpty")>]
     val isEmpty: set: Set<'T> -> bool
 
@@ -641,13 +711,15 @@ module Set =
     /// <example id="set-iter">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(2).Add(3)
-    /// Set.iter (fun x -> printfn $"The set contains {x}") set
+    /// Set.iter (fun x -> printn $"The set contains {x}") set
     /// </code>
     /// The sample evaluates to the following output: <c>
     /// The set contains 1
     /// The set contains 2
     /// The set contains 3</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the number of elements in the set.</remarks>
     [<CompiledName("Iterate")>]
     val iter: action: ('T -> unit) -> set: Set<'T> -> unit
 
@@ -663,12 +735,40 @@ module Set =
     /// <example id="set-partition">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(2).Add(3).Add(4)
-    /// printfn $"The set with even numbers is {Set.partition (fun x -> x % 2 = 0) set}"
+    /// printn $"The set with even numbers is {Set.partition (fun x -> x % 2 = 0) set}"
     /// </code>
     /// The sample evaluates to the following output: <c>The partitioned sets are: (set [2; 4], set [1; 3])</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n log n) operation, where n is the number of elements in the set.</remarks>
     [<CompiledName("Partition")>]
     val partition: predicate: ('T -> bool) -> set: Set<'T> -> (Set<'T> * Set<'T>)
+
+    /// <summary>Splits the set into two sets, by applying the given partitioning function
+    /// to each element. Returns <c>Choice1Of2</c> elements in the first set and
+    /// <c>Choice2Of2</c> elements in the second set.</summary>
+    ///
+    /// <param name="partitioner">The function to transform and classify each input element into one of two output types.</param>
+    /// <param name="set">The input set.</param>
+    ///
+    /// <returns>A tuple of two sets. The first containing values from <c>Choice1Of2</c> results and the second
+    /// containing values from <c>Choice2Of2</c> results.</returns>
+    ///
+    /// <example id="set-partitionWith-1">
+    /// <code lang="fsharp">
+    /// let inputs = Set.ofList [1; 2; 3; 4; 5]
+    ///
+    /// let evens, odds =
+    ///     inputs |> Set.partitionWith (fun x ->
+    ///         if x % 2 = 0 then Choice1Of2 (x * 10)
+    ///         else Choice2Of2 (string x))
+    /// </code>
+    /// Evaluates <c>evens</c> to <c>set [20; 40]</c> and <c>odds</c> to <c>set ["1"; "3"; "5"]</c>.
+    /// </example>
+    ///
+    /// <remarks>This is an O(n log n) operation, where n is the number of elements in the set.</remarks>
+    [<CompiledName("PartitionWith")>]
+    val partitionWith: partitioner: ('T -> Choice<'T1, 'T2>) -> set: Set<'T> -> Set<'T1> * Set<'T2>
 
     /// <summary>Returns a new set with the given element removed. No exception is raised if
     /// the set doesn't contain the given element.</summary>
@@ -681,10 +781,12 @@ module Set =
     /// <example id="set-remove">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(2).Add(3)
-    /// printfn $"The set without 1 is {Set.remove 1 set}"
+    /// printn $"The set without 1 is {Set.remove 1 set}"
     /// </code>
     /// The sample evaluates to the following output: <c>The set without 1 is set [2; 3]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(log n) operation, where n is the number of elements in the set.</remarks>
     [<CompiledName("Remove")>]
     val remove: value: 'T -> set: Set<'T> -> Set<'T>
 
@@ -697,10 +799,12 @@ module Set =
     /// <example id="set-minelement">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(2).Add(3)
-    /// printfn $"The min element of {set} is {Set.minElement set}"
+    /// printn $"The min element of {set} is {Set.minElement set}"
     /// </code>
     /// The sample evaluates to the following output: <c>The min element of set [1; 2; 3] is 1</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(log n) operation, where n is the number of elements in the set.</remarks>
     [<CompiledName("MinElement")>]
     val minElement: set: Set<'T> -> 'T
 
@@ -713,10 +817,12 @@ module Set =
     /// <example id="set-maxelement">
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(2).Add(3)
-    /// printfn $"The min element of {set} is {Set.minElement set}"
+    /// printn $"The min element of {set} is {Set.minElement set}"
     /// </code>
     /// The sample evaluates to the following output: <c>The max element of set [1; 2; 3] is 3</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(log n) operation, where n is the number of elements in the set.</remarks>
     [<CompiledName("MaxElement")>]
     val maxElement: set: Set<'T> -> 'T
 
@@ -729,10 +835,12 @@ module Set =
     /// <example id="set-oflist">
     /// <code lang="fsharp">
     /// let set = Set.ofList [1, 2, 3]
-    /// printfn $"The set is {set} and type is {set.GetType().Name}"
+    /// printn $"The set is {set} and type is {set.GetType().Name}"
     /// </code>
     /// The sample evaluates to the following output: <c>The set is set [(1, 2, 3)] and type is "FSharpSet`1"</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n log n) operation, where n is the number of elements in the list.</remarks>
     [<CompiledName("OfList")>]
     val ofList: elements: 'T list -> Set<'T>
 
@@ -746,10 +854,12 @@ module Set =
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(2).Add(3)
     /// let list = Set.toList set
-    /// printfn $"The set is {list} and type is {list.GetType().Name}"
+    /// printn $"The set is {list} and type is {list.GetType().Name}"
     /// </code>
     /// The sample evaluates to the following output: <c>The set is [1; 2; 3] and type is "FSharpList`1"</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the number of elements in the set.</remarks>
     [<CompiledName("ToList")>]
     val toList: set: Set<'T> -> 'T list
 
@@ -762,10 +872,12 @@ module Set =
     /// <example id="set-remove">
     /// <code lang="fsharp">
     /// let set = Set.ofArray [|1, 2, 3|]
-    /// printfn $"The set is {set} and type is {set.GetType().Name}"
+    /// printn $"The set is {set} and type is {set.GetType().Name}"
     /// </code>
     /// The sample evaluates to the following output: <c>The set is set [(1, 2, 3)] and type is "FSharpSet`1"</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n log n) operation, where n is the number of elements in the array.</remarks>
     [<CompiledName("OfArray")>]
     val ofArray: array: 'T array -> Set<'T>
 
@@ -783,6 +895,8 @@ module Set =
     /// </code>
     /// The sample evaluates to the following output: <c>The set is [|1; 2; 3|] and type is System.Int32 array</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the number of elements in the set.</remarks>
     [<CompiledName("ToArray")>]
     val toArray: set: Set<'T> -> 'T array
 
@@ -796,10 +910,12 @@ module Set =
     /// <code lang="fsharp">
     /// let set = Set.empty.Add(1).Add(2).Add(3)
     /// let seq = Set.toSeq set
-    /// printfn $"The set is {set} and type is {seq.GetType().Name}"
+    /// printn $"The set is {set} and type is {seq.GetType().Name}"
     /// </code>
     /// The sample evaluates to the following output: <c>he set is set [1; 2; 3] and type is Microsoft.FSharp.Collections.FSharpSet`1[System.Int32]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("ToSeq")>]
     val toSeq: set: Set<'T> -> seq<'T>
 
@@ -812,10 +928,12 @@ module Set =
     /// <example id="set-ofseq">
     /// <code lang="fsharp">
     /// let set = Set.ofSeq [1, 2, 3]
-    /// printfn $"The set is {set} and type is {set.GetType().Name}"
+    /// printn $"The set is {set} and type is {set.GetType().Name}"
     /// </code>
     /// The sample evaluates to the following output: <c>The set is set [(1, 2, 3)] and type is "FSharpSet`1"</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n log n) operation, where n is the number of elements in the sequence.</remarks>
     [<CompiledName("OfSeq")>]
     val ofSeq: elements: seq<'T> -> Set<'T>
 
@@ -830,9 +948,11 @@ module Set =
     /// <code lang="fsharp">
     /// let set1 = Set.empty.Add(1).Add(2).Add(3)
     /// let set2 = Set.empty.Add(2).Add(3).Add(4)
-    /// printfn $"The difference of {set1} and {set2} is {Set.difference set1 set2}"
+    /// printn $"The difference of {set1} and {set2} is {Set.difference set1 set2}"
     /// </code>
     /// The sample evaluates to the following output: <c>The difference of set [1; 2; 3] and set [2; 3; 4] is set [1]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(m log n) operation, where m is the number of elements in the second set and n is the number of elements in the first set.</remarks>
     [<CompiledName("Difference")>]
     val difference: set1: Set<'T> -> set2: Set<'T> -> Set<'T>

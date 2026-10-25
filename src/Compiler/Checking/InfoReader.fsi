@@ -6,6 +6,7 @@ module internal FSharp.Compiler.InfoReader
 open Internal.Utilities.Library
 open FSharp.Compiler
 open FSharp.Compiler.AccessibilityLogic
+open FSharp.Compiler.Features
 open FSharp.Compiler.Import
 open FSharp.Compiler.Infos
 open FSharp.Compiler.TcGlobals
@@ -118,6 +119,10 @@ type FindMemberFlag =
 /// We create one of these for each file we typecheck.
 type InfoReader =
 
+    /// Tests for a visible intrinsic static abstract method, including inherited methods.
+    /// Override and hiding checks are skipped when the raw hierarchy has no candidate slots.
+    member HasIntrinsicStaticAbstractMethod: ad: AccessorDomain -> m: range -> ty: TType -> bool
+
     /// Get the declared IL fields of a type, not including inherited fields
     new: g: TcGlobals * amap: ImportMap -> InfoReader
 
@@ -147,12 +152,27 @@ type InfoReader =
         ty: TType ->
             MethInfo list list
 
+    /// Read the raw property sets of a type, including inherited ones. Cache the result for monomorphic types
+    member GetRawIntrinsicPropertySetsOfType:
+        optFilter: string option *
+        ad: AccessorDomain *
+        allowMultiIntfInst: AllowMultiIntfInstantiations *
+        m: range *
+        ty: TType ->
+            PropInfo list list
+
     /// Read the record or class fields of a type, including inherited ones. Cache the result for monomorphic types.
     member GetRecordOrClassFieldsOfType:
         optFilter: string option * ad: AccessorDomain * m: range * ty: TType -> RecdFieldInfo list
 
+    /// Check if the target runtime supports default implementations of interfaces (DefaultImplementationsOfInterfaces).
+    member IsRuntimeSupportForDefaultImplementationsOfInterfaces: bool
+
+    /// Check if the target runtime supports static abstract members in interfaces (VirtualStaticsInInterfaces).
+    member IsRuntimeSupportForVirtualStaticsInInterfaces: bool
+
     /// Check if the given language feature is supported by the runtime.
-    member IsLanguageFeatureRuntimeSupported: langFeature: Features.LanguageFeature -> bool
+    member IsLanguageFeatureRuntimeSupported: langFeature: LanguageFeature -> bool
 
     /// Try and find a record or class field for a type.
     member TryFindRecdOrClassFieldInfoOfType: nm: string * m: range * ty: TType -> RecdFieldInfo voption
@@ -225,8 +245,14 @@ type InfoReader =
     member IsInterfaceTypeWithMatchingStaticAbstractMember:
         m: range -> nm: string -> ad: AccessorDomain -> ty: TType -> bool
 
-val checkLanguageFeatureRuntimeAndRecover:
-    infoReader: InfoReader -> langFeature: Features.LanguageFeature -> m: range -> unit
+    /// Check if an interface type has an unimplemented static abstract member.
+    /// Returns Some(memberLogicalName) if found, None otherwise.
+    /// Results are cached per interface type definition.
+    member TryFindUnimplementedStaticAbstractMemberOfType: m: range -> interfaceTy: TType -> string option
+
+val checkLanguageFeatureRuntimeAndRecover: infoReader: InfoReader -> langFeature: LanguageFeature -> m: range -> unit
+
+val checkRuntimeSupportForDefaultInterfaceMembersAndRecover: infoReader: InfoReader -> m: range -> unit
 
 /// Get the declared constructors of any F# type
 val GetIntrinsicConstructorInfosOfType: infoReader: InfoReader -> m: range -> ty: TType -> MethInfo list
@@ -339,13 +365,13 @@ val PropTypeOfEventInfo: infoReader: InfoReader -> m: range -> ad: AccessorDomai
 
 /// Try to find the name of the metadata file for this external definition
 val TryFindMetadataInfoOfExternalEntityRef:
-    infoReader: InfoReader -> m: range -> eref: EntityRef -> (string option * Typars * ILTypeInfo) option
+    infoReader: InfoReader -> eref: EntityRef -> (string option * Typars * ILTypeInfo) option
 
 /// Try to find the xml doc associated with the assembly name and metadata key
 val TryFindXmlDocByAssemblyNameAndSig:
     infoReader: InfoReader -> assemblyName: string -> xmlDocSig: string -> XmlDoc option
 
-val GetXmlDocSigOfEntityRef: infoReader: InfoReader -> m: range -> eref: EntityRef -> (string option * string) option
+val GetXmlDocSigOfEntityRef: infoReader: InfoReader -> eref: EntityRef -> (string option * string) option
 
 val GetXmlDocSigOfScopedValRef: TcGlobals -> tcref: TyconRef -> vref: ValRef -> (string option * string) option
 
@@ -359,7 +385,6 @@ val GetXmlDocSigOfValRef: TcGlobals -> vref: ValRef -> (string option * string) 
 
 val GetXmlDocSigOfProp: infoReader: InfoReader -> m: range -> pinfo: PropInfo -> (string option * string) option
 
-val GetXmlDocSigOfEvent: infoReader: InfoReader -> m: range -> einfo: EventInfo -> (string option * string) option
+val GetXmlDocSigOfEvent: infoReader: InfoReader -> einfo: EventInfo -> (string option * string) option
 
-val GetXmlDocSigOfILFieldInfo:
-    infoReader: InfoReader -> m: range -> finfo: ILFieldInfo -> (string option * string) option
+val GetXmlDocSigOfILFieldInfo: infoReader: InfoReader -> finfo: ILFieldInfo -> (string option * string) option

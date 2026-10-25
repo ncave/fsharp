@@ -1,5 +1,5 @@
-// #NoMT #CodeGen #Interop 
-#light
+// #NoMT #CodeGen #Interop
+
 
 // Verify delegates are generated correctly
 
@@ -42,5 +42,5 @@ module Tester =
 
 
     with
-    | e -> printfn "Unhandled Exception: %s" e.Message 
+    | e -> printfn "Unhandled Exception: %s" e.Message
            raise (Exception($"Oops: {e}"))

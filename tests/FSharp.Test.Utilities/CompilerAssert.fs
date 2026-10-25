@@ -17,10 +17,12 @@ open FSharp.Compiler.CodeAnalysis
 open FSharp.Compiler.CodeAnalysis.ProjectSnapshot
 open FSharp.Compiler.Diagnostics
 open FSharp.Compiler.Text
+open FSharp.Compiler.BuildGraph
 #if NETCOREAPP
 open System.Runtime.Loader
 #endif
 open FSharp.Test.Utilities
+open FSharp.Test.ScriptHelpers
 open Microsoft.CodeAnalysis
 open Microsoft.CodeAnalysis.CSharp
 open Xunit
@@ -31,37 +33,52 @@ open System.Collections.Immutable
 #if !NETCOREAPP
 module AssemblyResolver =
 
+    open System.Collections.Generic
+
     let probingPaths = [|
         AppDomain.CurrentDomain.BaseDirectory
         Path.GetDirectoryName(typeof<FactForDESKTOPAttribute>.Assembly.Location)
     |]
 
+    // Add a static HashSet to track currently resolving assemblies
+    let private resolvingAssemblies = HashSet<string>()
+
     let addResolver () =
         AppDomain.CurrentDomain.add_AssemblyResolve(fun h args ->
-            let found () =
-                (probingPaths ) |> Seq.tryPick(fun p ->
-                    try
-                        let name = AssemblyName(args.Name)
-                        let codebase = Path.GetFullPath(Path.Combine(p, name.Name))
-                        if File.Exists(codebase + ".dll") then
-                            name.CodeBase <- codebase  + ".dll"
-                            name.CultureInfo <- Unchecked.defaultof<CultureInfo>
-                            name.Version <- Unchecked.defaultof<Version>
-                            Some (name)
-                        elif File.Exists(codebase + ".exe") then
-                                name.CodeBase <- codebase + ".exe"
-                                name.CultureInfo <- Unchecked.defaultof<CultureInfo>
-                                name.Version <- Unchecked.defaultof<Version>
-                                Some (name)
-                        else None
-                    with | _ -> None
-                    )
-            match found() with
-            | None -> Unchecked.defaultof<Assembly>
-            | Some name -> Assembly.Load(name) )
+            let assemblyName = args.Name
+            // Prevent recursion: skip if already resolving this assembly
+            if resolvingAssemblies.Contains(assemblyName) then
+                null
+            else
+                try
+                    resolvingAssemblies.Add(assemblyName) |> ignore
+                    let found () =
+                        (probingPaths ) |> Seq.tryPick(fun p ->
+                            try
+                                let name = AssemblyName(args.Name)
+                                let codebase = Path.GetFullPath(Path.Combine(p, name.Name))
+                                if File.Exists(codebase + ".dll") then
+                                    name.CodeBase <- codebase  + ".dll"
+                                    name.CultureInfo <- Unchecked.defaultof<CultureInfo>
+                                    name.Version <- Unchecked.defaultof<Version>
+                                    Some (name)
+                                elif File.Exists(codebase + ".exe") then
+                                    name.CodeBase <- codebase + ".exe"
+                                    name.CultureInfo <- Unchecked.defaultof<CultureInfo>
+                                    name.Version <- Unchecked.defaultof<Version>
+                                    Some (name)
+                                else None
+                            with | _ -> None
+                        )
+                    match found() with
+                    | None -> null
+                    | Some name -> Assembly.Load(name)
+                finally
+                    resolvingAssemblies.Remove(assemblyName) |> ignore
+        )
 #endif
 
-type ExecutionOutcome = 
+type ExecutionOutcome =
     | NoExitCode
     | ExitCode of int
     | Failure of exn
@@ -179,6 +196,15 @@ type TestCompilation =
             | TestCompilation.IL (_, result) ->
                 let (_, data) = result.Value
                 File.WriteAllBytes (outputPath, data)
+
+    member this.EmitToDirectory (outputDir: DirectoryInfo) =
+        let fileName =
+            match this with
+            | TestCompilation.CSharp c when not (String.IsNullOrWhiteSpace c.AssemblyName) -> c.AssemblyName
+            | _ -> getTemporaryFileNameInDirectory outputDir
+        let outputPath = Path.Combine(outputDir.FullName, Path.ChangeExtension(fileName, ".dll"))
+        this.EmitAsFile outputPath
+        outputPath
 
 type CSharpLanguageVersion =
     | CSharp8 = 0
@@ -340,8 +366,8 @@ module CompilerAssertHelpers =
 
         use capture = new TestConsole.ExecutionCapture()
         let outcome =
-            try 
-                match entryPoint.Invoke(Unchecked.defaultof<obj>, args) with 
+            try
+                match entryPoint.Invoke(Unchecked.defaultof<obj>, args) with
                 | :? int as rc -> ExitCode rc
                 | _ -> NoExitCode
             with
@@ -395,7 +421,7 @@ module CompilerAssertHelpers =
         eprintf $"{errors}"
 
         testCaseDomain.remove_AssemblyResolve handler
-        
+
         outcome, output, errors
 
 #endif
@@ -443,7 +469,7 @@ module CompilerAssertHelpers =
 
         // Generate a response file, purely for diagnostic reasons.
         File.WriteAllLines(Path.ChangeExtension(outputFilePath, ".rsp"), args)
-        let errors, ex = checker.Compile args |> Async.RunImmediate
+        let errors, ex = checker.Compile args |> Async.RunSynchronouslyImmediate
         errors, ex, outputFilePath
 
     let compileDisposable (outputDirectory:DirectoryInfo) isExe options targetFramework nameOpt (sources:SourceCodeFileKind list) =
@@ -483,7 +509,7 @@ module CompilerAssertHelpers =
                 | FSharpDiagnosticSeverity.Hidden-> $"Hidden {errN}"
                 | FSharpDiagnosticSeverity.Info -> $"Information {errN}"
             $"""({errorType}, Line {range.StartLine}, Col {range.StartColumn}, Line {range.EndLine}, Col {range.EndColumn}, "{message}")""".Replace("\r\n", "\n")
-        
+
         let errors =
             errors
             |> Array.filter (fun error -> if ignoreWarnings then error.Severity <> FSharpDiagnosticSeverity.Warning && error.Severity <> FSharpDiagnosticSeverity.Info else true)
@@ -493,7 +519,7 @@ module CompilerAssertHelpers =
             errors
             |> Array.map (fun info ->
                 (info.Severity, info.ErrorNumber, (info.StartLine - libAdjust, info.StartColumn + 1, info.EndLine - libAdjust, info.EndColumn + 1), info.Message))
-        
+
         let checkEqual k a b =
            if a <> b then
                failwithf $"Mismatch in %s{k}, expected '%A{a}', got '%A{b}'.\nAll errors:\n%s{errorsAsStr}"
@@ -561,12 +587,7 @@ module CompilerAssertHelpers =
                         | CompilationReference (cmpl, staticLink) ->
                             compileCompilationAux outputDir ignoreWarnings cmpl, staticLink
                         | TestCompilationReference (cmpl) ->
-                            let fileName =
-                                match cmpl with
-                                | TestCompilation.CSharp c when not (String.IsNullOrWhiteSpace c.AssemblyName) -> c.AssemblyName
-                                | _ -> getTemporaryFileNameInDirectory outputDir
-                            let tmp = Path.Combine(outputDir.FullName, Path.ChangeExtension(fileName, ".dll"))
-                            cmpl.EmitAsFile tmp
+                            let tmp = cmpl.EmitToDirectory outputDir
                             (([||], None, tmp), []), false)
 
             let compilationRefs =
@@ -612,19 +633,26 @@ module CompilerAssertHelpers =
         let fileName = outputFilePath
         let arguments = ""
 #else
-        let fileName = "dotnet"
+        let fileName = initialConfig.DotNetExe
         let arguments = outputFilePath
 
-        let runtimeconfig = """
-{
-    "runtimeOptions": {
-        "tfm": "net10.0",
-        "framework": {
+        // Use the actual runtime version so framework resolution works on preview SDKs
+        // (preview versions like 11.0.0-preview.1 are semver-lower than 11.0.0).
+        let runtimeVersion =
+            let desc = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription
+            // ".NET 11.0.0-preview.1.26078.121" → "11.0.0-preview.1.26078.121"
+            desc.Replace(".NET ", "")
+        let runtimeconfig = $"""
+{{
+    "runtimeOptions": {{
+        "tfm": "{productTfm}",
+        "rollForward": "LatestMinor",
+        "framework": {{
             "name": "Microsoft.NETCore.App",
-            "version": "7.0"
-        }
-    }
-}"""
+            "version": "{runtimeVersion}"
+        }}
+    }}
+}}"""
         let runtimeconfigPath = Path.ChangeExtension(outputFilePath, ".runtimeconfig.json")
         File.WriteAllText(runtimeconfigPath, runtimeconfig)
 #endif
@@ -663,12 +691,12 @@ type CompilerAssert private () =
             if errors.Length > 0 then
                 Assert.Fail (sprintf "Compile had errors: %A" errors)
             let debugInfoFile = outputFilePath + ".debuginfo"
-            if not (File.Exists expectedFile) then 
+            if not (File.Exists expectedFile) then
                 File.Copy(debugInfoFile, expectedFile)
                 failwith $"debug info expected file {expectedFile} didn't exist, now copied over"
             let debugInfo = File.ReadAllLines(debugInfoFile)
             let expected = File.ReadAllLines(expectedFile)
-            if debugInfo <> expected then 
+            if debugInfo <> expected then
                 File.Copy(debugInfoFile, expectedFile, overwrite=true)
                 failwith $"""debug info mismatch
 Expected is in {expectedFile}
@@ -708,7 +736,7 @@ Updated automatically, please check diffs in your pull request, changes must be 
         returnCompilation cmpl (defaultArg ignoreWarnings false)
 
     static member ExecuteAndReturnResult (outputFilePath: string, isFsx: bool, deps: string list, newProcess: bool) =
-        let outcome, output, errors = 
+        let outcome, output, errors =
             if not newProcess then
                 executeBuiltApp outputFilePath deps isFsx
             else
@@ -730,7 +758,7 @@ Updated automatically, please check diffs in your pull request, changes must be 
         compileCompilation ignoreWarnings cmpl (fun ((errors, _, outputFilePath), deps) ->
             assertErrors 0 ignoreWarnings errors [||]
             beforeExecute outputFilePath deps
-            if newProcess then 
+            if newProcess then
                 executeBuiltAppNewProcess outputFilePath
             else
                 executeBuiltApp outputFilePath deps false
@@ -746,10 +774,10 @@ Updated automatically, please check diffs in your pull request, changes must be 
 
     static member ExecutionHasOutput(cmpl: Compilation, expectedOutput: string) =
         let _, output, _ = CompilerAssert.ExecuteAux(cmpl, newProcess = true)
-        Assert.Equal(expectedOutput, output)  
+        Assert.Equal(expectedOutput, output)
 
     static member Pass (source: string) =
-        let parseResults, fileAnswer = checker.ParseAndCheckFileInProject("test.fs", 0, SourceText.ofString source, defaultProjectOptions TargetFramework.Current) |> Async.RunImmediate
+        let parseResults, fileAnswer = checker.ParseAndCheckFileInProject("test.fs", 0, SourceText.ofString source, defaultProjectOptions TargetFramework.Current) |> Async.RunSynchronouslyImmediate
 
         Assert.Empty(parseResults.Diagnostics)
 
@@ -763,7 +791,7 @@ Updated automatically, please check diffs in your pull request, changes must be 
         let defaultOptions = defaultProjectOptions TargetFramework.Current
         let options = { defaultOptions with OtherOptions = Array.append options defaultOptions.OtherOptions}
 
-        let parseResults, fileAnswer = checker.ParseAndCheckFileInProject("test.fs", 0, SourceText.ofString source, options) |> Async.RunImmediate
+        let parseResults, fileAnswer = checker.ParseAndCheckFileInProject("test.fs", 0, SourceText.ofString source, options) |> Async.RunSynchronouslyImmediate
 
         Assert.Empty(parseResults.Diagnostics)
 
@@ -782,7 +810,7 @@ Updated automatically, please check diffs in your pull request, changes must be 
                 0,
                 SourceText.ofString (File.ReadAllText absoluteSourceFile),
                 { defaultOptions with OtherOptions = Array.append options defaultOptions.OtherOptions; SourceFiles = [|sourceFile|] })
-            |> Async.RunImmediate
+            |> Async.RunSynchronouslyImmediate
 
         Assert.Empty(parseResults.Diagnostics)
 
@@ -813,13 +841,13 @@ Updated automatically, please check diffs in your pull request, changes must be 
                     0,
                     SourceText.ofString source,
                     { defaultOptions with OtherOptions = Array.append options defaultOptions.OtherOptions; SourceFiles = [|name|] })
-                |> Async.RunImmediate
+                |> Async.RunSynchronouslyImmediate
 
             if parseResults.Diagnostics.Length > 0 then
                 if options |> Array.contains "--test:ContinueAfterParseFailure" then
                     [| yield! parseResults.Diagnostics
                        match fileAnswer with
-                       | FSharpCheckFileAnswer.Succeeded(tcResults) -> yield! tcResults.Diagnostics 
+                       | FSharpCheckFileAnswer.Succeeded(tcResults) -> yield! tcResults.Diagnostics
                        | _ -> () |]
                 else parseResults.Diagnostics
             else
@@ -839,7 +867,7 @@ Updated automatically, please check diffs in your pull request, changes must be 
                     0,
                     SourceText.ofString source,
                     { defaultOptions with OtherOptions = Array.append options defaultOptions.OtherOptions})
-                |> Async.RunImmediate
+                |> Async.RunSynchronouslyImmediate
 
             if parseResults.Diagnostics.Length > 0 then
                 parseResults.Diagnostics
@@ -860,7 +888,7 @@ Updated automatically, please check diffs in your pull request, changes must be 
                 0,
                 SourceText.ofString source,
                 { defaultOptions with OtherOptions = Array.append options defaultOptions.OtherOptions})
-            |> Async.RunImmediate
+            |> Async.RunSynchronouslyImmediate
 
         match fileAnswer with
         | FSharpCheckFileAnswer.Aborted -> Assert.Fail("Type Checker Aborted"); failwith "Type Checker Aborted"
@@ -883,7 +911,7 @@ Updated automatically, please check diffs in your pull request, changes must be 
                     0,
                     SourceText.ofString source,
                     { defaultOptions with OtherOptions = Array.append options defaultOptions.OtherOptions})
-                |> Async.RunImmediate
+                |> Async.RunSynchronouslyImmediate
 
             if parseResults.Diagnostics.Length > 0 then
                 parseResults.Diagnostics
@@ -926,12 +954,12 @@ Updated automatically, please check diffs in your pull request, changes must be 
                         }
                     ))
 
-            let snapshot = FSharpProjectSnapshot.FromOptions(projectOptions, getFileSnapshot) |> Async.RunImmediate
+            let snapshot = FSharpProjectSnapshot.FromOptions(projectOptions, getFileSnapshot) |> Async.RunSynchronouslyImmediate
 
             checker.ParseAndCheckProject(snapshot)
         else
             checker.ParseAndCheckProject(projectOptions)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
 
     static member CompileExeWithOptions(options, (source: SourceCodeFileKind)) =
         compile true options source (fun (errors, _, _) ->
@@ -962,10 +990,10 @@ Updated automatically, please check diffs in your pull request, changes must be 
         compileExeAndRunWithOptions [||] (SourceCodeFileKind.Create("test.fs", source))
 
     static member CompileLibraryAndVerifyILWithOptions(options, (source: SourceCodeFileKind), (f: ILVerifier -> unit)) =
-        compileLibraryAndVerifyILWithOptions options source f 
+        compileLibraryAndVerifyILWithOptions options source f
 
     static member CompileLibraryAndVerifyILWithOptions(options, (source: string), (f: ILVerifier -> unit)) =
-        compileLibraryAndVerifyILWithOptions options (SourceCodeFileKind.Create("test.fs", source)) f 
+        compileLibraryAndVerifyILWithOptions options (SourceCodeFileKind.Create("test.fs", source)) f
 
     static member CompileLibraryAndVerifyDebugInfoWithOptions(options, (expectedFile: string), (source: SourceCodeFileKind)) =
         compileLibraryAndVerifyDebugInfoWithOptions options expectedFile source
@@ -983,34 +1011,33 @@ Updated automatically, please check diffs in your pull request, changes must be 
         compileLibraryAndVerifyILWithOptions [|"--realsig+"|] (SourceCodeFileKind.Create("test.fs", source)) f
 
     static member RunScriptWithOptionsAndReturnResult options (source: string) =
-        // Initialize output and input streams
-        use inStream = new StringReader("")
-        use outStream = new StringWriter()
-        use errStream = new StringWriter()
+        // Save CurrentUICulture and GraphNode.culture to restore after FSI session
+        // FSI may change these via --preferreduilang option, and the change persists
+        // in the static GraphNode.culture which affects async computations in other tests
+        let originalUICulture = CultureInfo.CurrentUICulture
+        let originalGraphNodeCulture = GraphNode.culture
+        try
+            use outStream = new StringWriter()
+            use errStream = new StringWriter()
+            use script = new FSharpScript(additionalArgs = Array.append [| "--noninteractive" |] options, quiet = false, outWriter = outStream, errWriter = errStream)
+            script.ApplyExitShadowing()
+            // Scripts written for piped stdin end with `#q;;`, which exits the process: drop that last
+            // line instead of letting it end the test host. Only the last one, so that text which merely
+            // contains it, in a string say, is left as written.
+            let source = System.Text.RegularExpressions.Regex.Replace(source, @"(?<![^\n])[ \t]*#(?:q|quit)[ \t]*(?:;;)?\s*\z", "")
+            let result, errors = script.Eval(source)
 
-        // Build command line arguments & start FSI session
-        let argv = [| "C:\\fsi.exe" |]
-#if NETCOREAPP
-        let args = Array.append argv [|"--noninteractive"; "--targetprofile:netcore"|]
-#else
-        let args = Array.append argv [|"--noninteractive"; "--targetprofile:mscorlib"|]
-#endif
-        let allArgs = Array.append args options
+            let errorMessages = ResizeArray(errors |> Seq.map _.Message)
 
-        let fsiConfig = FsiEvaluationSession.GetDefaultConfiguration()
-        use fsiSession = FsiEvaluationSession.Create(fsiConfig, allArgs, inStream, outStream, errStream, collectible = true)
+            match result with
+            | Result.Error ex -> errorMessages.Add(ex.Message)
+            | _ -> ()
 
-        let ch, errors = fsiSession.EvalInteractionNonThrowing source
-
-        let errorMessages = ResizeArray()
-        errors
-        |> Seq.iter (fun error -> errorMessages.Add(error.Message))
-
-        match ch with
-        | Choice2Of2 ex -> errorMessages.Add(ex.Message)
-        | _ -> ()
-
-        errorMessages, string outStream, string errStream
+            errorMessages, string outStream, string errStream
+        finally
+            // Restore CurrentUICulture and GraphNode.culture to prevent culture leaking between tests
+            CultureInfo.CurrentUICulture <- originalUICulture
+            GraphNode.culture <- originalGraphNodeCulture
 
     static member RunScriptWithOptions options (source: string) (expectedErrorMessages: string list) =
         let errorMessages, _, _ = CompilerAssert.RunScriptWithOptionsAndReturnResult options source
@@ -1032,7 +1059,7 @@ Updated automatically, please check diffs in your pull request, changes must be 
             { FSharpParsingOptions.Default with
                 SourceFiles = [| sourceFileName |]
                 LangVersionText = langVersion }
-        checker.ParseFile(sourceFileName, SourceText.ofString source, parsingOptions) |> Async.RunImmediate
+        checker.ParseFile(sourceFileName, SourceText.ofString source, parsingOptions) |> Async.RunSynchronouslyImmediate
 
     static member ParseWithErrors (source: string, ?langVersion: string) = fun expectedParseErrors ->
         let parseResults = CompilerAssert.Parse (source, ?langVersion=langVersion)

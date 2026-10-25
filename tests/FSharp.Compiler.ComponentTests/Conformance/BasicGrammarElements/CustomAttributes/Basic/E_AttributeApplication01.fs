@@ -1,5 +1,5 @@
-// #Regression #Conformance #DeclarationElements #Attributes 
-#light
+// #Regression #Conformance #DeclarationElements #Attributes
+
 
 // FSB 1036, Assembly-level attributes attached to non-do bindings
 

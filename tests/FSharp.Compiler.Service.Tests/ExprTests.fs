@@ -661,9 +661,9 @@ let test{0}ToStringOperator   (e1:{1}) = string e1
 /// This test is run in unison with its optimized counterpart below
 [<Fact>]
 let ``Test Unoptimized Declarations Project1`` () =
-    let options = Project1.createOptionsWithArgs [ "--langversion:preview" ]
+    let options = Project1.createOptionsWithArgs [ "--langversion:preview"; "--nowarn:3886" ]
     let exprChecker = FSharpChecker.Create(keepAssemblyContents=true, useTransparentCompiler=CompilerAssertHelpers.UseTransparentCompiler)
-    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunImmediate
+    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
 
     for e in wholeProjectResults.Diagnostics do
         printfn "Project1 error: <<<%s>>>" e.Message
@@ -799,9 +799,9 @@ let ``Test Unoptimized Declarations Project1`` () =
 
 [<Fact>]
 let ``Test Optimized Declarations Project1`` () =
-    let options = Project1.createOptionsWithArgs [ "--langversion:preview" ]
+    let options = Project1.createOptionsWithArgs [ "--langversion:preview"; "--nowarn:3886" ]
     let exprChecker = FSharpChecker.Create(keepAssemblyContents=true, useTransparentCompiler=CompilerAssertHelpers.UseTransparentCompiler)
-    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunImmediate
+    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
 
     for e in wholeProjectResults.Diagnostics do
         printfn "Project1 error: <<<%s>>>" e.Message
@@ -900,7 +900,7 @@ let ``Test Optimized Declarations Project1`` () =
          "let test11(s) = let Pipe #1 input at line 238: Microsoft.FSharp.Core.string = s in M.last2 (Pipe #1 input at line 238) @ (238,4--238,14)";
          "let badLoop = badLoop@240.Force<Microsoft.FSharp.Core.int -> Microsoft.FSharp.Core.int>(()) @ (240,8--240,15)";
          "type LetLambda";
-         "let f = fun a -> fun b -> Operators.op_Addition<Microsoft.FSharp.Core.int,Microsoft.FSharp.Core.int,Microsoft.FSharp.Core.int> (fun arg0_0 -> fun arg1_0 -> LanguagePrimitives.AdditionDynamic<Microsoft.FSharp.Core.int,Microsoft.FSharp.Core.int,Microsoft.FSharp.Core.int> (arg0_0,arg1_0),a,b) @ (247,8--247,24)";
+         "let f = ((); fun a -> fun b -> Operators.op_Addition<Microsoft.FSharp.Core.int,Microsoft.FSharp.Core.int,Microsoft.FSharp.Core.int> (fun arg0_0 -> fun arg1_0 -> LanguagePrimitives.AdditionDynamic<Microsoft.FSharp.Core.int,Microsoft.FSharp.Core.int,Microsoft.FSharp.Core.int> (arg0_0,arg1_0),a,b)) @ (246,8--247,24)";
          "let letLambdaRes = let Pipe #1 input at line 249: (Microsoft.FSharp.Core.int * Microsoft.FSharp.Core.int) Microsoft.FSharp.Collections.list = Cons((1,2),Empty()) in ListModule.Map<Microsoft.FSharp.Core.int * Microsoft.FSharp.Core.int,Microsoft.FSharp.Core.int> (fun tupledArg -> let a: Microsoft.FSharp.Core.int = tupledArg.Item0 in let b: Microsoft.FSharp.Core.int = tupledArg.Item1 in (LetLambda.f () a) b,Pipe #1 input at line 249) @ (249,19--249,71)";
          "let anonRecd = {X = 1; Y = 2} @ (251,15--251,33)";
          "let anonRecdGet = (M.anonRecd ().X,M.anonRecd ().Y) @ (252,19--252,41)"]
@@ -917,8 +917,8 @@ let ``Test Optimized Declarations Project1`` () =
          "let testTypeOf(x) = Operators.TypeOf<'T> () @ (17,24--17,30)";
          "let mutableVar(x) = (if Operators.op_GreaterThan<Microsoft.FSharp.Core.int> (x,0) then let mutable acc: Microsoft.FSharp.Core.int = x in acc <- x else ()) @ (20,4--22,16)";
          "let mutableConst(unitVar0) = let mutable acc: Microsoft.FSharp.Core.unit = () in acc <- () @ (25,16--25,19)";
-         "let testMutableVar = let x: Microsoft.FSharp.Core.int = 1 in (if Operators.op_GreaterThan<Microsoft.FSharp.Core.int> (x,0) then let mutable acc: Microsoft.FSharp.Core.int = x in acc <- x else ()) @ (28,21--28,33)";
-         "let testMutableConst = let mutable acc: Microsoft.FSharp.Core.unit = () in acc <- () @ (29,23--29,38)"]
+         "let testMutableVar = N.mutableVar (1) @ (28,21--28,33)";
+         "let testMutableConst = N.mutableConst (()) @ (29,23--29,38)"]
 
     // printFSharpDecls "" file2.Declarations |> Seq.iter (printfn "%s")
     printfn "// optimized"
@@ -954,7 +954,7 @@ let testOperators dnName fsName excludedTests expectedUnoptimized expectedOptimi
 
         let options = { checker.GetProjectOptionsFromCommandLineArgs (projFilePath, args) with SourceFiles = [|filePath|] }
 
-        let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunImmediate
+        let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
         let referencedAssemblies = wholeProjectResults.ProjectContext.GetReferencedAssemblies()
         let currentAssemblyToken =
             let fsCore = referencedAssemblies |> List.tryFind (fun asm -> asm.SimpleName = "FSharp.Core")
@@ -3136,7 +3136,7 @@ let BigSequenceExpression(outFileOpt,docFileOpt,baseAddressOpt) =
 let ``Test expressions of declarations stress big expressions`` () =
     let options = ProjectStressBigExpressions.createOptions()
     let exprChecker = FSharpChecker.Create(keepAssemblyContents=true, useTransparentCompiler=CompilerAssertHelpers.UseTransparentCompiler)
-    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunImmediate
+    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
 
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
 
@@ -3154,7 +3154,7 @@ let ``Test expressions of declarations stress big expressions`` () =
 let ``Test expressions of optimized declarations stress big expressions`` () =
     let options = ProjectStressBigExpressions.createOptions()
     let exprChecker = FSharpChecker.Create(keepAssemblyContents=true, useTransparentCompiler=CompilerAssertHelpers.UseTransparentCompiler)
-    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunImmediate
+    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
 
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
 
@@ -3207,13 +3207,13 @@ let f7() = callXY (C()) (D())
 let f8() = callXY (D()) (C())
     """
 
-    let createOptions() = createProjectOptions [fileSource1] ["--langversion:7.0"]
+    let createOptions() = createProjectOptions [fileSource1] ["--langversion:8.0"]
 
 [<Fact>]
 let ``Test ProjectForWitnesses1`` () =
     let options = ProjectForWitnesses1.createOptions()
     let exprChecker = FSharpChecker.Create(keepAssemblyContents=true, useTransparentCompiler=CompilerAssertHelpers.UseTransparentCompiler)
-    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunImmediate
+    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
 
     for e in wholeProjectResults.Diagnostics do
         printfn "Project1 error: <<<%s>>>" e.Message
@@ -3256,7 +3256,7 @@ let ``Test ProjectForWitnesses1`` () =
 let ``Test ProjectForWitnesses1 GetWitnessPassingInfo`` () =
     let options = ProjectForWitnesses1.createOptions()
     let exprChecker = FSharpChecker.Create(keepAssemblyContents=true, useTransparentCompiler=CompilerAssertHelpers.UseTransparentCompiler)
-    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunImmediate
+    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
 
     for e in wholeProjectResults.Diagnostics do
         printfn "ProjectForWitnesses1 error: <<<%s>>>" e.Message
@@ -3329,13 +3329,13 @@ type MyNumberWrapper =
     { MyNumber: MyNumber }
     """
 
-    let createOptions() = createProjectOptions [fileSource1] ["--langversion:7.0"]
+    let createOptions() = createProjectOptions [fileSource1] ["--langversion:8.0"]
 
 [<Fact>]
 let ``Test ProjectForWitnesses2`` () =
     let options = ProjectForWitnesses2.createOptions()
     let exprChecker = FSharpChecker.Create(keepAssemblyContents=true, useTransparentCompiler=CompilerAssertHelpers.UseTransparentCompiler)
-    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunImmediate
+    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
 
     for e in wholeProjectResults.Diagnostics do
         printfn "ProjectForWitnesses2 error: <<<%s>>>" e.Message
@@ -3384,13 +3384,13 @@ let s2 = sign p1
 
     """
 
-    let createOptions() = createProjectOptions [fileSource1] ["--langversion:7.0"]
+    let createOptions() = createProjectOptions [fileSource1] ["--langversion:8.0"]
 
 [<Fact>]
 let ``Test ProjectForWitnesses3`` () =
-    let options = createProjectOptions [ ProjectForWitnesses3.fileSource1 ] ["--langversion:7.0"]
+    let options = createProjectOptions [ ProjectForWitnesses3.fileSource1 ] ["--langversion:8.0"]
     let exprChecker = FSharpChecker.Create(keepAssemblyContents=true, useTransparentCompiler=CompilerAssertHelpers.UseTransparentCompiler)
-    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunImmediate
+    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
 
     for e in wholeProjectResults.Diagnostics do
         printfn "ProjectForWitnesses3 error: <<<%s>>>" e.Message
@@ -3420,7 +3420,7 @@ let ``Test ProjectForWitnesses3`` () =
 let ``Test ProjectForWitnesses3 GetWitnessPassingInfo`` () =
     let options = ProjectForWitnesses3.createOptions()
     let exprChecker = FSharpChecker.Create(keepAssemblyContents=true, useTransparentCompiler=CompilerAssertHelpers.UseTransparentCompiler)
-    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunImmediate
+    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
 
     for e in wholeProjectResults.Diagnostics do
         printfn "ProjectForWitnesses3 error: <<<%s>>>" e.Message
@@ -3476,13 +3476,13 @@ let isNullQuoted (ts : 't[]) =
 
 """
 
-    let createOptions() = createProjectOptions [fileSource1] ["--langversion:7.0"]
+    let createOptions() = createProjectOptions [fileSource1] ["--langversion:8.0"]
 
 [<Fact>]
 let ``Test ProjectForWitnesses4 GetWitnessPassingInfo`` () =
     let options = ProjectForWitnesses4.createOptions()
     let exprChecker = FSharpChecker.Create(keepAssemblyContents=true, useTransparentCompiler=CompilerAssertHelpers.UseTransparentCompiler)
-    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunImmediate
+    let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
 
     for e in wholeProjectResults.Diagnostics do
         printfn "ProjectForWitnesses4 error: <<<%s>>>" e.Message
@@ -3504,3 +3504,506 @@ let ``Test ProjectForWitnesses4 GetWitnessPassingInfo`` () =
     printfn "actual:\n\n%A" actual
     actual
       |> shouldEqual expected
+
+//---------------------------------------------------------------------------------------------------------
+// Regression tests for ImmediateSubExpressions on generic types with conditional comparison/equality
+// https://github.com/dotnet/fsharp/issues/19118
+//
+// The bug: FCS crashes when accessing ImmediateSubExpressions on auto-generated comparison code
+// for generic DUs/records whose type parameters have ComparisonConditionalOn but not actual
+// comparison constraints. This is because GetWitnessArgs tries to generate witnesses for the
+// comparison constraint, but fails because the type parameter is rigid and can't have constraints added.
+
+module internal ProjectForWitnessConditionalComparison =
+
+    /// Helper to walk ALL expressions in a file, including ImmediateSubExpressions
+    /// This triggers the bug because it forces conversion of auto-generated comparison code
+    let walkAllExpressions (source : string) =
+        let fileName1 = System.IO.Path.ChangeExtension(getTemporaryFileName (), ".fs")
+        try
+            FileSystem.OpenFileForWriteShim(fileName1).Write(source)
+            let options = createProjectOptions [source] []
+            let exprChecker = FSharpChecker.Create(keepAssemblyContents=true, useTransparentCompiler=CompilerAssertHelpers.UseTransparentCompiler)
+            let wholeProjectResults = exprChecker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
+
+            if wholeProjectResults.Diagnostics.Length > 0 then
+                for diag in wholeProjectResults.Diagnostics do
+                    printfn "Diagnostic: %s" diag.Message
+
+            for implFile in wholeProjectResults.AssemblyContents.ImplementationFiles do
+                // Walk all declarations and their expressions, including ImmediateSubExpressions
+                let rec walkExpr (e: FSharpExpr) =
+                    // Access ImmediateSubExpressions - this is what triggered #19118
+                    for subExpr in e.ImmediateSubExpressions do
+                        walkExpr subExpr
+
+                let rec walkDecl d =
+                    match d with
+                    | FSharpImplementationFileDeclaration.Entity (_, subDecls) ->
+                        for subDecl in subDecls do
+                            walkDecl subDecl
+                    | FSharpImplementationFileDeclaration.MemberOrFunctionOrValue (_, _, e) ->
+                        walkExpr e
+                    | FSharpImplementationFileDeclaration.InitAction e ->
+                        walkExpr e
+
+                for decl in implFile.Declarations do
+                    walkDecl decl
+        finally
+            try
+                FileSystem.FileDeleteShim fileName1
+            with
+            | _ -> ()
+
+/// Test case for ImmediateSubExpressions tests. ToString() returns just the name for test runner display.
+type ImmediateSubExpressionsTestCase =
+    { Name: string; Source: string }
+    override this.ToString() = this.Name
+
+let immediateSubExpressionsTestCases: obj[][] = [|
+    [| { Name = "generic DU with no constraints should not crash"
+         Source = """
+module M
+
+type Bar<'appEvent> =
+    | Wibble of 'appEvent
+""" } |]
+    [| { Name = "generic DU with multiple type parameters should not crash"
+         Source = """
+module M
+
+type MultiParam<'a, 'b, 'c> =
+    | Case1 of 'a
+    | Case2 of 'b * 'c
+    | Case3 of 'a * 'b * 'c
+""" } |]
+    [| { Name = "generic record with no constraints should not crash"
+         Source = """
+module M
+
+type MyRecord<'t> = { Value: 't; Name: string }
+""" } |]
+    [| { Name = "generic struct DU should not crash"
+         Source = """
+module M
+
+[<Struct>]
+type StructDU<'a> =
+    | StructCase of value: 'a
+""" } |]
+    [| { Name = "nested generic types should not crash"
+         Source = """
+module M
+
+type Outer<'a> =
+    | OuterCase of Inner<'a>
+
+and Inner<'b> =
+    | InnerCase of 'b
+""" } |]
+    [| { Name = "generic DU with explicit comparison constraint works"
+         Source = """
+module M
+
+type WithConstraint<'a when 'a : comparison> =
+    | Constrained of 'a
+""" } |]
+    [| { Name = "non-generic DU works"
+         Source = """
+module M
+
+type SimpleUnion =
+    | Case1 of int
+    | Case2 of string
+""" } |]
+    [| { Name = "generic DU with NoComparison attribute should not crash"
+         Source = """
+module M
+
+[<NoComparison>]
+type NoCompare<'a> =
+    | NoCompareCase of 'a
+""" } |]
+    [| { Name = "generic DU with NoEquality attribute should not crash"
+         Source = """
+module M
+
+[<NoEquality; NoComparison>]
+type NoEq<'a> =
+    | NoEqCase of 'a
+""" } |]
+    [| { Name = "generic DU used in function should not crash"
+         Source = """
+module M
+
+type Option2<'t> =
+    | Some2 of 't
+    | None2
+
+let mapOption2 f opt =
+    match opt with
+    | Some2 x -> Some2 (f x)
+    | None2 -> None2
+""" } |]
+    [| { Name = "complex generic type hierarchy should not crash"
+         Source = """
+module M
+
+type Result<'ok, 'err> =
+    | Ok of 'ok
+    | Error of 'err
+
+type Validated<'a> = Result<'a, string list>
+
+let validate pred msg value : Validated<'a> =
+    if pred value then Ok value
+    else Error [msg]
+""" } |]
+    [| { Name = "TType_tuple - DU case with tuple containing generic param"
+         Source = """
+module M
+
+type WithTuple<'a> =
+    | TupleCase of 'a * int
+""" } |]
+    [| { Name = "TType_tuple - DU case with nested tuple containing generic param"
+         Source = """
+module M
+
+type WithNestedTuple<'a> =
+    | NestedTupleCase of 'a * (int * string)
+""" } |]
+    [| { Name = "TType_tuple - DU case with generic param in second position"
+         Source = """
+module M
+
+type TupleSecondPos<'a> =
+    | Case of int * 'a
+""" } |]
+    [| { Name = "TType_tuple - DU case with multiple generics in tuple"
+         Source = """
+module M
+
+type MultiGenericTuple<'a, 'b, 'c> =
+    | Case of 'a * 'b * 'c
+""" } |]
+    [| { Name = "TType_tuple - struct tuple containing generic param"
+         Source = """
+module M
+
+type WithStructTuple<'a> =
+    | StructTupleCase of struct ('a * int)
+""" } |]
+    [| { Name = "TType_tuple - record with tuple field containing generic"
+         Source = """
+module M
+
+type RecordWithTuple<'a> = { Pair: 'a * int; Name: string }
+""" } |]
+    [| { Name = "TType_fun - DU case with function type containing generic param in domain"
+         Source = """
+module M
+
+type WithFunDomain<'a> =
+    | FunCase of ('a -> int)
+""" } |]
+    [| { Name = "TType_fun - DU case with function type containing generic param in range"
+         Source = """
+module M
+
+type WithFunRange<'a> =
+    | FunCase of (int -> 'a)
+""" } |]
+    [| { Name = "TType_fun - DU case with function type containing generic in both positions"
+         Source = """
+module M
+
+type WithFunBoth<'a, 'b> =
+    | FunCase of ('a -> 'b)
+""" } |]
+    [| { Name = "TType_fun - DU case with nested function type"
+         Source = """
+module M
+
+type WithNestedFun<'a> =
+    | FunCase of ('a -> int -> string)
+""" } |]
+    [| { Name = "TType_fun - DU case with higher-order function"
+         Source = """
+module M
+
+type WithHigherOrderFun<'a> =
+    | FunCase of (('a -> int) -> string)
+""" } |]
+    [| { Name = "TType_fun - record with function field"
+         Source = """
+module M
+
+type RecordWithFun<'a> = { Transform: 'a -> string; Id: int }
+""" } |]
+    [| { Name = "TType_anon - DU case with anonymous record containing generic param"
+         Source = """
+module M
+
+type WithAnon<'a> =
+    | AnonCase of {| Value: 'a |}
+""" } |]
+    [| { Name = "TType_anon - DU case with anonymous record multiple fields"
+         Source = """
+module M
+
+type WithAnonMultiple<'a, 'b> =
+    | AnonCase of {| First: 'a; Second: 'b; Fixed: int |}
+""" } |]
+    [| { Name = "TType_anon - DU case with nested anonymous record"
+         Source = """
+module M
+
+type WithNestedAnon<'a> =
+    | AnonCase of {| Inner: {| Value: 'a |} |}
+""" } |]
+    [| { Name = "TType_anon - struct anonymous record containing generic"
+         Source = """
+module M
+
+type WithStructAnon<'a> =
+    | StructAnonCase of struct {| Value: 'a |}
+""" } |]
+    [| { Name = "TType_anon - record with anonymous record field"
+         Source = """
+module M
+
+type RecordWithAnon<'a> = { Anon: {| Data: 'a |}; Name: string }
+""" } |]
+    [| { Name = "mixed TType_tuple and TType_fun"
+         Source = """
+module M
+
+type MixedTupleFun<'a> =
+    | Case of (('a * int) -> string)
+""" } |]
+    [| { Name = "mixed TType_fun in TType_tuple"
+         Source = """
+module M
+
+type MixedFunTuple<'a> =
+    | Case of (('a -> int) * string)
+""" } |]
+    [| { Name = "mixed TType_anon in TType_tuple"
+         Source = """
+module M
+
+type MixedAnonTuple<'a> =
+    | Case of ({| V: 'a |} * int)
+""" } |]
+    [| { Name = "mixed TType_tuple in TType_anon"
+         Source = """
+module M
+
+type MixedTupleAnon<'a> =
+    | Case of {| Pair: 'a * int |}
+""" } |]
+    [| { Name = "deeply nested combination"
+         Source = """
+module M
+
+type DeeplyNested<'a, 'b> =
+    | Case of {| Transform: ('a * int) -> {| Result: 'b |}; Pair: 'a * 'b |}
+""" } |]
+    [| { Name = "generic param wrapped in list inside tuple"
+         Source = """
+module M
+
+type ListInTuple<'a> =
+    | Case of 'a list * int
+""" } |]
+    [| { Name = "generic param wrapped in option inside function"
+         Source = """
+module M
+
+type OptionInFun<'a> =
+    | Case of ('a option -> int)
+""" } |]
+    [| { Name = "generic param wrapped in array inside anon record"
+         Source = """
+module M
+
+type ArrayInAnon<'a> =
+    | Case of {| Items: 'a array |}
+""" } |]
+    [| { Name = "TType_ucase - DU containing another DU with generic"
+         Source = """
+module M
+
+type Inner<'a> =
+    | InnerCase of 'a
+
+type Outer<'a> =
+    | OuterCase of Inner<'a> * int
+""" } |]
+    [| { Name = "triple nested generic in tuple"
+         Source = """
+module M
+
+type TripleNestedTuple<'a> =
+    | Case of ((('a * int) * string) * bool)
+""" } |]
+    [| { Name = "generic at leaf of complex function type"
+         Source = """
+module M
+
+type FunWithGenericAtEnd<'a> =
+    | Case of (int -> string -> bool -> 'a)
+""" } |]
+    [| { Name = "struct DU with tuple case"
+         Source = """
+module M
+
+[<Struct>]
+type StructWithTuple<'a> =
+    | Case of item1: 'a * item2: int
+""" } |]
+    [| { Name = "struct record with tuple field"
+         Source = """
+module M
+
+[<Struct>]
+type StructRecordWithTuple<'a> = { Pair: 'a * int }
+""" } |]
+    [| { Name = "struct record with function field"
+         Source = """
+module M
+
+[<Struct>]
+type StructRecordWithFun<'a> = { Transform: 'a -> int }
+""" } |]
+    [| { Name = "multiple DU cases with different tuple shapes"
+         Source = """
+module M
+
+type MultiCaseTuples<'a, 'b> =
+    | Case1 of 'a * int
+    | Case2 of int * 'b
+    | Case3 of 'a * 'b * string
+    | Case4 of ('a * int) * ('b * string)
+""" } |]
+    [| { Name = "DU with both explicit constraint and tuple"
+         Source = """
+module M
+
+type MixedConstraintsTuple<'a, 'b when 'a : comparison> =
+    | Case of 'a * 'b * int
+""" } |]
+    [| { Name = "recursive DU with tuple"
+         Source = """
+module M
+
+type Tree<'a> =
+    | Leaf of 'a
+    | Node of Tree<'a> * Tree<'a>
+""" } |]
+    [| { Name = "mutually recursive DUs with tuples"
+         Source = """
+module M
+
+type Expr<'a> =
+    | Const of 'a
+    | Binary of Expr<'a> * Op<'a> * Expr<'a>
+
+and Op<'a> =
+    | Add
+    | Custom of ('a * 'a -> 'a)
+""" } |]
+    [| { Name = "generic class with method returning tuple"
+         Source = """
+module M
+
+type Container<'a>(value: 'a) =
+    member _.GetWithIndex(i: int) : 'a * int = (value, i)
+""" } |]
+    [| { Name = "generic interface implementation in object expression with tuple"
+         Source = """
+module M
+
+type IPair<'a> =
+    abstract GetPair: unit -> 'a * int
+
+let makePair (x: 'a) =
+    { new IPair<'a> with
+        member _.GetPair() = (x, 42) }
+""" } |]
+    [| { Name = "Choice type with tuple"
+         Source = """
+module M
+
+type MyChoice<'a, 'b> =
+    | Choice1 of 'a * int
+    | Choice2 of 'b * string
+""" } |]
+    [| { Name = "Result-like type with tuple in error case"
+         Source = """
+module M
+
+type Outcome<'ok, 'err> =
+    | Success of 'ok
+    | Failure of 'err * string
+""" } |]
+    [| { Name = "async-like wrapper with tuple"
+         Source = """
+module M
+
+type Delayed<'a> =
+    | Immediate of 'a
+    | Deferred of (unit -> 'a) * int
+""" } |]
+    [| { Name = "event type with handler function"
+         Source = """
+module M
+
+type Event<'a> =
+    | Event of handler: ('a -> unit) * name: string
+""" } |]
+    [| { Name = "validation type with function"
+         Source = """
+module M
+
+type Validator<'a> =
+    | Validator of validate: ('a -> bool) * errorMsg: string
+""" } |]
+    [| { Name = "codec type with encode and decode functions"
+         Source = """
+module M
+
+type Codec<'a> =
+    | Codec of encode: ('a -> string) * decode: (string -> 'a option)
+""" } |]
+    [| { Name = "state monad-like type"
+         Source = """
+module M
+
+type State<'s, 'a> =
+    | State of run: ('s -> 'a * 's)
+""" } |]
+    [| { Name = "reader monad-like type"
+         Source = """
+module M
+
+type Reader<'env, 'a> =
+    | Reader of run: ('env -> 'a)
+""" } |]
+    [| { Name = "writer monad-like type with tuple"
+         Source = """
+module M
+
+type Writer<'w, 'a> =
+    | Writer of value: 'a * log: 'w list
+""" } |]
+|]
+
+[<Theory>]
+[<MemberData(nameof immediateSubExpressionsTestCases)>]
+let ``ImmediateSubExpressions`` (case: ImmediateSubExpressionsTestCase) =
+    // These tests verify that FCS doesn't crash when accessing ImmediateSubExpressions
+    // on auto-generated comparison code for generic DUs/records.
+    // Before the fix for #19118, this would crash with ConstraintSolverMissingConstraint.
+    ProjectForWitnessConditionalComparison.walkAllExpressions case.Source

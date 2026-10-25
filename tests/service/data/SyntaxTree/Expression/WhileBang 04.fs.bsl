@@ -26,7 +26,7 @@ ImplFile
                   (3,4--3,5), Yes (3,0--4,35), { LeadingKeyword = Let (3,0--3,3)
                                                  InlineKeyword = None
                                                  EqualsRange = Some (3,6--3,7) })],
-              (3,0--4,35))],
+              (3,0--4,35), { InKeyword = None })],
           PreXmlDoc ((1,0), FSharp.Compiler.Xml.XmlDocCollector), [], None,
           (1,0--4,35), { LeadingKeyword = Module (1,0--1,6) })], (true, true),
       { ConditionalDirectives = []
@@ -34,5 +34,4 @@ ImplFile
         CodeComments = [] }, set []))
 
 (5,0)-(5,0) parse error Unexpected syntax or possible incorrect indentation: this token is offside of context started at position (4:5). Try indenting this further.
-To continue using non-conforming indentation, pass the '--strict-indentation-' flag to the compiler, or set the language version to F# 7.
 (5,0)-(5,0) parse error Incomplete structured construct at or before this point in expression

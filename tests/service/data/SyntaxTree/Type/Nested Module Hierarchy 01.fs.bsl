@@ -6,23 +6,30 @@ ImplFile
          ([Root], false, NamedModule,
           [NestedModule
              (SynComponentInfo
-                ([], None, [], [Level1],
+                ([], None, [],
+                 Some (LongIdent (SynLongIdent ([Level1], [], []))),
                  PreXmlDoc ((4,0), FSharp.Compiler.Xml.XmlDocCollector), false,
                  None, (4,0--4,13)), false,
               [NestedModule
                  (SynComponentInfo
-                    ([], None, [], [Level2],
+                    ([], None, [],
+                     Some (LongIdent (SynLongIdent ([Level2], [], []))),
                      PreXmlDoc ((5,4), FSharp.Compiler.Xml.XmlDocCollector),
                      false, None, (5,4--5,17)), false,
                   [NestedModule
                      (SynComponentInfo
-                        ([], None, [], [Level3],
+                        ([], None, [],
+                         Some (LongIdent (SynLongIdent ([Level3], [], []))),
                          PreXmlDoc ((6,8), FSharp.Compiler.Xml.XmlDocCollector),
                          false, None, (6,8--6,21)), false,
                       [Types
                          ([SynTypeDefn
                              (SynComponentInfo
-                                ([], None, [], [TypeWithInvalidModule],
+                                ([], None, [],
+                                 Some
+                                   (LongIdent
+                                      (SynLongIdent
+                                         ([TypeWithInvalidModule], [], [None]))),
                                  PreXmlDoc ((7,12), FSharp.Compiler.Xml.XmlDocCollector),
                                  false, None, (7,17--7,38)),
                               Simple (None (7,17--7,40), (7,17--7,40)), [], None,
@@ -32,7 +39,10 @@ ImplFile
                           (7,12--7,40));
                        NestedModule
                          (SynComponentInfo
-                            ([], None, [], [InvalidModule],
+                            ([], None, [],
+                             Some
+                               (LongIdent
+                                  (SynLongIdent ([InvalidModule], [], []))),
                              PreXmlDoc ((8,16), FSharp.Compiler.Xml.XmlDocCollector),
                              false, None, (8,16--8,36)), false,
                           [Let
@@ -52,15 +62,15 @@ ImplFile
                                   { LeadingKeyword = Let (9,20--9,23)
                                     InlineKeyword = None
                                     EqualsRange = Some (9,26--9,27) })],
-                              (9,20--9,29))], false, (8,16--9,29),
-                          { ModuleKeyword = Some (8,16--8,22)
-                            EqualsRange = Some (8,37--8,38) })], false,
-                      (6,8--9,29), { ModuleKeyword = Some (6,8--6,14)
-                                     EqualsRange = Some (6,22--6,23) })], false,
-                  (5,4--9,29), { ModuleKeyword = Some (5,4--5,10)
-                                 EqualsRange = Some (5,18--5,19) })], false,
-              (4,0--9,29), { ModuleKeyword = Some (4,0--4,6)
-                             EqualsRange = Some (4,14--4,15) })],
+                              (9,20--9,29), { InKeyword = None })], false,
+                          (8,16--9,29), { ModuleKeyword = Some (8,16--8,22)
+                                          EqualsRange = Some (8,37--8,38) })],
+                      false, (6,8--9,29), { ModuleKeyword = Some (6,8--6,14)
+                                            EqualsRange = Some (6,22--6,23) })],
+                  false, (5,4--9,29), { ModuleKeyword = Some (5,4--5,10)
+                                        EqualsRange = Some (5,18--5,19) })],
+              false, (4,0--9,29), { ModuleKeyword = Some (4,0--4,6)
+                                    EqualsRange = Some (4,14--4,15) })],
           PreXmlDoc ((2,0), FSharp.Compiler.Xml.XmlDocCollector), [], None,
           (2,0--9,29), { LeadingKeyword = Module (2,0--2,6) })], (true, true),
       { ConditionalDirectives = []

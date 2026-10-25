@@ -276,13 +276,20 @@ type FsiEvaluationSession =
     /// This event is triggered after parsing and checking, either via input from 'stdin', or via a call to EvalInteraction.
     member PartialAssemblySignatureUpdated: IEvent<unit>
 
-    /// Typecheck the given script fragment in the type checking context implied by the current state
-    /// of F# Interactive. The results can be used to access intellisense, perform resolutions,
-    /// check brace matching and other information.
+    /// <summary>
+    ///  <para>Typecheck the given script fragment in the type checking context implied by the current state
+    ///  of F# Interactive. The results can be used to access intellisense, perform resolutions,
+    ///  check brace matching and other information. Accessing assembly contents need 'keepAssemblyContents'
+    ///  set to 'true'.</para>
+    ///  <para></para>
+    ///  <para>Operations may be run concurrently with other requests to the InteractiveChecker.</para>
+    /// </summary>
     ///
-    /// Operations may be run concurrently with other requests to the InteractiveChecker.
+    /// <param name="code">Source code of the interaction to check.</param>
+    /// <param name="keepAssemblyContents">Keep the checked contents of the interaction.</param>
     member ParseAndCheckInteraction:
-        code: string -> FSharpParseFileResults * FSharpCheckFileResults * FSharpCheckProjectResults
+        code: string * ?keepAssemblyContents: bool ->
+            FSharpParseFileResults * FSharpCheckFileResults * FSharpCheckProjectResults
 
     /// The single, global interactive checker to use in conjunction with other operations
     /// on the FsiEvaluationSession.
@@ -302,6 +309,13 @@ type FsiEvaluationSession =
 
     /// A host calls this to get the active language ID if provided by fsi-server-lcid
     member LCID: int option
+
+    /// The named pipe requested with `--fsi-server-jsonrpc`, when a host is to drive the session over
+    /// JSON-RPC instead of standard input.
+    member JsonRpcServerPipeName: string option
+
+    /// The host process named with `--fsi-server-client-pid`, whose exit ends the session.
+    member JsonRpcClientProcessId: int option
 
     /// A host calls this to report an unhandled exception in a standard way, e.g. an exception on the GUI thread gets printed to stderr
     member ReportUnhandledException: exn: exn -> unit

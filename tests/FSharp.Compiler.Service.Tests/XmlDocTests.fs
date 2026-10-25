@@ -1,9 +1,10 @@
-﻿module FSharp.Compiler.Service.Tests.XmlDocTests
+module FSharp.Compiler.Service.Tests.XmlDocTests
 
 open FSharp.Compiler.CodeAnalysis
 open FSharp.Compiler.Service.Tests.Common
 open FSharp.Compiler.Symbols
 open FSharp.Compiler.Syntax
+open FSharp.Compiler.SyntaxTreeOps
 open FSharp.Test.Compiler
 open FSharp.Test.Assert
 open Xunit
@@ -74,9 +75,9 @@ let (|UnionCases|) = function
      | x -> failwith $"Unexpected ParsedInput %A{x}"
 
 let (|Record|) = function
-    | Types(_, [SynTypeDefn(typeRepr = SynTypeDefnRepr.Simple(simpleRepr = SynTypeDefnSimpleRepr.Record(recordFields = fields)))])
-     | TypeSigs(_, [SynTypeDefnSig(typeRepr = SynTypeDefnSigRepr.Simple(repr = SynTypeDefnSimpleRepr.Record(recordFields = fields)))]) ->
-         Record(fields)
+    | Types(_, [SynTypeDefn(typeRepr = SynTypeDefnRepr.Simple(simpleRepr = SynTypeDefnSimpleRepr.Record(recordFieldsAndSpreads = fieldsAndSpreads)))])
+     | TypeSigs(_, [SynTypeDefnSig(typeRepr = SynTypeDefnSigRepr.Simple(repr = SynTypeDefnSimpleRepr.Record(recordFieldsAndSpreads = fieldsAndSpreads)))]) ->
+         Record(fieldsAndSpreads |> List.choose (function SynFieldOrSpread.Field f -> Some f | SynFieldOrSpread.Spread _ -> None))
 
      | x -> failwith $"Unexpected ParsedInput %A{x}"
 
@@ -93,7 +94,7 @@ let (|Members|MemberSigs|) = function
 let (|Decls|LetBindings|ValSig|LetOrUse|) = function
     | ParsedInput.ImplFile(ParsedImplFileInput(contents = [
             SynModuleOrNamespace.SynModuleOrNamespace(decls = [
-                SynModuleDecl.Let(bindings = [SynBinding(expr = SynExpr.LetOrUse(range = range; bindings = bindings))])])])) ->
+                SynModuleDecl.Let(bindings = [SynBinding(expr = SynExpr.LetOrUse({ Range = range; Bindings = bindings }))])])])) ->
         LetOrUse(range, bindings)
 
     | ParsedInput.ImplFile(ParsedImplFileInput(contents = [
@@ -103,7 +104,7 @@ let (|Decls|LetBindings|ValSig|LetOrUse|) = function
 
     | ParsedInput.ImplFile(ParsedImplFileInput(contents = [
             SynModuleOrNamespace.SynModuleOrNamespace(decls = [
-                SynModuleDecl.Expr(expr = SynExpr.LetOrUse(range = range; bindings = bindings))])])) ->
+                SynModuleDecl.Expr(expr = SynExpr.LetOrUse({ Range = range; Bindings = bindings }))])])) ->
         LetBindings(range, bindings)
 
     | ParsedInput.ImplFile(ParsedImplFileInput(contents = [
@@ -184,6 +185,18 @@ let checkSignatureAndImplementation code checkResultsAction parseResultsAction =
 
     checkCode getParseAndCheckResults
     checkCode getParseAndCheckResultsOfSignatureFile
+
+let checkSignatureAndImplementationWithWarnOn3879 code checkResultsAction parseResultsAction =
+    let checkCode getResultsFunc =
+        let parseResults, checkResults = getResultsFunc code
+        checkResultsAction checkResults
+        parseResultsAction parseResults
+
+    checkCode (fun code -> getParseAndCheckResultsWithOptions [| "--warnon:3879" |] code)
+    // For signature files
+    let parseResults, checkResults = parseAndCheckScriptWithOptions ("Test.fsi", code, [| "--warnon:3879" |])
+    checkResultsAction checkResults
+    parseResultsAction parseResults
 
 let checkParsingErrors expected (parseResults: FSharpParseFileResults) =
     parseResults.Diagnostics |> Array.map (fun x ->
@@ -391,7 +404,7 @@ and B = class end
 
 [<Fact>]
 let ``types 03 - xml doc after 'and'``(): unit =
-    checkSignatureAndImplementation """
+    checkSignatureAndImplementationWithWarnOn3879 """
 module Test
 
 type A = class end
@@ -404,7 +417,10 @@ and ///B1
         (checkXml "B" [|"B1"; "B2"|])
         (fun parseResults ->
             parseResults |>
-            checkParsingErrors [|Information 3520, Line 8, Col 4, Line 8, Col 9, "XML comment is not placed on a valid language element."|]
+            checkParsingErrors [|
+                Warning 3879, Line 5, Col 4, Line 5, Col 7, "XML documentation comments should be the first non-whitespace text on a line."
+                Information 3520, Line 8, Col 4, Line 8, Col 9, "XML comment is not placed on a valid language element."
+            |]
 
             match parseResults.ParseTree with
             | Types(range, [_; TypeRange(typeRange2, synComponentRange2)])
@@ -417,7 +433,7 @@ and ///B1
 
 [<Fact>]
 let ``types 04 - xml doc before/after 'and'``(): unit =
-    checkSignatureAndImplementation """
+    checkSignatureAndImplementationWithWarnOn3879 """
 module Test
 
 type A = class end
@@ -428,7 +444,10 @@ and ///B2
         (checkXml "B" [|"B1"|])
         (fun parseResults ->
             parseResults |>
-            checkParsingErrors [|Information 3520, Line 6, Col 4, Line 6, Col 9, "XML comment is not placed on a valid language element."|]
+            checkParsingErrors [|
+                Warning 3879, Line 6, Col 4, Line 6, Col 7, "XML documentation comments should be the first non-whitespace text on a line."
+                Information 3520, Line 6, Col 4, Line 6, Col 9, "XML comment is not placed on a valid language element."
+            |]
 
             match parseResults.ParseTree with
             | Types(range, [_; TypeRange(typeRange2, synComponentRange2)])
@@ -441,7 +460,7 @@ and ///B2
 
 [<Fact>]
 let ``types 05 - attributes after 'type'``(): unit =
-    checkSignatureAndImplementation """
+    checkSignatureAndImplementationWithWarnOn3879 """
 module Test
 
 ///A1
@@ -451,7 +470,10 @@ type ///A2
         (checkXml "A" [|"A1"|])
         (fun parseResults ->
             parseResults |>
-            checkParsingErrors [|Information 3520, Line 5, Col 5, Line 5, Col 10, "XML comment is not placed on a valid language element."|]
+            checkParsingErrors [|
+                Warning 3879, Line 5, Col 5, Line 5, Col 8, "XML documentation comments should be the first non-whitespace text on a line."
+                Information 3520, Line 5, Col 5, Line 5, Col 10, "XML comment is not placed on a valid language element."
+            |]
 
             match parseResults.ParseTree with
             | Types(range, [TypeRange(typeRange, synComponentRange)])
@@ -510,7 +532,7 @@ and B = int -> int
 
 [<Fact>]
 let ``let bindings 01 - allowed positions``(): unit =
-    let parseResults, checkResults = getParseAndCheckResults """
+    let parseResults, checkResults = getParseAndCheckResultsWithOptions [| "--warnon:3879" |] """
 ///f1
 let ///f2
     rec ///f3
@@ -523,6 +545,9 @@ let ///f2
 
     parseResults
     |> checkParsingErrors [|
+        Warning 3879, Line 3, Col 4, Line 3, Col 7, "XML documentation comments should be the first non-whitespace text on a line."
+        Warning 3879, Line 4, Col 8, Line 4, Col 11, "XML documentation comments should be the first non-whitespace text on a line."
+        Warning 3879, Line 5, Col 15, Line 5, Col 18, "XML documentation comments should be the first non-whitespace text on a line."
         Information 3520, Line 3, Col 4, Line 3, Col 9, "XML comment is not placed on a valid language element."
         Information 3520, Line 4, Col 8, Line 4, Col 13, "XML comment is not placed on a valid language element."
         Information 3520, Line 5, Col 15, Line 5, Col 20, "XML comment is not placed on a valid language element."
@@ -587,7 +612,7 @@ let y = x
     match parseResults.ParseTree with
     | Decls([SynModuleDecl.Let(range = range1; bindings = [binding1])
              SynModuleDecl.Let(range = range2; bindings = [binding2])]) ->
-        assertRange (2, 0) (6, 9) range1
+        assertRange (2, 0) (6, 12) range1
         assertRange (2, 0) (6, 9) binding1.RangeOfBindingWithRhs
         assertRange (8, 0) (12, 9) range2
         assertRange (8, 0) (12, 9) binding2.RangeOfBindingWithRhs
@@ -596,7 +621,7 @@ let y = x
 
 [<Fact>]
 let ``let bindings 03 - 'let in' with attributes after 'let'``(): unit =
-    let parseResults, checkResults = getParseAndCheckResults """
+    let parseResults, checkResults = getParseAndCheckResultsWithOptions [| "--warnon:3879" |] """
 let ///X
     [<Attr>] x = 3 in print x
 """
@@ -604,7 +629,10 @@ let ///X
     |> checkXml "x" [||]
 
     parseResults
-    |> checkParsingErrors [|Information 3520, Line 2, Col 4, Line 2, Col 8, "XML comment is not placed on a valid language element."|]
+    |> checkParsingErrors [|
+        Warning 3879, Line 2, Col 4, Line 2, Col 7, "XML documentation comments should be the first non-whitespace text on a line."
+        Information 3520, Line 2, Col 4, Line 2, Col 8, "XML comment is not placed on a valid language element."
+    |]
 
     match parseResults.ParseTree with
     | LetBindings(range, [binding]) ->
@@ -679,7 +707,7 @@ let x = 5
 
 [<Fact>]
 let ``let bindings 07 - attribute after 'let'``(): unit =
-    let parseResults, checkResults = getParseAndCheckResults """
+    let parseResults, checkResults = getParseAndCheckResultsWithOptions [| "--warnon:3879" |] """
 ///X1
 let ///X2
     [<Literal>] x = 5
@@ -688,7 +716,10 @@ let ///X2
     |> checkXml "x" [|"X1"|]
 
     parseResults
-    |> checkParsingErrors [|Information 3520, Line 3, Col 4, Line 3, Col 9, "XML comment is not placed on a valid language element."|]
+    |> checkParsingErrors [|
+        Warning 3879, Line 3, Col 4, Line 3, Col 7, "XML documentation comments should be the first non-whitespace text on a line."
+        Information 3520, Line 3, Col 4, Line 3, Col 9, "XML comment is not placed on a valid language element."
+    |]
 
     match parseResults.ParseTree with
     | LetBindings(range, [binding]) ->
@@ -721,7 +752,7 @@ and g x = f x
 
 [<Fact>]
 let ``let bindings 09 - xml doc after 'and'``(): unit =
-    let parseResults, checkResults = getParseAndCheckResults """
+    let parseResults, checkResults = getParseAndCheckResultsWithOptions [| "--warnon:3879" |] """
 let rec f x = g x
 and ///G1
     ///G2
@@ -733,7 +764,10 @@ and ///G1
     |> checkXml "g" [|"G1"; "G2"|]
 
     parseResults
-    |> checkParsingErrors [|Information 3520, Line 6, Col 4, Line 6, Col 9, "XML comment is not placed on a valid language element."|]
+    |> checkParsingErrors [|
+        Warning 3879, Line 3, Col 4, Line 3, Col 7, "XML documentation comments should be the first non-whitespace text on a line."
+        Information 3520, Line 6, Col 4, Line 6, Col 9, "XML comment is not placed on a valid language element."
+    |]
 
     match parseResults.ParseTree with
     | LetBindings(range, [binding1; binding2]) ->
@@ -745,7 +779,7 @@ and ///G1
 
 [<Fact>]
 let ``let bindings 10 - xml doc before/after 'and'``(): unit =
-    let parseResults, checkResults = getParseAndCheckResults """
+    let parseResults, checkResults = getParseAndCheckResultsWithOptions [| "--warnon:3879" |] """
 let rec f x = g x
 ///G1
 and ///G2
@@ -755,7 +789,10 @@ and ///G2
     |> checkXml "g" [|"G1"|]
 
     parseResults
-    |> checkParsingErrors [|Information 3520, Line 4, Col 4, Line 4, Col 9, "XML comment is not placed on a valid language element."|]
+    |> checkParsingErrors [|
+        Warning 3879, Line 4, Col 4, Line 4, Col 7, "XML documentation comments should be the first non-whitespace text on a line."
+        Information 3520, Line 4, Col 4, Line 4, Col 9, "XML comment is not placed on a valid language element."
+    |]
 
     match parseResults.ParseTree with
     | LetBindings(range, [binding1; binding2]) ->
@@ -807,7 +844,7 @@ type A =
 
 [<Fact>]
 let ``type members 02``(): unit =
-    let parseResults, checkResults = getParseAndCheckResults """
+    let parseResults, checkResults = getParseAndCheckResultsWithOptions [| "--warnon:3879" |] """
 type A =
     member x.A() = ///B1
         ()
@@ -823,6 +860,7 @@ type A =
 
     parseResults
     |> checkParsingErrors [|
+        Warning 3879, Line 3, Col 19, Line 3, Col 22, "XML documentation comments should be the first non-whitespace text on a line."
         Information 3520, Line 3, Col 19, Line 3, Col 24, "XML comment is not placed on a valid language element."
         Information 3520, Line 9, Col 4, Line 9, Col 9, "XML comment is not placed on a valid language element."
     |]
@@ -862,7 +900,7 @@ type A =
 
 [<Fact>]
 let ``type members 04 - property accessors``(): unit =
-    let parseResults, checkResults = getParseAndCheckResults """
+    let parseResults, checkResults = getParseAndCheckResultsWithOptions [| "--warnon:3879" |] """
 type B =
     ///A1
     ///A2
@@ -883,6 +921,7 @@ type B =
 
     parseResults
     |> checkParsingErrors [|
+        Warning 3879, Line 5, Col 11, Line 5, Col 14, "XML documentation comments should be the first non-whitespace text on a line."
         Information 3520, Line 5, Col 11, Line 5, Col 16, "XML comment is not placed on a valid language element."
         Information 3520, Line 7, Col 16, Line 7, Col 22, "XML comment is not placed on a valid language element."
         Information 3520, Line 9, Col 16, Line 9, Col 22, "XML comment is not placed on a valid language element."
@@ -921,7 +960,7 @@ type A() =
 
 [<Fact>]
 let ``type members 06 - implicit ctor``(): unit =
-    let parseResults, checkResults = getParseAndCheckResults """
+    let parseResults, checkResults = getParseAndCheckResultsWithOptions [| "--warnon:3879" |] """
 type A ///CTOR1
        ///CTOR2
        [<Attr>]
@@ -935,7 +974,10 @@ type A ///CTOR1
        ]
 
     parseResults
-    |> checkParsingErrors [|Information 3520, Line 5, Col 7, Line 5, Col 15, "XML comment is not placed on a valid language element."|]
+    |> checkParsingErrors [|
+        Warning 3879, Line 2, Col 7, Line 2, Col 10, "XML documentation comments should be the first non-whitespace text on a line."
+        Information 3520, Line 5, Col 7, Line 5, Col 15, "XML comment is not placed on a valid language element."
+    |]
 
     match parseResults.ParseTree with
     | Members([SynMemberDefn.ImplicitCtor(range = range)]) ->
@@ -1041,7 +1083,7 @@ module
 
 [<Fact>]
 let ``module 02 - attributes after 'module'``(): unit =
-    checkSignatureAndImplementation """
+    checkSignatureAndImplementationWithWarnOn3879 """
 ///M1
 module ///M2
        [<Attr>]
@@ -1051,6 +1093,7 @@ module ///M2
         (fun parseResults ->
             parseResults |>
             checkParsingErrors [|
+                Warning 3879, Line 3, Col 7, Line 3, Col 10, "XML documentation comments should be the first non-whitespace text on a line."
                 Information 3520, Line 3, Col 7, Line 3, Col 12, "XML comment is not placed on a valid language element."
             |]
 
@@ -1211,7 +1254,7 @@ extern void E()
 
 [<Fact>]
 let ``exception 01 - allowed positions``(): unit =
-    checkSignatureAndImplementation """
+    checkSignatureAndImplementationWithWarnOn3879 """
 module Test
 
 ///E1
@@ -1225,6 +1268,7 @@ exception ///E4
         (fun parseResults ->
             parseResults |>
             checkParsingErrors [|
+                Warning 3879, Line 8, Col 10, Line 8, Col 13, "XML documentation comments should be the first non-whitespace text on a line."
                 Information 3520, Line 7, Col 0, Line 7, Col 5, "XML comment is not placed on a valid language element."
                 Information 3520, Line 8, Col 10, Line 8, Col 15, "XML comment is not placed on a valid language element."
             |]
@@ -1237,7 +1281,7 @@ exception ///E4
 
 [<Fact>]
 let ``exception 02 - attribute after 'exception'``(): unit =
-    checkSignatureAndImplementation """
+    checkSignatureAndImplementationWithWarnOn3879 """
 module Test
 
 exception ///E
@@ -1247,7 +1291,10 @@ exception ///E
         (checkXml "E" [||])
         (fun parseResults ->
             parseResults |>
-            checkParsingErrors [|Information 3520, Line 4, Col 10, Line 4, Col 14, "XML comment is not placed on a valid language element."|]
+            checkParsingErrors [|
+                Warning 3879, Line 4, Col 10, Line 4, Col 13, "XML documentation comments should be the first non-whitespace text on a line."
+                Information 3520, Line 4, Col 10, Line 4, Col 14, "XML comment is not placed on a valid language element."
+            |]
 
             match parseResults.ParseTree with
             | Exception(exnRange, exnDefnRange, exnDefnReprRange) ->
@@ -1583,3 +1630,668 @@ type Class2() =
     parseResults |> checkParsingErrors [||]
     checkResults |> checkXmlSymbols [ Parameter "MyRather.MyDeep.MyNamespace.Class1.X", [|"x"|] ]
     checkResults |> checkXmlSymbols [ Parameter "MyRather.MyDeep.MyNamespace.Class1", [|"class1"|] ]
+
+// Tests for <inheritdoc> in tooltips/quickinfo (design-time)
+module InheritDocTooltipTests =
+
+    /// Compiles code, finds an FSharpEntity by name, and returns its resolved XmlDoc text.
+    let private getEntityXmlText (code: string) (symbolName: string) =
+        let _, checkResults = getParseAndCheckResults code
+        let symbol = findSymbolByName symbolName checkResults
+        let xmlDoc = (symbol :?> FSharpEntity).XmlDoc
+
+        match xmlDoc with
+        | FSharpXmlDoc.FromXmlText t -> t.UnprocessedLines |> String.concat "\n"
+        | other -> failwith $"Expected FromXmlText for {symbolName}, got {other}"
+
+    /// Compiles code, finds a member by name on an entity, and returns its resolved XmlDoc text.
+    let private getMemberXmlText (code: string) (entityName: string) (memberName: string) =
+        let _, checkResults = getParseAndCheckResults code
+        let entity = findSymbolByName entityName checkResults :?> FSharpEntity
+
+        let memberSymbol =
+            entity.MembersFunctionsAndValues
+            |> Seq.tryFind (fun m -> m.DisplayName = memberName)
+            |> Option.defaultWith (fun () -> failwith $"Member '{memberName}' not found on entity '{entityName}'")
+
+        match memberSymbol.XmlDoc with
+        | FSharpXmlDoc.FromXmlText t -> t.UnprocessedLines |> String.concat "\n"
+        | other -> failwith $"Expected FromXmlText for {entityName}.{memberName}, got {other}"
+
+    /// Compiles a signature file (.fsi) + implementation (.fs) as a project, finds the named entity
+    /// in the assembly signature, and returns its resolved XmlDoc text. Used to characterise that the
+    /// signature-file doc is authoritative (RFC FS-1341) and that its <inheritdoc> is expanded.
+    let private getEntityXmlTextFromSignature (fsiSource: string) (fsSource: string) (typeName: string) =
+        let options =
+            createProjectOptionsFromNamedSources [ "Test.fsi", fsiSource; "Test.fs", fsSource ] []
+
+        let results = checker.ParseAndCheckProject(options) |> Async.RunSynchronously
+
+        let entity =
+            allSymbolsInEntities true results.AssemblySignature.Entities
+            |> List.pick (function
+                | :? FSharpEntity as e when e.DisplayName = typeName -> Some e
+                | _ -> None)
+
+        match entity.XmlDoc with
+        | FSharpXmlDoc.FromXmlText t -> t.GetXmlText()
+        | other -> failwith $"Expected FromXmlText for {typeName}, got {other}"
+
+    [<Fact>]
+    let ``inheritdoc in signature file is authoritative and expanded`` () =
+        // RFC FS-1341: for members declared in a signature file, the .fsi doc comment is authoritative
+        // and its <inheritdoc> is resolved the same way. Here the .fsi carries the <inheritdoc> and the
+        // .fs carries a different, non-authoritative doc that must be ignored.
+        let fsiSource = """
+module Test
+
+/// <summary>Base type documentation</summary>
+type BaseType =
+    new: unit -> BaseType
+
+/// <inheritdoc cref="T:Test.BaseType"/>
+type DerivedType =
+    new: unit -> DerivedType
+"""
+        let fsSource = """
+module Test
+
+/// <summary>Base type documentation</summary>
+type BaseType() = class end
+
+/// <summary>Implementation-only summary that must be ignored</summary>
+type DerivedType() = class end
+"""
+        let xmlText = getEntityXmlTextFromSignature fsiSource fsSource "DerivedType"
+        Assert.Contains("Base type documentation", xmlText)
+        Assert.DoesNotContain("Implementation-only summary", xmlText)
+        Assert.DoesNotContain("inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``inheritdoc with path should filter for same compilation types``() =
+        let code = """
+module Test
+
+/// <summary>Base documentation</summary>
+/// <remarks>Base remarks</remarks>
+type BaseType() = class end
+
+/// <summary>Derived specific</summary>
+/// <inheritdoc cref="T:Test.BaseType" path="/remarks"/>
+type DerivedType() = class end
+"""
+        let xmlText = getEntityXmlText code "DerivedType"
+        Assert.Contains("<summary>Derived specific</summary>", xmlText)
+        Assert.Contains("Base remarks", xmlText)
+        Assert.DoesNotContain("Base documentation", xmlText)
+
+    [<Fact>]
+    let ``inheritdoc should expand for method in tooltip``() =
+        let code = """
+module Test
+
+type BaseClass() =
+    /// <summary>Base method documentation</summary>
+    /// <param name="x">First parameter</param>
+    /// <param name="y">Second parameter</param>
+    /// <returns>The sum</returns>
+    abstract member Add: x:int -> y:int -> int
+    default _.Add(x, y) = x + y
+
+type DerivedClass() =
+    inherit BaseClass()
+    /// <inheritdoc/>
+    override _.Add(x, y) = x + y + 1
+"""
+        let xmlText = getMemberXmlText code "DerivedClass" "Add"
+        Assert.Contains("Base method documentation", xmlText)
+        Assert.DoesNotContain("<inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``inheritdoc should resolve nested inheritance for same compilation``() =
+        let code = """
+module Test
+
+/// <summary>GrandBase documentation</summary>
+type GrandBase() = class end
+
+/// <inheritdoc cref="T:Test.GrandBase"/>
+type Base() = class end
+
+/// <inheritdoc cref="T:Test.Base"/>
+type Derived() = class end
+"""
+        let xmlText = getEntityXmlText code "Derived"
+        Assert.Contains("GrandBase documentation", xmlText)
+        Assert.DoesNotContain("inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``inheritdoc circular reference should not crash tooltip``() =
+        let code = """
+module Test
+
+/// <inheritdoc cref="T:Test.TypeB"/>
+type TypeA() = class end
+
+/// <inheritdoc cref="T:Test.TypeA"/>
+type TypeB() = class end
+"""
+        // Cycle detection must terminate without crashing. The cyclic <inheritdoc> is dropped rather
+        // than expanded infinitely (Roslyn-consistent), so neither doc retains an <inheritdoc> marker.
+        Assert.DoesNotContain("<inheritdoc", getEntityXmlText code "TypeA")
+        Assert.DoesNotContain("<inheritdoc", getEntityXmlText code "TypeB")
+
+    [<Fact>]
+    let ``inheritdoc should work for interface implementation tooltip`` () =
+        let code = """
+module Test
+
+/// <summary>Service interface</summary>
+/// <remarks>Core contract</remarks>
+type IService =
+    /// <summary>Execute operation</summary>
+    /// <param name="input">The input</param>
+    abstract Execute: input:string -> string
+
+/// <inheritdoc cref="T:Test.IService"/>
+type ServiceImpl() =
+    interface IService with
+        member _.Execute(input) = input
+"""
+        let xmlText = getEntityXmlText code "ServiceImpl"
+        Assert.Contains("Service interface", xmlText)
+        Assert.Contains("Core contract", xmlText)
+        Assert.DoesNotContain("inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``inheritdoc from same module nested type``() =
+        let code = """
+module Test
+
+/// <summary>Outer container documentation</summary>
+type OuterType() =
+    /// <summary>Inner nested type docs</summary>
+    type InnerType() = class end
+
+/// <inheritdoc cref="T:Test.OuterType"/>
+type DerivedFromOuter() = class end
+"""
+        let xmlText = getEntityXmlText code "DerivedFromOuter"
+        Assert.Contains("Outer container documentation", xmlText)
+        Assert.DoesNotContain("inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``inheritdoc from previous module in same compilation`` () =
+        let code = """
+module FirstModule
+
+/// <summary>Type in first module</summary>
+/// <remarks>Important base type</remarks>
+type BaseInFirst() = class end
+
+module SecondModule
+
+/// <inheritdoc cref="T:FirstModule.BaseInFirst"/>
+type DerivedInSecond() = class end
+"""
+        let xmlText = getEntityXmlText code "DerivedInSecond"
+        Assert.Contains("Type in first module", xmlText)
+        Assert.Contains("Important base type", xmlText)
+        Assert.DoesNotContain("inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``inheritdoc from System type via IL``() =
+        let code = """
+module Test
+
+/// <inheritdoc cref="T:System.Exception"/>
+type MyException() =
+    inherit System.Exception()
+"""
+        let _, checkResults = getParseAndCheckResults code
+        let exSymbol = findSymbolByName "MyException" checkResults
+        let xmlDoc = (exSymbol :?> FSharpEntity).XmlDoc
+
+        match xmlDoc with
+        | FSharpXmlDoc.FromXmlText t ->
+            let xmlText = t.UnprocessedLines |> String.concat "\n"
+            Assert.DoesNotContain("<inheritdoc", xmlText)
+        | FSharpXmlDoc.FromXmlFile _ -> ()
+        | _ -> failwith "Expected FromXmlText or FromXmlFile"
+
+    [<Fact>]
+    let ``inheritdoc from FSharp.Core type``() =
+        let code = """
+module Test
+
+/// <inheritdoc cref="T:System.IDisposable"/>
+type MyDisposable() =
+    interface System.IDisposable with
+        member _.Dispose() = ()
+"""
+        let _, checkResults = getParseAndCheckResults code
+        let symbol = findSymbolByName "MyDisposable" checkResults
+        let xmlDoc = (symbol :?> FSharpEntity).XmlDoc
+
+        match xmlDoc with
+        | FSharpXmlDoc.FromXmlText t ->
+            let xmlText = t.UnprocessedLines |> String.concat "\n"
+            Assert.DoesNotContain("<inheritdoc", xmlText)
+        | FSharpXmlDoc.FromXmlFile _ -> ()
+        | _ -> failwith "Expected FromXmlText or FromXmlFile"
+
+    [<Fact>]
+    let ``inheritdoc with method cref from same module``() =
+        let code = """
+module Test
+
+type BaseClass() =
+    /// <summary>Base method docs</summary>
+    /// <param name="x">The x parameter</param>
+    /// <returns>The result</returns>
+    member _.Calculate(x: int) = x * 2
+
+type DerivedClass() =
+    inherit BaseClass()
+    /// <inheritdoc cref="M:Test.BaseClass.Calculate(System.Int32)"/>
+    member _.Calculate2(x: int) = x * 3
+"""
+        let xmlText = getMemberXmlText code "DerivedClass" "Calculate2"
+        Assert.Contains("Base method docs", xmlText)
+        Assert.DoesNotContain("<inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``inheritdoc for record type from same module`` () =
+        let code = """
+module Test
+
+/// <summary>Base record documentation</summary>
+/// <remarks>This is a data record</remarks>
+type BaseRecord = { Name: string; Value: int }
+
+/// <inheritdoc cref="T:Test.BaseRecord"/>
+type DerivedRecord = { Id: int; Data: string }
+"""
+        let xmlText = getEntityXmlText code "DerivedRecord"
+        Assert.Contains("Base record documentation", xmlText)
+        Assert.Contains("This is a data record", xmlText)
+        Assert.DoesNotContain("inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``inheritdoc for discriminated union from same module`` () =
+        let code = """
+module Test
+
+/// <summary>Base union type</summary>
+/// <remarks>Represents choices</remarks>
+type BaseUnion =
+    | CaseA
+    | CaseB of int
+
+/// <inheritdoc cref="T:Test.BaseUnion"/>
+type DerivedUnion =
+    | OptionX
+    | OptionY of string
+"""
+        let xmlText = getEntityXmlText code "DerivedUnion"
+        Assert.Contains("Base union type", xmlText)
+        Assert.Contains("Represents choices", xmlText)
+        Assert.DoesNotContain("inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``inheritdoc implicit without cref on interface impl should resolve``() =
+        let code = """
+module Test
+
+type IService =
+    /// <summary>Service method</summary>
+    abstract DoWork: unit -> unit
+
+type ServiceImpl() =
+    interface IService with
+        /// <inheritdoc/>
+        member _.DoWork() = ()
+"""
+        let xmlText = getMemberXmlText code "ServiceImpl" "DoWork"
+        Assert.Contains("Service method", xmlText)
+        Assert.DoesNotContain("<inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``implicit inheritdoc should resolve from base class for type`` () =
+        let code = """
+module Test
+
+/// <summary>Base class documentation</summary>
+/// <remarks>Base remarks</remarks>
+type BaseClass() = class end
+
+/// <inheritdoc/>
+type DerivedClass() =
+    inherit BaseClass()
+"""
+        let xmlText = getEntityXmlText code "DerivedClass"
+        Assert.Contains("Base class documentation", xmlText)
+        Assert.Contains("Base remarks", xmlText)
+        Assert.DoesNotContain("inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``implicit inheritdoc should resolve from interface for type`` () =
+        let code = """
+module Test
+
+/// <summary>Interface documentation</summary>
+/// <remarks>Interface remarks</remarks>
+type IMyInterface =
+    abstract DoWork: unit -> unit
+
+/// <inheritdoc/>
+type MyImpl() =
+    interface IMyInterface with
+        member _.DoWork() = ()
+"""
+        let xmlText = getEntityXmlText code "MyImpl"
+        Assert.Contains("Interface documentation", xmlText)
+        Assert.Contains("Interface remarks", xmlText)
+        Assert.DoesNotContain("inheritdoc", xmlText)
+
+    // ===========================================
+    // IMPLICIT INHERITDOC ON METHODS AND PROPERTIES
+    // ===========================================
+
+    [<Fact>]
+    let ``implicit inheritdoc on method implementing interface should inherit docs``() =
+        let code = """
+module Test
+
+type ICalculator =
+    /// <summary>Adds two numbers together</summary>
+    /// <param name="a">First number</param>
+    /// <param name="b">Second number</param>
+    /// <returns>The sum</returns>
+    abstract Add: a:int * b:int -> int
+
+type Calculator() =
+    interface ICalculator with
+        /// <inheritdoc/>
+        member _.Add(a, b) = a + b
+"""
+        let xmlText = getMemberXmlText code "Calculator" "Add"
+        Assert.Contains("Adds two numbers together", xmlText)
+        Assert.Contains("First number", xmlText)
+        Assert.Contains("The sum", xmlText)
+        Assert.DoesNotContain("<inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``implicit inheritdoc on override method should inherit from base``() =
+        let code = """
+module Test
+
+type BaseProcessor() =
+    /// <summary>Processes the input data</summary>
+    /// <param name="data">The data to process</param>
+    /// <returns>Processed result</returns>
+    abstract member Process: data:string -> string
+    default _.Process(data) = data
+
+type DerivedProcessor() =
+    inherit BaseProcessor()
+    /// <inheritdoc/>
+    override _.Process(data) = data.ToUpper()
+"""
+        let xmlText = getMemberXmlText code "DerivedProcessor" "Process"
+        Assert.Contains("Processes the input data", xmlText)
+        Assert.Contains("The data to process", xmlText)
+        Assert.DoesNotContain("<inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``implicit inheritdoc on property implementing interface should inherit docs``() =
+        let code = """
+module Test
+
+type INameable =
+    /// <summary>Gets or sets the name</summary>
+    abstract Name: string with get, set
+
+type Person() =
+    let mutable name = ""
+    interface INameable with
+        /// <inheritdoc/>
+        member _.Name with get() = name and set v = name <- v
+"""
+        let xmlText = getMemberXmlText code "Person" "Name"
+        Assert.Contains("Gets or sets the name", xmlText)
+        Assert.DoesNotContain("<inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``implicit inheritdoc on override property should inherit from base``() =
+        let code = """
+module Test
+
+[<AbstractClass>]
+type BaseConfig() =
+    /// <summary>Gets the connection timeout</summary>
+    abstract Timeout: int
+
+type AppConfig() =
+    inherit BaseConfig()
+    /// <inheritdoc/>
+    override _.Timeout = 30
+"""
+        let xmlText = getMemberXmlText code "AppConfig" "Timeout"
+        Assert.Contains("Gets the connection timeout", xmlText)
+        Assert.DoesNotContain("<inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``explicit method cref should resolve and inherit docs``() =
+        let code = """
+module Test
+
+type Helper =
+    /// <summary>Helper method docs</summary>
+    /// <param name="x">Input value</param>
+    static member DoSomething(x: int) = x * 2
+
+type Worker =
+    /// <inheritdoc cref="M:Test.Helper.DoSomething(System.Int32)"/>
+    static member Work(x: int) = x * 3
+"""
+        let xmlText = getMemberXmlText code "Worker" "Work"
+        Assert.Contains("Helper method docs", xmlText)
+        Assert.DoesNotContain("<inheritdoc", xmlText)
+
+    // ===========================================
+    // EXPLICIT CREF AND EDGE CASES
+    // ===========================================
+
+    [<Fact>]
+    let ``explicit property cref should resolve and inherit docs``() =
+        let code = """
+module Test
+
+type Config =
+    /// <summary>The application name</summary>
+    static member AppName = "MyApp"
+
+type Settings =
+    /// <inheritdoc cref="P:Test.Config.AppName"/>
+    static member Name = "OtherApp"
+"""
+        let xmlText = getMemberXmlText code "Settings" "Name"
+        Assert.Contains("The application name", xmlText)
+        Assert.DoesNotContain("<inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``generic type cref should resolve``() =
+        let code = """
+module Test
+
+/// <summary>A generic container</summary>
+type Container<'T> = { Value: 'T }
+
+/// <inheritdoc cref="T:Test.Container`1"/>
+type Box<'T> = { Item: 'T }
+"""
+        let xmlText = getEntityXmlText code "Box`1"
+        Assert.Contains("A generic container", xmlText)
+        Assert.DoesNotContain("inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``nested type cref should resolve``() =
+        let code = """
+module Test
+
+type Outer =
+    /// <summary>Inner type docs</summary>
+    type Inner = { X: int }
+
+/// <inheritdoc cref="T:Test.Outer+Inner"/>
+type Other = { Y: int }
+"""
+        let xmlText = getEntityXmlText code "Other"
+        Assert.Contains("Inner type docs", xmlText)
+        Assert.DoesNotContain("inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``tooling-time resolution removes all inheritdoc elements``() =
+        let code = """
+module Test
+
+/// <summary>Base type documentation</summary>
+/// <remarks>Base remarks content</remarks>
+type BaseType() = class end
+
+/// <inheritdoc cref="T:Test.BaseType"/>
+type DerivedType() = class end
+"""
+        let xmlText = getEntityXmlText code "DerivedType"
+        Assert.Contains("Base type documentation", xmlText)
+        Assert.Contains("Base remarks content", xmlText)
+        Assert.DoesNotContain("inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``unresolvable cref should not crash``() =
+        let code = """
+module Test
+
+/// <summary>My own docs</summary>
+/// <inheritdoc cref="T:NonExistent.Type"/>
+type MyType() = class end
+"""
+        let xmlText = getEntityXmlText code "MyType"
+        // An unresolvable cref inherits nothing, so the <inheritdoc> is dropped (Roslyn-consistent)
+        // without crashing; the type's own documentation is preserved.
+        Assert.Contains("My own docs", xmlText)
+        Assert.DoesNotContain("inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``inheritdoc preserves surrounding doc elements``() =
+        let code = """
+module Test
+
+/// <summary>Base summary</summary>
+type BaseType() = class end
+
+/// <summary>My own summary</summary>
+/// <inheritdoc cref="T:Test.BaseType" path="/summary"/>
+/// <remarks>My own remarks</remarks>
+type DerivedType() = class end
+"""
+        let xmlText = getEntityXmlText code "DerivedType"
+        Assert.Contains("My own summary", xmlText)
+        Assert.Contains("My own remarks", xmlText)
+        Assert.Contains("Base summary", xmlText)
+        Assert.DoesNotContain("inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``inheritdoc with malformed XML should not crash``() =
+        let code = """
+module Test
+
+/// <summary>Malformed <b>unclosed tag
+/// <inheritdoc cref="T:Test.BaseType"/>
+type MyType() = class end
+
+/// <summary>Base docs</summary>
+type BaseType() = class end
+"""
+        let _, checkResults = getParseAndCheckResults code
+        let symbol = findSymbolByName "MyType" checkResults
+        let xmlDoc = (symbol :?> FSharpEntity).XmlDoc
+        // Should not crash; malformed XML means original doc is returned unchanged
+        match xmlDoc with
+        | FSharpXmlDoc.FromXmlText t ->
+            let xmlText = t.UnprocessedLines |> String.concat "\n"
+            // Original doc preserved because XML parsing failed
+            Assert.Contains("Malformed", xmlText)
+        | _ -> failwith "Expected FromXmlText"
+
+    [<Fact>]
+    let ``inheritdoc with invalid XPath should not crash``() =
+        let code = """
+module Test
+
+/// <summary>Base type docs</summary>
+type BaseType() = class end
+
+/// <summary>Derived own docs</summary>
+/// <inheritdoc cref="T:Test.BaseType" path="[[[invalid"/>
+type DerivedType() = class end
+"""
+        let xmlText = getEntityXmlText code "DerivedType"
+        // An invalid XPath selects no inherited content, so the <inheritdoc> is dropped without
+        // crashing; the derived type's own documentation is preserved.
+        Assert.Contains("Derived own docs", xmlText)
+        Assert.DoesNotContain("Base type docs", xmlText)
+        Assert.DoesNotContain("inheritdoc", xmlText)
+
+    [<Fact>]
+    let ``inheritdoc with field cref should resolve``() =
+        let code = """
+module Test
+
+type Config =
+    /// <summary>The database connection string</summary>
+    static val mutable ConnectionString: string
+
+/// <inheritdoc cref="F:Test.Config.ConnectionString"/>
+type Settings() = class end
+"""
+        let xmlText = getEntityXmlText code "Settings"
+        Assert.Contains("The database connection string", xmlText)
+        Assert.DoesNotContain("inheritdoc", xmlText)
+
+[<Fact>]
+let ``Discriminated Union - triple slash after case definition should warn``(): unit =
+    checkSignatureAndImplementationWithWarnOn3879 """
+module Test
+
+type MyDU =
+    | CaseA of int /// This should trigger FS3879
+    | CaseB /// This should also trigger FS3879
+    /// This is correct
+    | CaseC
+"""
+        (fun _ -> ())
+        (fun parseResults ->
+            parseResults |>
+            checkParsingErrors [|
+                Warning 3879, Line 5, Col 19, Line 5, Col 22, "XML documentation comments should be the first non-whitespace text on a line."
+                Warning 3879, Line 6, Col 12, Line 6, Col 15, "XML documentation comments should be the first non-whitespace text on a line."
+            |])
+
+[<Fact>]
+let ``XML doc after opening brace should not warn``(): unit =
+    checkSignatureAndImplementation """
+module Test
+
+type MyType = {
+    /// This is valid XML documentation for the field
+    Field1: int
+    /// Another valid documentation
+    Field2: string
+}
+"""
+        (fun _ -> ())
+        (fun parseResults ->
+            parseResults |>
+            checkParsingErrors [||])

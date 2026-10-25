@@ -4,6 +4,7 @@
 /// on items from name resolution
 module internal FSharp.Compiler.AttributeChecking
 
+open System
 open System.Collections.Generic
 open FSharp.Compiler.AbstractIL.IL
 open FSharp.Compiler
@@ -55,33 +56,86 @@ val TryBindMethInfoAttribute:
         'a option
 #endif
 
+val TryGetMethodObsoleteInfo: minfo: MethInfo -> ObsoleteDiagnosticInfo option
+
 val TryFindMethInfoStringAttribute:
     g: TcGlobals -> m: range -> attribSpec: BuiltinAttribInfo -> minfo: MethInfo -> string option
 
 val MethInfoHasAttribute: g: TcGlobals -> m: range -> attribSpec: BuiltinAttribInfo -> minfo: MethInfo -> bool
 
+[<Struct; NoEquality; NoComparison>]
+type WellKnownMethAttribute =
+    { ILFlag: WellKnownILAttributes
+      ValFlag: WellKnownValAttributes
+      AttributeName: string }
+
+val MethInfoHasWellKnownAttribute:
+    g: TcGlobals ->
+    m: range ->
+    ilFlag: WellKnownILAttributes ->
+    valFlag: WellKnownValAttributes ->
+    attribName: string ->
+    minfo: MethInfo ->
+        bool
+
+val MethInfoHasWellKnownAttributeSpec:
+    g: TcGlobals -> m: range -> spec: WellKnownMethAttribute -> minfo: MethInfo -> bool
+
 val CheckFSharpAttributes: g: TcGlobals -> attribs: Attrib list -> m: range -> OperationResult<unit>
 
-val CheckILAttributesForUnseen: g: TcGlobals -> cattrs: ILAttributes -> _m: 'a -> bool
+/// Kinds of item that attributes hide from intellisense; also the set of them a caller still shows
+[<Flags>]
+type UnseenItems =
+    | None = 0
+    | Obsolete = 1
+    | EditorBrowsableNever = 2
+    | CompilerMessageHidden = 4
+    | EditorBrowsableAdvanced = 8
+
+module UnseenItems =
+    /// For a path segment the user has already written
+    val All: UnseenItems
+
+    val ofBool: cond: bool -> unseen: UnseenItems -> UnseenItems
+
+val IsUnseen: allowUnseen: UnseenItems -> unseen: UnseenItems -> bool
+
+val ILAttributesStoredUnseenItems: g: TcGlobals -> cattrsStored: ILAttributesStored -> UnseenItems
+
+val ILAttributesUnseenItems: g: TcGlobals -> cattrs: ILAttributes -> UnseenItems
+
+val FSharpAttributesUnseenItems: g: TcGlobals -> attribs: Attrib list -> UnseenItems
 
 val CheckFSharpAttributesForHidden: g: TcGlobals -> attribs: Attrib list -> bool
 
-val CheckFSharpAttributesForObsolete: g: TcGlobals -> attribs: Attrib list -> bool
+val TryGetFSharpObsoleteInfo: g: TcGlobals -> attribs: Attrib list -> ObsoleteDiagnosticInfo option
 
-val CheckFSharpAttributesForUnseen: g: TcGlobals -> attribs: Attrib list -> _m: 'a -> allowObsolete: bool -> bool
+val CheckFSharpAttributesForObsolete: g: TcGlobals -> attribs: Attribs -> bool
+
+val CheckFSharpAttributesForUnseen: g: TcGlobals -> attribs: Attrib list -> allowUnseen: UnseenItems -> bool
 
 val CheckPropInfoAttributes: pinfo: PropInfo -> m: range -> OperationResult<unit>
 
+val TryGetPropObsoleteInfo: pinfo: PropInfo -> ObsoleteDiagnosticInfo option
+
 val CheckILFieldAttributes: g: TcGlobals -> finfo: ILFieldInfo -> m: range -> unit
+
+val TryGetILFieldObsoleteInfo: g: TcGlobals -> finfo: ILFieldInfo -> ObsoleteDiagnosticInfo option
 
 val CheckMethInfoAttributes:
     g: TcGlobals -> m: range -> tyargsOpt: 'a option -> minfo: MethInfo -> OperationResult<unit>
 
-val MethInfoIsUnseen: g: TcGlobals -> m: range -> ty: TType -> minfo: MethInfo -> allowObsolete: bool -> bool
+val MethInfoIsUnseen: g: TcGlobals -> m: range -> ty: TType -> minfo: MethInfo -> allowUnseen: UnseenItems -> bool
 
-val PropInfoIsUnseen: m: 'a -> allowObsolete: bool -> pinfo: PropInfo -> bool
+val PropInfoIsUnseen: _m: 'a -> allowUnseen: UnseenItems -> pinfo: PropInfo -> bool
+
+val ILFieldInfoIsUnseen: allowUnseen: UnseenItems -> finfo: ILFieldInfo -> bool
+
+val EventInfoIsUnseen: allowUnseen: UnseenItems -> einfo: EventInfo -> bool
 
 val CheckEntityAttributes: g: TcGlobals -> tcref: TyconRef -> m: range -> OperationResult<unit>
+
+val TryGetEntityObsoleteInfo: g: TcGlobals -> tcref: TyconRef -> ObsoleteDiagnosticInfo option
 
 val CheckUnionCaseAttributes: g: TcGlobals -> x: UnionCaseRef -> m: range -> OperationResult<unit>
 
@@ -101,3 +155,5 @@ val IsSecurityCriticalAttribute: g: TcGlobals -> Attrib -> bool
 val IsAssemblyVersionAttribute: g: TcGlobals -> Attrib -> bool
 
 val CheckILEventAttributes: g: TcGlobals -> tcref: TyconRef -> cattrs: ILAttributes -> m: range -> OperationResult<unit>
+
+val TryGetEventObsoleteInfo: einfo: EventInfo -> ObsoleteDiagnosticInfo option

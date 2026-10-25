@@ -1,5 +1,5 @@
-// #Conformance #DeclarationElements #Attributes 
-#light
+// #Conformance #DeclarationElements #Attributes
+
 //Regression test for FSHARP bug 102 Import uses of ParamArray attribute
 
 open System

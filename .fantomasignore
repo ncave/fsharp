@@ -13,6 +13,7 @@ artifacts/
 
 # For some reason, it tries to format files from remotes (Processing ./.git/refs/remotes/<remote>/FSComp.fsi)
 .git/
+.github/skills/
 
 # Explicitly unformatted implementation
 src/Compiler/Checking/AccessibilityLogic.fs
@@ -74,6 +75,7 @@ src/Compiler/SyntaxTree/LexFilter.fs
 
 src/FSharp.Core/array2.fs
 src/FSharp.Core/array3.fs
+src/FSharp.Core/fslib-extra-pervasives.fs
 src/FSharp.Core/Linq.fs
 src/FSharp.Core/local.fs
 src/FSharp.Core/nativeptr.fs

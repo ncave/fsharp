@@ -11,6 +11,9 @@ module ``Tail Calls`` =
     let private compileWithTailCalls opts =
         opts |> ignoreWarnings |> withOptions ["-g"; "--optimize-"; "--tailcalls+"] |> compile
 
+    let private compileWithoutTailCalls opts =
+        opts |> ignoreWarnings |> withOptions ["-g"; "--optimize-"; "--tailcalls-"] |> compile
+
     [<Fact>]
     let ``TailCall 01``() =
         FSharp """
@@ -248,9 +251,9 @@ let run() =
         |> shouldSucceed
         |> verifyIL [
             """
-    IL_0040:  ldc.i4.s   42
-    IL_0042:  ldc.i4.5
-    IL_0043:  call       void TailCall06::foo<int32>(int32,
+    IL_0034:  ldc.i4.s   42
+    IL_0036:  ldc.i4.5
+    IL_0037:  call       void TailCall06::foo<int32>(int32,
                                                      !!0)
             """
             ]
@@ -276,3 +279,81 @@ let rec countdown n =
             """
             ]
 
+    [<Fact>]
+    let ``TailCall 08 - No tail call when pinning local byref``() =
+        FSharp """
+module TailCall08
+
+open Microsoft.FSharp.NativeInterop
+open System.Runtime.CompilerServices
+
+[<MethodImpl(MethodImplOptions.NoInlining)>]
+let bar (pValue: nativeptr<int>) : unit =
+    let value = NativePtr.read pValue
+    printfn "value = %A" value
+
+[<MethodImpl(MethodImplOptions.NoInlining)>]
+let foo() =
+    let mutable value = 42
+    use ptr = fixed &value
+    bar ptr
+
+[<EntryPoint>]
+let main _ =
+    foo()
+    0
+        """
+        |> asExe
+        |> compileWithTailCalls
+        |> shouldSucceed
+        |> run
+        |> shouldSucceed
+        |> verifyOutput "value = 42\n"
+
+    [<Fact>]
+    let ``TailCall 09 - Debug self tail call is a call``() =
+        FSharp """
+module TailCall09
+
+let rec loop (n: int) =
+    if n = 0 then
+        0
+    else
+        loop (n - 1)
+"""
+        |> compileWithoutTailCalls
+        |> shouldSucceed
+        |> verifyILPresent [ "call       int32 TailCall09::loop(int32)" ]
+
+    [<Fact>]
+    let ``TailCall 10 - Debug self tail call in a closure is a call``() =
+        FSharp """
+module TailCall10
+
+let run (n: int) =
+    let rec loop (i: int) =
+        if i = 0 then
+            n
+        else
+            loop (i - 1)
+
+    loop
+"""
+        |> compileWithoutTailCalls
+        |> shouldSucceed
+        |> verifyILPresent [ "callvirt   instance !1 class [FSharp.Core]Microsoft.FSharp.Core.FSharpFunc`2<int32,int32>::Invoke(!0)" ]
+
+    [<Fact>]
+    let ``TailCall 11 - Debug self tail call with tailcalls on is a tail call``() =
+        FSharp """
+module TailCall11
+
+let rec loop (n: int) =
+    if n = 0 then
+        0
+    else
+        loop (n - 1)
+"""
+        |> compileWithTailCalls
+        |> shouldSucceed
+        |> verifyILPresent [ "tail."; "call       int32 TailCall11::loop(int32)" ]

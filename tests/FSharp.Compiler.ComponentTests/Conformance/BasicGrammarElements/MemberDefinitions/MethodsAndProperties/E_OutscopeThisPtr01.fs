@@ -1,5 +1,5 @@
-// #Regression #Conformance #DeclarationElements #MemberDefinitions #MethodsAndProperties 
-#light
+// #Regression #Conformance #DeclarationElements #MemberDefinitions #MethodsAndProperties
+
 // Regression test for FSHARP1.0:579
 // Verify the ability to outscope the this pointer: it's an error!
 

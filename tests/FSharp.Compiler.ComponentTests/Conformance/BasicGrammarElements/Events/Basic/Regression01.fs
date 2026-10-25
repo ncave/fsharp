@@ -1,5 +1,5 @@
-// #Conformance #DeclarationElements #Events 
-#light
+// #Conformance #DeclarationElements #Events
+
 
 // FSB 942, mutable variable escapes its scope when used with an event handler
 // Verify that you can hook up event handlers to mutable variables
@@ -14,11 +14,11 @@ type Action =
 type SqueakyToy() =
     let squeakEvent = new Event<_>()
     let triggerSqueakEvent = squeakEvent.Trigger
-    
+
     // This event fire whenever the squeaky toy squeaks
     member this.Squeak with get () = squeakEvent
-    
-    member this.ApplyAction act = 
+
+    member this.ApplyAction act =
         match act with
         | Squeeze    -> triggerSqueakEvent(act)
         | Poke       -> triggerSqueakEvent(act)
@@ -54,7 +54,7 @@ let test() =
     pinkSqueakyToy.ApplyAction(Squeeze)
     if m_eventFlag1 <> Some(Squeeze) then failwith "Failed: 2"
     if m_eventFlag2 <> Some(Squeeze) then failwith "Failed: 3"
-     
+
     // Remove one of the event handlers
     pinkSqueakyToy.Squeak.Publish.RemoveHandler(eventHandler1)
     m_eventFlag1 <- None

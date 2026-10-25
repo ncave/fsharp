@@ -10,8 +10,23 @@
     <Win32Resource>$(MSBuildThisFileDirectory)fsi.res</Win32Resource>
   </PropertyGroup>
 
+  <!-- MSBuild 18.9+ transitively brings System.Resources.Extensions/System.Text.Json which reference
+       System.ValueTuple 4.0.5.0, conflicting with the .NET Framework 4.7.2 facade (4.0.2.0).
+       Binding redirects resolve this at runtime; suppress the build error under /warnaserror.
+       Harmless on .NET Core targets where MSB3277 does not fire. -->
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(TargetFramework)' == 'net472'">
     <DefineConstants>$(DefineConstants);FSI_SHADOW_COPY_REFERENCES;FSI_SERVER</DefineConstants>
+  </PropertyGroup>
+
+  <!-- The JSON-RPC server needs StreamJsonRpc, which the .NET Framework fsi does not carry and a
+       source-only build cannot provide, so the mode belongs to the .NET build alone. -->
+  <PropertyGroup Condition="'$(TargetFramework)' != 'net472' and '$(DotNetBuildSourceOnly)' != 'true'">
+    <FsiJsonRpcServer>true</FsiJsonRpcServer>
+    <DefineConstants>$(DefineConstants);FSI_JSONRPC_SERVER</DefineConstants>
   </PropertyGroup>
 
   <!--  The fsi application does not provide a referencable public interface  -->
@@ -20,6 +35,12 @@
     <NoInterfaceData>true</NoInterfaceData>
     <CompressMetadata>true</CompressMetadata>
   </PropertyGroup>
+
+  <ItemGroup Condition="'$(FsiJsonRpcServer)' == 'true'">
+    <Compile Include="$(MSBuildThisFileDirectory)interactiveProtocol.fs" />
+    <Compile Include="$(MSBuildThisFileDirectory)fsiserver.fs" />
+    <PackageReference Include="StreamJsonRpc" />
+  </ItemGroup>
 
   <ItemGroup>
     <EmbeddedText Include="$(MSBuildThisFileDirectory)..\LegacyMSBuildResolver\LegacyResolver.txt">
@@ -40,7 +61,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(FSHARPCORE_USE_PACKAGE)' == 'true'">
-    <PackageReference Include="FSharp.Core" Version="$(FSharpCoreShippedPackageVersionValue)" />
+    <PackageReference Include="FSharp.Core" />
   </ItemGroup>
 
   <ItemGroup>
@@ -57,9 +78,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Build.Framework" Version="$(MicrosoftBuildFrameworkVersion)" />
-    <PackageReference Include="Microsoft.Build.Tasks.Core" Version="$(MicrosoftBuildTasksCoreVersion)" />
-    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="$(MicrosoftBuildUtilitiesCoreVersion)" />
+    <PackageReference Include="Microsoft.Build.Framework" />
+    <PackageReference Include="Microsoft.Build.Tasks.Core" />
+    <PackageReference Include="Microsoft.Build.Utilities.Core" />
   </ItemGroup>
 
 </Project>

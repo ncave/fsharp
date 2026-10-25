@@ -1,8 +1,8 @@
-// #Regression #Conformance #DeclarationElements #MemberDefinitions #Overloading 
+// #Regression #Conformance #DeclarationElements #MemberDefinitions #Overloading
 // Regression test for FSHARP1.0:3388
 // overloaded operators which are more generic than their enclosing class
 //<Expects status="success"></Expects>
-#light
+
 type Foo<'a,'b>() =
 #if TOO_GENERIC
     static member once(*<'a,'b,'c>*)(x:Foo<'a,'b>, y:Foo<'b,'c>) =

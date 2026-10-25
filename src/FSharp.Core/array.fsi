@@ -15,6 +15,18 @@ open Microsoft.FSharp.Collections
 [<RequireQualifiedAccess>]
 module Array =
 
+    /// <summary>This function is for use by compiled F# code and should not be used directly.</summary>
+    [<CompilerMessage("This function is for use by compiled F# code and should not be used directly",
+                      1204,
+                      IsHidden = true)>]
+    val indexNotFound: unit -> 'T
+
+    /// <summary>This function is for use by compiled F# code and should not be used directly.</summary>
+    [<CompilerMessage("This function is for use by compiled F# code and should not be used directly",
+                      1204,
+                      IsHidden = true)>]
+    val differentLengthArrays: arg1: string -> len1: int -> arg2: string -> len2: int -> 'T
+
     /// <summary>Returns a new array that contains all pairings of elements from the first and second arrays.</summary>
     ///
     /// <param name="array1">The first input array.</param>
@@ -33,6 +45,8 @@ module Array =
     /// [| (1, 3); (1, 4); (2, 3); (2, 4) |]
     /// </code>
     /// </example>
+    ///
+    /// <remarks>This is an O(n*m) operation, where n and m are the lengths of the arrays.</remarks>
     [<CompiledName("AllPairs")>]
     val allPairs: array1: 'T1 array -> array2: 'T2 array -> ('T1 * 'T2) array
 
@@ -51,6 +65,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 1; 2; 3; 4 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n+m) operation, where n and m are the lengths of the arrays.</remarks>
     [<CompiledName("Append")>]
     val append: array1: 'T array -> array2: 'T array -> 'T array
 
@@ -76,6 +92,8 @@ module Array =
     /// </code>
     /// Throws <c>ArgumentException</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Average")>]
     val inline average:
         array: ^T array -> ^T
@@ -115,6 +133,8 @@ module Array =
     /// </code>
     /// Throws <c>ArgumentException</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("AverageBy")>]
     val inline averageBy:
         projection: ('T -> ^U) -> array: 'T array -> ^U
@@ -137,7 +157,7 @@ module Array =
     /// let target = [| 0; 1; 2; 3; 4; 5 |]
     /// target[3..4] &lt;- source[1..2]
     /// </code>
-    /// </remarks>
+    ///  This is an O(count) operation.</remarks>
     ///
     /// <exception cref="T:System.ArgumentNullException">Thrown when either of the input arrays is null.</exception>
     /// <exception cref="T:System.ArgumentException">Thrown when any of sourceIndex, targetIndex or count are negative,
@@ -183,6 +203,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 1; 2; 3; 4 |]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the total output length.</remarks>
     [<CompiledName("Collect")>]
     val collect: mapping: ('T -> 'U array) -> array: 'T array -> 'U array
 
@@ -266,6 +288,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>-1</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(min(n,m)) operation, where n and m are the lengths of the arrays.</remarks>
     [<CompiledName("CompareWith")>]
     val inline compareWith: comparer: ('T -> 'T -> int) -> array1: 'T array -> array2: 'T array -> int
 
@@ -285,6 +309,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 1; 2; 3; 4; 5 |]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the total number of elements across all arrays.</remarks>
     [<CompiledName("Concat")>]
     val concat: arrays: seq<'T array> -> 'T array
 
@@ -303,14 +329,17 @@ module Array =
     /// [| 1; 2 |] |> Array.contains 5 // evaluates to false
     /// </code>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Contains")>]
     val inline contains: value: 'T -> array: 'T array -> bool when 'T: equality
 
-    /// <summary>Builds a new array that contains the elements of the given array.</summary>
+    /// <summary>Returns an array that contains the elements of the given array.</summary>
     ///
     /// <param name="array">The input array.</param>
     ///
-    /// <returns>A copy of the input array.</returns>
+    /// <returns>A copy of the input array. Nonempty results are new arrays.
+    /// Empty results can share an empty array, including the input array itself.</returns>
     ///
     /// <exception cref="T:System.ArgumentNullException">Thrown when the input array is null.</exception>
     ///
@@ -322,6 +351,8 @@ module Array =
     /// </code>
     /// Evaluates to a new array containing<c>[| 12; 13; 14 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Copy")>]
     val copy: array: 'T array -> 'T array
 
@@ -346,6 +377,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| ("a", 2); ("b", 1) |]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("CountBy")>]
     val countBy: projection: ('T -> 'Key) -> array: 'T array -> ('Key * int) array when 'Key: equality
 
@@ -376,6 +409,8 @@ module Array =
     /// After evaluation of the last line <c>array</c> contains<c>[| { contents = "b"}; { contents = "b"} |]</c>.
     /// Note each entry in the array is the same mutable cell object.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the count.</remarks>
     [<CompiledName("Create")>]
     val create: count: int -> value: 'T -> 'T array
 
@@ -405,6 +440,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>None</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("TryHead")>]
     val tryHead: array: 'T array -> 'T option
 
@@ -432,13 +469,15 @@ module Array =
     /// <code lang="fsharp">
     /// let input = [| 1; 2; 3 |]
     ///
-    /// input |> Array.tryPick (fun n -> if n > 3 = 0 then Some (string n) else None)
+    /// input |> Array.tryPick (fun n -> if n > 3 then Some (string n) else None)
     /// </code>
     /// Evaluates to <c>None</c>.
     /// </example>
     ///
+    ///
+    /// <remarks>This is an O(n) operation in the worst case, where n is the length of the array.</remarks>
     [<CompiledName("TryPick")>]
-    val tryPick: chooser: ('T -> 'U option) -> array: 'T array -> 'U option
+    val inline tryPick: chooser: ('T -> 'U option) -> array: 'T array -> 'U option
 
     /// <summary>Fills a range of elements of the array with the given value.</summary>
     ///
@@ -458,6 +497,8 @@ module Array =
     /// </code>
     /// After evaluation <c>target</c> contains <c>[| 0; 1; 2; 100; 100; 5 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(count) operation.</remarks>
     [<CompiledName("Fill")>]
     val fill: target: 'T array -> targetIndex: int -> count: int -> value: 'T -> unit
 
@@ -492,8 +533,10 @@ module Array =
     /// Throws <c>KeyNotFoundException</c>.
     /// </example>
     ///
+    ///
+    /// <remarks>This is an O(n) operation in the worst case, where n is the length of the array.</remarks>
     [<CompiledName("Pick")>]
-    val pick: chooser: ('T -> 'U option) -> array: 'T array -> 'U
+    val inline pick: chooser: ('T -> 'U option) -> array: 'T array -> 'U
 
     /// <summary>Applies the given function to each element of the array. Returns
     /// the array comprised of the results <c>x</c> for each element where
@@ -523,6 +566,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 2 |]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Choose")>]
     val choose: chooser: ('T -> 'U option) -> array: 'T array -> 'U array
 
@@ -553,6 +598,8 @@ module Array =
     /// </code>
     /// Throws <c>ArgumentException</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("ChunkBySize")>]
     val chunkBySize: chunkSize: int -> array: 'T array -> 'T array array
 
@@ -574,6 +621,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 1; 2; 3 |]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Distinct")>]
     val distinct: array: 'T array -> 'T array when 'T: equality
 
@@ -596,6 +645,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| { Bar = 1 }; { Bar = 2 }; { Bar = 3 } |]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("DistinctBy")>]
     val distinctBy: projection: ('T -> 'Key) -> array: 'T array -> 'T array when 'Key: equality
 
@@ -626,6 +677,8 @@ module Array =
     /// </code>
     /// Throws <c>ArgumentException</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("SplitInto")>]
     val splitInto: count: int -> array: 'T array -> 'T array array
 
@@ -637,6 +690,8 @@ module Array =
     /// Array.empty // Evaluates to [| |]
     /// </code>
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<GeneralizableValue>]
     [<CompiledName("Empty")>]
     val empty<'T> : 'T array
@@ -676,6 +731,8 @@ module Array =
     /// </code>
     /// Throws <c>ArgumentException</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("ExactlyOne")>]
     val exactlyOne: array: 'T array -> 'T
 
@@ -713,6 +770,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>None</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("TryExactlyOne")>]
     val tryExactlyOne: array: 'T array -> 'T option
 
@@ -736,6 +795,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 2; 4 |]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n+m) operation using hash-based exclusion.</remarks>
     [<CompiledName("Except")>]
     val except: itemsToExclude: seq<'T> -> array: 'T array -> 'T array when 'T: equality
 
@@ -743,7 +804,7 @@ module Array =
     ///
     /// <remarks>The predicate is applied to the elements of the input array. If any application
     /// returns true then the overall result is true and no further elements are tested.
-    /// Otherwise, false is returned.</remarks>
+    /// Otherwise, false is returned. This is an O(n) operation in the worst case, where n is the length of the array.</remarks>
     ///
     /// <param name="predicate">The function to test the input elements.</param>
     /// <param name="array">The input array.</param>
@@ -778,7 +839,7 @@ module Array =
     /// two lengths of the collections. If any application returns true then the overall result is
     /// true and no further elements are tested. Otherwise, if one collections is longer
     /// than the other then the <c>ArgumentException</c> exception is raised.
-    /// Otherwise, false is returned.</remarks>
+    /// Otherwise, false is returned. This is an O(n) operation in the worst case, where n is the length of the arrays.</remarks>
     ///
     /// <param name="predicate">The function to test the input elements.</param>
     /// <param name="array1">The first input array.</param>
@@ -792,7 +853,7 @@ module Array =
     /// <example id="exists2-1">
     /// <code lang="fsharp">
     /// let inputs1 = [| 1; 2 |]
-    /// let inputs2 = [| 1; 2; 0 |]
+    /// let inputs2 = [| 1; 3 |]
     ///
     /// (inputs1, inputs2) ||> Array.exists2 (fun a b -> a > b)
     /// </code>
@@ -802,14 +863,14 @@ module Array =
     /// <example id="exists2-2">
     /// <code lang="fsharp">
     /// let inputs1 = [| 1; 4 |]
-    /// let inputs2 = [| 1; 3; 5 |]
+    /// let inputs2 = [| 1; 3 |]
     ///
     /// (inputs1, inputs2) ||> Array.exists2 (fun a b -> a > b)
     /// </code>
     /// Evaluates to <c>true</c>
     /// </example>
     [<CompiledName("Exists2")>]
-    val exists2: predicate: ('T1 -> 'T2 -> bool) -> array1: 'T1 array -> array2: 'T2 array -> bool
+    val inline exists2: predicate: ('T1 -> 'T2 -> bool) -> array1: 'T1 array -> array2: 'T2 array -> bool
 
     /// <summary>Returns a new collection containing only the elements of the collection
     /// for which the given predicate returns "true".</summary>
@@ -829,6 +890,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 2; 4 |]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Filter")>]
     val filter: predicate: ('T -> bool) -> array: 'T array -> 'T array
 
@@ -861,8 +924,10 @@ module Array =
     /// </code>
     /// Throws <c>KeyNotFoundException</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation in the worst case, where n is the length of the array.</remarks>
     [<CompiledName("Find")>]
-    val find: predicate: ('T -> bool) -> array: 'T array -> 'T
+    val inline find: predicate: ('T -> bool) -> array: 'T array -> 'T
 
     /// <summary>Returns the last element for which the given function returns 'true'.
     /// Raise <see cref="T:System.Collections.Generic.KeyNotFoundException"/> if no such element exists.</summary>
@@ -893,8 +958,10 @@ module Array =
     /// </code>
     /// Throws <c>KeyNotFoundException</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation in the worst case, where n is the length of the array.</remarks>
     [<CompiledName("FindBack")>]
-    val findBack: predicate: ('T -> bool) -> array: 'T array -> 'T
+    val inline findBack: predicate: ('T -> bool) -> array: 'T array -> 'T
 
     /// <summary>Returns the index of the first element in the array
     /// that satisfies the given predicate. Raise <see cref="T:System.Collections.Generic.KeyNotFoundException"/> if
@@ -925,8 +992,10 @@ module Array =
     /// </code>
     /// Throws <c>KeyNotFoundException</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation in the worst case, where n is the length of the array.</remarks>
     [<CompiledName("FindIndex")>]
-    val findIndex: predicate: ('T -> bool) -> array: 'T array -> int
+    val inline findIndex: predicate: ('T -> bool) -> array: 'T array -> int
 
     /// <summary>Returns the index of the last element in the array
     /// that satisfies the given predicate. Raise <see cref="T:System.Collections.Generic.KeyNotFoundException"/> if
@@ -958,14 +1027,16 @@ module Array =
     /// </code>
     /// Throws <c>KeyNotFoundException</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation in the worst case, where n is the length of the array.</remarks>
     [<CompiledName("FindIndexBack")>]
-    val findIndexBack: predicate: ('T -> bool) -> array: 'T array -> int
+    val inline findIndexBack: predicate: ('T -> bool) -> array: 'T array -> int
 
     /// <summary>Tests if all elements of the array satisfy the given predicate.</summary>
     ///
     /// <remarks>The predicate is applied to the elements of the input collection. If any application
     /// returns false then the overall result is false and no further elements are tested.
-    /// Otherwise, true is returned.</remarks>
+    /// Otherwise, true is returned. This is an O(n) operation in the worst case, where n is the length of the array.</remarks>
     ///
     /// <param name="predicate">The function to test the input elements.</param>
     /// <param name="array">The input array.</param>
@@ -984,7 +1055,7 @@ module Array =
     /// </code>
     /// </example>
     [<CompiledName("ForAll")>]
-    val forall: predicate: ('T -> bool) -> array: 'T array -> bool
+    val inline forall: predicate: ('T -> bool) -> array: 'T array -> bool
 
     /// <summary>Tests if all corresponding elements of the array satisfy the given predicate pairwise.</summary>
     ///
@@ -992,7 +1063,7 @@ module Array =
     /// two lengths of the collections. If any application returns false then the overall result is
     /// false and no further elements are tested. Otherwise, if one collection is longer
     /// than the other then the <c>ArgumentException</c> exception is raised.
-    /// Otherwise, true is returned.</remarks>
+    /// Otherwise, true is returned. This is an O(n) operation in the worst case, where n is the length of the arrays.</remarks>
     ///
     /// <param name="predicate">The function to test the input elements.</param>
     /// <param name="array1">The first input array.</param>
@@ -1033,7 +1104,7 @@ module Array =
     /// Throws <c>ArgumentException</c>.
     /// </example>
     [<CompiledName("ForAll2")>]
-    val forall2: predicate: ('T1 -> 'T2 -> bool) -> array1: 'T1 array -> array2: 'T2 array -> bool
+    val inline forall2: predicate: ('T1 -> 'T2 -> bool) -> array1: 'T1 array -> array2: 'T2 array -> bool
 
     /// <summary>Applies a function to each element of the collection, threading an accumulator argument
     /// through the computation. If the input function is <c>f</c> and the elements are <c>i0...iN</c> then computes
@@ -1062,8 +1133,10 @@ module Array =
     /// </code>
     /// Evaluates to <c>2</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Fold")>]
-    val fold<'T, 'State> : folder: ('State -> 'T -> 'State) -> state: 'State -> array: 'T array -> 'State
+    val inline fold<'T, 'State> : folder: ('State -> 'T -> 'State) -> state: 'State -> array: 'T array -> 'State
 
     /// <summary>Applies a function to each element of the array, starting from the end, threading an accumulator argument
     /// through the computation. If the input function is <c>f</c> and the elements are <c>i0...iN</c> then computes
@@ -1105,8 +1178,10 @@ module Array =
     ///   Text = " 3 -2 -1 0 1" }
     /// </code>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("FoldBack")>]
-    val foldBack<'T, 'State> : folder: ('T -> 'State -> 'State) -> array: 'T array -> state: 'State -> 'State
+    val inline foldBack<'T, 'State> : folder: ('T -> 'State -> 'State) -> array: 'T array -> state: 'State -> 'State
 
     /// <summary>Applies a function to pairs of elements drawn from the two collections,
     /// left-to-right, threading an accumulator argument
@@ -1139,8 +1214,10 @@ module Array =
     /// </code>
     /// Evaluates to <c>1</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the arrays.</remarks>
     [<CompiledName("Fold2")>]
-    val fold2<'T1, 'T2, 'State> :
+    val inline fold2<'T1, 'T2, 'State> :
         folder: ('State -> 'T1 -> 'T2 -> 'State) -> state: 'State -> array1: 'T1 array -> array2: 'T2 array -> 'State
 
     /// <summary>Apply a function to pairs of elements drawn from the two collections, right-to-left,
@@ -1188,8 +1265,10 @@ module Array =
     ///   Text = "(-3,1) (-2,2) (-1,3) " }
     /// </code>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the arrays.</remarks>
     [<CompiledName("FoldBack2")>]
-    val foldBack2<'T1, 'T2, 'State> :
+    val inline foldBack2<'T1, 'T2, 'State> :
         folder: ('T1 -> 'T2 -> 'State -> 'State) -> array1: 'T1 array -> array2: 'T2 array -> state: 'State -> 'State
 
     /// <summary>Gets an element from an array.</summary>
@@ -1197,7 +1276,7 @@ module Array =
     /// <param name="array">The input array.</param>
     /// <param name="index">The input index.</param>
     ///
-    /// <remarks>Normally the syntax <c>array[index]</c> is preferred.</remarks>
+    /// <remarks>Normally the syntax <c>array[index]</c> is preferred. This is an O(1) operation.</remarks>
     ///
     /// <returns>The value of the array at the given index.</returns>
     ///
@@ -1248,6 +1327,8 @@ module Array =
     /// </code>
     /// Throws <c>ArgumentException</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("Head")>]
     val head: array: 'T array -> 'T
 
@@ -1270,6 +1351,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| (1, [| 1; 3; 5 |]); (0, [| 2; 4 |]) |]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("GroupBy")>]
     val groupBy: projection: ('T -> 'Key) -> array: 'T array -> ('Key * 'T array) array when 'Key: equality
 
@@ -1290,6 +1373,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| (0, "a"); (1, "b"); (2, "c") |]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Indexed")>]
     val indexed: array: 'T array -> (int * 'T) array
 
@@ -1315,6 +1400,8 @@ module Array =
     /// </code>
     /// Throws <c>ArgumentException</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the count.</remarks>
     [<CompiledName("Initialize")>]
     val inline init: count: int -> initializer: (int -> 'T) -> 'T array
 
@@ -1332,6 +1419,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 0; 0; 0; 0 |]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the count.</remarks>
     [<CompiledName("ZeroCreate")>]
     val zeroCreate: count: int -> 'T array
 
@@ -1356,6 +1445,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>false</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("IsEmpty")>]
     val isEmpty: array: 'T array -> bool
 
@@ -1380,6 +1471,8 @@ module Array =
     /// </code>
     /// in the console.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Iterate")>]
     val inline iter: action: ('T -> unit) -> array: 'T array -> unit
 
@@ -1409,8 +1502,10 @@ module Array =
     /// </code>
     /// in the console.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the arrays.</remarks>
     [<CompiledName("Iterate2")>]
-    val iter2: action: ('T1 -> 'T2 -> unit) -> array1: 'T1 array -> array2: 'T2 array -> unit
+    val inline iter2: action: ('T1 -> 'T2 -> unit) -> array1: 'T1 array -> array2: 'T2 array -> unit
 
     /// <summary>Applies the given function to each element of the array. The integer passed to the
     /// function indicates the index of element.</summary>
@@ -1424,7 +1519,7 @@ module Array =
     /// <code lang="fsharp">
     /// let inputs = [| "a"; "b"; "c" |]
     ///
-    /// inputs |> Array.iteri (fun i v -> printfn "{i}: {v}")
+    /// inputs |> Array.iteri (fun i v -> printn $"{i}: {v}")
     /// </code>
     /// Evaluates to <c>unit</c> and prints
     /// <code>
@@ -1434,8 +1529,10 @@ module Array =
     /// </code>
     /// in the console.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("IterateIndexed")>]
-    val iteri: action: (int -> 'T -> unit) -> array: 'T array -> unit
+    val inline iteri: action: (int -> 'T -> unit) -> array: 'T array -> unit
 
     /// <summary>Applies the given function to pair of elements drawn from matching indices in two arrays,
     /// also passing the index of the elements. The two arrays must have the same lengths,
@@ -1463,8 +1560,10 @@ module Array =
     /// </code>
     /// in the console.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the arrays.</remarks>
     [<CompiledName("IterateIndexed2")>]
-    val iteri2: action: (int -> 'T1 -> 'T2 -> unit) -> array1: 'T1 array -> array2: 'T2 array -> unit
+    val inline iteri2: action: (int -> 'T1 -> 'T2 -> unit) -> array1: 'T1 array -> array2: 'T2 array -> unit
 
     /// <summary>Returns the last element of the array.</summary>
     ///
@@ -1488,6 +1587,8 @@ module Array =
     /// </code>
     /// Throws <c>ArgumentException</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("Last")>]
     val inline last: array: 'T array -> 'T
 
@@ -1498,7 +1599,7 @@ module Array =
     ///
     /// <returns>The value of the array at the given index.</returns>
     ///
-    /// <remarks>Normally the syntax <c>array[index]</c> is preferred.</remarks>
+    /// <remarks>Normally the syntax <c>array[index]</c> is preferred. This is an O(1) operation.</remarks>
     ///
     /// <exception cref="T:System.NullReferenceException">Thrown when the input array is null.</exception>
     /// <exception cref="T:System.IndexOutOfRangeException">Thrown when the index is negative or the input array does not contain enough elements.</exception>
@@ -1529,7 +1630,7 @@ module Array =
     ///
     /// <returns>The length of the array.</returns>
     ///
-    /// <remarks>The notation <c>array.Length</c> is preferred.</remarks>
+    /// <remarks>The notation <c>array.Length</c> is preferred. This is an O(1) operation.</remarks>
     ///
     /// <exception cref="T:System.NullReferenceException">Thrown when the input array is null.</exception>
     ///
@@ -1541,6 +1642,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>3</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("Length")>]
     val length: array: 'T array -> int
 
@@ -1566,6 +1669,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>None</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("TryLast")>]
     val tryLast: array: 'T array -> 'T option
 
@@ -1587,6 +1692,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 1; 3; 2 |]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Map")>]
     val inline map: mapping: ('T -> 'U) -> array: 'T array -> 'U array
 
@@ -1613,6 +1720,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 'a'; 'd'; 'o' |]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the arrays.</remarks>
     [<CompiledName("Map2")>]
     val map2: mapping: ('T1 -> 'T2 -> 'U) -> array1: 'T1 array -> array2: 'T2 array -> 'U array
 
@@ -1643,6 +1752,8 @@ module Array =
     /// </code>
     /// Evaluates <c>newCharges</c> to <c>[|In 2; Out 4; In 6|]</c> and <c>balance</c> to <c>2</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("MapFold")>]
     val mapFold<'T, 'State, 'Result> :
         mapping: ('State -> 'T -> 'Result * 'State) -> state: 'State -> array: 'T array -> 'Result array * 'State
@@ -1674,6 +1785,8 @@ module Array =
     /// </code>
     /// Evaluates <c>newCharges</c> to <c>[|In 2; Out 4; In 6|]</c> and <c>balance</c> to <c>2</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("MapFoldBack")>]
     val mapFoldBack<'T, 'State, 'Result> :
         mapping: ('T -> 'State -> 'Result * 'State) -> array: 'T array -> state: 'State -> 'Result array * 'State
@@ -1704,6 +1817,8 @@ module Array =
     /// Evaluates to <c>[| "all"; "the"; "time" |]</c>
     /// </example>
     ///
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the arrays.</remarks>
     [<CompiledName("Map3")>]
     val map3:
         mapping: ('T1 -> 'T2 -> 'T3 -> 'U) -> array1: 'T1 array -> array2: 'T2 array -> array3: 'T3 array -> 'U array
@@ -1731,6 +1846,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[|(0, 'a'); (1, 'd'); (2, 'o')|]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the arrays.</remarks>
     [<CompiledName("MapIndexed2")>]
     val mapi2: mapping: (int -> 'T1 -> 'T2 -> 'U) -> array1: 'T1 array -> array2: 'T2 array -> 'U array
 
@@ -1753,12 +1870,14 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 10; 11; 12 |]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("MapIndexed")>]
     val mapi: mapping: (int -> 'T -> 'U) -> array: 'T array -> 'U array
 
     /// <summary>Returns the greatest of all elements of the array, compared via Operators.max on the function result.</summary>
     ///
-    /// <remarks>Throws ArgumentException for empty arrays.</remarks>
+    /// <remarks>Throws ArgumentException for empty arrays. This is an O(n) operation, where n is the length of the array.</remarks>
     ///
     /// <param name="array">The input array.</param>
     ///
@@ -1789,7 +1908,8 @@ module Array =
 
     /// <summary>Returns the greatest of all elements of the array, compared via Operators.max on the function result.</summary>
     ///
-    /// <remarks>Throws ArgumentException for empty arrays.</remarks>
+    /// <remarks>Returns the first maximal element of the array if there are multiple equal maximum elements.
+    /// Throws ArgumentException for empty arrays. This is an O(n) operation, where n is the length of the array.</remarks>
     ///
     /// <param name="projection">The function to transform the elements into a type supporting comparison.</param>
     /// <param name="array">The input array.</param>
@@ -1821,7 +1941,7 @@ module Array =
 
     /// <summary>Returns the lowest of all elements of the array, compared via Operators.min.</summary>
     ///
-    /// <remarks>Throws ArgumentException for empty arrays</remarks>
+    /// <remarks>Throws ArgumentException for empty arrays. This is an O(n) operation, where n is the length of the array.</remarks>
     ///
     /// <param name="array">The input array.</param>
     ///
@@ -1852,7 +1972,8 @@ module Array =
 
     /// <summary>Returns the lowest of all elements of the array, compared via Operators.min on the function result.</summary>
     ///
-    /// <remarks>Throws ArgumentException for empty arrays.</remarks>
+    /// <remarks>Returns the first minimal element of the array if there are multiple equal minimal elements.
+    /// Throws ArgumentException for empty arrays. This is an O(n) operation, where n is the length of the array.</remarks>
     ///
     /// <param name="projection">The function to transform the elements into a type supporting comparison.</param>
     /// <param name="array">The input array.</param>
@@ -1896,6 +2017,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 1; 2; 5 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the list.</remarks>
     [<CompiledName("OfList")>]
     val ofList: list: 'T list -> 'T array
 
@@ -1915,6 +2038,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 1; 2; 5 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the sequence.</remarks>
     [<CompiledName("OfSeq")>]
     val ofSeq: source: seq<'T> -> 'T array
 
@@ -1936,6 +2061,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[|(1, 2); (2, 3); (3, 4)|]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Pairwise")>]
     val pairwise: array: 'T array -> ('T * 'T) array
 
@@ -1959,8 +2086,38 @@ module Array =
     /// </code>
     /// Evaluates to <c>([|2; 4|], [|1; 3|])</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Partition")>]
     val partition: predicate: ('T -> bool) -> array: 'T array -> 'T array * 'T array
+
+    /// <summary>Splits the collection into two arrays, by applying the given partitioning function
+    /// to each element. Returns <c>Choice1Of2</c> elements in the first array and
+    /// <c>Choice2Of2</c> elements in the second array. Element order is preserved in both of the created arrays.</summary>
+    ///
+    /// <param name="partitioner">The function to transform and classify each input element into one of two output types.</param>
+    /// <param name="array">The input array.</param>
+    ///
+    /// <returns>A tuple of two arrays. The first containing values from <c>Choice1Of2</c> results and the second
+    /// containing values from <c>Choice2Of2</c> results.</returns>
+    ///
+    /// <exception cref="T:System.ArgumentNullException">Thrown when the input array is null.</exception>
+    ///
+    /// <example id="partitionWith-1">
+    /// <code lang="fsharp">
+    /// let inputs = [| 1; 2; 3; 4; 5 |]
+    ///
+    /// let evens, odds =
+    ///     inputs |> Array.partitionWith (fun x ->
+    ///         if x % 2 = 0 then Choice1Of2 (x * 10)
+    ///         else Choice2Of2 (string x))
+    /// </code>
+    /// Evaluates <c>evens</c> to <c>[|20; 40|]</c> and <c>odds</c> to <c>[|"1"; "3"; "5"|]</c>.
+    /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
+    [<CompiledName("PartitionWith")>]
+    val inline partitionWith: partitioner: ('T -> Choice<'T1, 'T2>) -> array: 'T array -> 'T1 array * 'T2 array
 
     /// <summary>Returns an array with all elements permuted according to the
     /// specified permutation.</summary>
@@ -1981,6 +2138,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[|4; 1; 2; 3|]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Permute")>]
     val permute: indexMap: (int -> int) -> array: 'T array -> 'T array
 
@@ -2005,8 +2164,10 @@ module Array =
     /// </code>
     /// Evaluates to <c>1342</c>, by computing <c>((1 * 10 + 3) * 10 + 4) * 10 + 2</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Reduce")>]
-    val reduce: reduction: ('T -> 'T -> 'T) -> array: 'T array -> 'T
+    val inline reduce: reduction: ('T -> 'T -> 'T) -> array: 'T array -> 'T
 
     /// <summary>Applies a function to each element of the array, starting from the end, threading an accumulator argument
     /// through the computation. If the input function is <c>f</c> and the elements are <c>i0...iN</c>
@@ -2029,8 +2190,10 @@ module Array =
     /// </code>
     /// Evaluates to <c>2431</c>, by computing <c>1 + (3 + (4 + 2 * 10) * 10) * 10</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("ReduceBack")>]
-    val reduceBack: reduction: ('T -> 'T -> 'T) -> array: 'T array -> 'T
+    val inline reduceBack: reduction: ('T -> 'T -> 'T) -> array: 'T array -> 'T
 
     /// <summary>Creates an array by replicating the given initial value.</summary>
     ///
@@ -2047,6 +2210,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| "a"; "a"; "a" |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the count.</remarks>
     [<CompiledName("Replicate")>]
     val replicate: count: int -> initial: 'T -> 'T array
 
@@ -2064,6 +2229,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 2; 1; 0 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Reverse")>]
     val rev: array: 'T array -> 'T array
 
@@ -2093,6 +2260,8 @@ module Array =
     /// Evaluates to <c>[|0; 1; -1; 2|]</c>. Note <c>0</c> is the initial
     /// state, <c>1</c> the next state, <c>-1</c> the next state, and <c>2</c> the final state.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Scan")>]
     val scan<'T, 'State> : folder: ('State -> 'T -> 'State) -> state: 'State -> array: 'T array -> 'State array
 
@@ -2122,6 +2291,8 @@ module Array =
     /// Evaluates to <c> [|2; 1; 3; 0|]</c> by processing each input from back to front. Note <c>0</c> is the initial
     /// state, <c>3</c> the next state, <c>1</c> the next state, and <c>2</c> the final state.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("ScanBack")>]
     val scanBack<'T, 'State> : folder: ('T -> 'State -> 'State) -> array: 'T array -> state: 'State -> 'State array
 
@@ -2137,6 +2308,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 7 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("Singleton")>]
     val inline singleton: value: 'T -> 'T array
 
@@ -2166,6 +2339,8 @@ module Array =
     /// </code>
     /// Throws <c>IndexOutOfRangeException</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("Set")>]
     val set: array: 'T array -> index: int -> value: 'T -> unit
 
@@ -2206,6 +2381,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| "a"; "b"; "c"; "d" |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Skip")>]
     val skip: count: int -> array: 'T array -> 'T array
 
@@ -2228,6 +2405,8 @@ module Array =
     /// Evaluates to <c>[|"bbb"; "cc"; "d"|]</c>
     /// </example>
     ///
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("SkipWhile")>]
     val skipWhile: predicate: ('T -> bool) -> array: 'T array -> 'T array
 
@@ -2251,7 +2430,7 @@ module Array =
     ///
     /// input.[2..4]
     /// </code>
-    /// </remarks>
+    ///  This is an O(count) operation.</remarks>
     ///
     /// <example id="sub-1">
     /// <code lang="fsharp">
@@ -2266,8 +2445,7 @@ module Array =
 
     /// <summary>Sorts the elements of an array, returning a new array. Elements are compared using <see cref="M:Microsoft.FSharp.Core.Operators.compare"/>. </summary>
     ///
-    /// <remarks>This is not a stable sort, i.e. the original order of equal elements is not necessarily preserved.
-    /// For a stable sort, consider using <see cref="M:Microsoft.FSharp.Collections.SeqModule.Sort"/>.</remarks>
+    /// <include file="xmldoc/sort.xml" path="/sort/arrayUnstable/*"/>
     ///
     /// <param name="array">The input array.</param>
     ///
@@ -2289,8 +2467,7 @@ module Array =
     /// <summary>Sorts the elements of an array, using the given projection for the keys and returning a new array.
     /// Elements are compared using <see cref="M:Microsoft.FSharp.Core.Operators.compare"/>.</summary>
     ///
-    /// <remarks>This is not a stable sort, i.e. the original order of equal elements is not necessarily preserved.
-    /// For a stable sort, consider using <see cref="M:Microsoft.FSharp.Collections.SeqModule.Sort"/>.</remarks>
+    /// <include file="xmldoc/sort.xml" path="/sort/arrayUnstable/*"/>
     ///
     /// <param name="projection">The function to transform array elements into the type that is compared.</param>
     /// <param name="array">The input array.</param>
@@ -2312,8 +2489,7 @@ module Array =
 
     /// <summary>Sorts the elements of an array, using the given comparison function as the order, returning a new array.</summary>
     ///
-    /// <remarks>This is not a stable sort, i.e. the original order of equal elements is not necessarily preserved.
-    /// For a stable sort, consider using <see cref="M:Microsoft.FSharp.Collections.SeqModule.Sort"/>.</remarks>
+    /// <include file="xmldoc/sort.xml" path="/sort/arrayUnstable/*"/>
     ///
     /// <param name="comparer">The function to compare pairs of array elements.</param>
     /// <param name="array">The input array.</param>
@@ -2341,8 +2517,7 @@ module Array =
     /// <summary>Sorts the elements of an array by mutating the array in-place, using the given projection for the keys.
     /// Elements are compared using <see cref="M:Microsoft.FSharp.Core.Operators.compare"/>.</summary>
     ///
-    /// <remarks>This is not a stable sort, i.e. the original order of equal elements is not necessarily preserved.
-    /// For a stable sort, consider using <see cref="M:Microsoft.FSharp.Collections.SeqModule.Sort"/>.</remarks>
+    /// <include file="xmldoc/sort.xml" path="/sort/arrayUnstableInPlace/*"/>
     ///
     /// <param name="projection">The function to transform array elements into the type that is compared.</param>
     /// <param name="array">The input array.</param>
@@ -2380,6 +2555,8 @@ module Array =
     /// </code>
     /// After evaluation <c>array</c> contains <c>[|(0, "aa"); (2, "cc"); (3, "dd"); (1, "bbb")|]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n log n) operation, modifying the array in place.</remarks>
     [<CompiledName("SortInPlaceWith")>]
     val sortInPlaceWith: comparer: ('T -> 'T -> int) -> array: 'T array -> unit
 
@@ -2398,6 +2575,8 @@ module Array =
     /// </code>
     /// After evaluation <c>array</c> contains <c>[| 1; 1; 3; 4; 6; 8 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n log n) operation, modifying the array in place.</remarks>
     [<CompiledName("SortInPlace")>]
     val sortInPlace: array: 'T array -> unit when 'T: comparison
 
@@ -2420,13 +2599,14 @@ module Array =
     /// </code>
     /// Evaluates <c>front</c> to <c>[|8; 4; 3|]</c> and <c>back</c> to <c>[|1; 6; 1|]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("SplitAt")>]
     val splitAt: index: int -> array: 'T array -> ('T array * 'T array)
 
     /// <summary>Sorts the elements of an array, in descending order, returning a new array. Elements are compared using <see cref="M:Microsoft.FSharp.Core.Operators.compare"/>. </summary>
     ///
-    /// <remarks>This is not a stable sort, i.e. the original order of equal elements is not necessarily preserved.
-    /// For a stable sort, consider using <see cref="M:Microsoft.FSharp.Collections.SeqModule.Sort"/>.</remarks>
+    /// <include file="xmldoc/sort.xml" path="/sort/arrayUnstable/*"/>
     ///
     /// <param name="array">The input array.</param>
     ///
@@ -2446,8 +2626,7 @@ module Array =
     /// <summary>Sorts the elements of an array, in descending order, using the given projection for the keys and returning a new array.
     /// Elements are compared using <see cref="M:Microsoft.FSharp.Core.Operators.compare"/>.</summary>
     ///
-    /// <remarks>This is not a stable sort, i.e. the original order of equal elements is not necessarily preserved.
-    /// For a stable sort, consider using <see cref="M:Microsoft.FSharp.Collections.SeqModule.Sort"/>.</remarks>
+    /// <include file="xmldoc/sort.xml" path="/sort/arrayUnstable/*"/>
     ///
     /// <param name="projection">The function to transform array elements into the type that is compared.</param>
     /// <param name="array">The input array.</param>
@@ -2481,6 +2660,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>11</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Sum")>]
     val inline sum: array: ^T array -> ^T when ^T: (static member (+): ^T * ^T -> ^T) and ^T: (static member Zero: ^T)
 
@@ -2501,6 +2682,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>7</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("SumBy")>]
     val inline sumBy:
         projection: ('T -> ^U) -> array: 'T array -> ^U
@@ -2509,7 +2692,7 @@ module Array =
     /// <summary>Returns the first N elements of the array.</summary>
     /// <remarks>Throws <c>InvalidOperationException</c>
     /// if the count exceeds the number of elements in the array. <c>Array.truncate</c>
-    /// returns as many items as the array contains instead of throwing an exception.</remarks>
+    /// returns as many items as the array contains instead of throwing an exception. This is an O(count) operation.</remarks>
     ///
     /// <param name="count">The number of items to take.</param>
     /// <param name="array">The input array.</param>
@@ -2569,6 +2752,8 @@ module Array =
     /// Evaluates to <c>[| "a"; "bb" |]</c>
     /// </example>
     ///
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("TakeWhile")>]
     val takeWhile: predicate: ('T -> bool) -> array: 'T array -> 'T array
 
@@ -2590,6 +2775,8 @@ module Array =
     /// Evaluates to <c>[| "bb"; "ccc" |]</c>
     /// </example>
     ///
+    ///
+    /// <remarks>This is an O(n) operation, creating a new array.</remarks>
     [<CompiledName("Tail")>]
     val tail: array: 'T array -> 'T array
 
@@ -2609,6 +2796,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[ 1; 2; 5 ]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("ToList")>]
     val toList: array: 'T array -> 'T list
 
@@ -2628,6 +2817,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>seq { 1; 2; 5 }</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("ToSeq")>]
     val toSeq: array: 'T array -> seq<'T>
 
@@ -2650,6 +2841,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[|[|10; 11|]; [|20; 21|]; [|30; 31|]|]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n*m) operation, where n and m are the dimensions.</remarks>
     [<CompiledName("Transpose")>]
     val transpose: arrays: seq<'T array> -> 'T array array
 
@@ -2688,6 +2881,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(count) operation.</remarks>
     [<CompiledName("Truncate")>]
     val truncate: count: int -> array: 'T array -> 'T array
 
@@ -2718,6 +2913,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>None</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation in the worst case, where n is the length of the array.</remarks>
     [<CompiledName("TryFind")>]
     val tryFind: predicate: ('T -> bool) -> array: 'T array -> 'T option
 
@@ -2748,6 +2945,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>None</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation in the worst case, where n is the length of the array.</remarks>
     [<CompiledName("TryFindBack")>]
     val tryFindBack: predicate: ('T -> bool) -> array: 'T array -> 'T option
 
@@ -2778,6 +2977,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>None</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation in the worst case, where n is the length of the array.</remarks>
     [<CompiledName("TryFindIndex")>]
     val tryFindIndex: predicate: ('T -> bool) -> array: 'T array -> int option
 
@@ -2808,6 +3009,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>None</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("TryItem")>]
     val tryItem: index: int -> array: 'T array -> 'T option
 
@@ -2838,6 +3041,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>None</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation in the worst case, where n is the length of the array.</remarks>
     [<CompiledName("TryFindIndexBack")>]
     val tryFindIndexBack: predicate: ('T -> bool) -> array: 'T array -> int option
 
@@ -2857,6 +3062,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 1; 2; 4; 8; 16; 32; 64 |]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the number of elements generated.</remarks>
     [<CompiledName("Unfold")>]
     val unfold<'T, 'State> : generator: ('State -> ('T * 'State) option) -> state: 'State -> 'T array
 
@@ -2876,6 +3083,8 @@ module Array =
     /// </code>
     /// Evaluates <c>numbers</c> to <c>[|1; 2|]</c> and <c>names</c> to <c>[|"one"; "two"|]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Unzip")>]
     val unzip: array: ('T1 * 'T2) array -> ('T1 array * 'T2 array)
 
@@ -2895,6 +3104,8 @@ module Array =
     /// </code>
     /// Evaluates <c>numbers</c> to <c>[|1; 2|]</c>, <c>names</c> to <c>[|"one"; "two"|]</c> and <c>roman</c> to <c>[|"I"; "II"|]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Unzip3")>]
     val unzip3: array: ('T1 * 'T2 * 'T3) array -> ('T1 array * 'T2 array * 'T3 array)
 
@@ -2908,7 +3119,7 @@ module Array =
     ///
     /// <exception cref="T:System.ArgumentNullException">Thrown when the input array is null.</exception>
     ///
-    /// <remarks>This is identical to <c>Array.filter</c>.</remarks>
+    /// <remarks>This is identical to <c>Array.filter</c>. This is an O(n) operation, where n is the length of the array.</remarks>
     ///
     /// <example id="where-1">Select only the even numbers:
     /// <code lang="fsharp">
@@ -2940,6 +3151,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[|[|1; 2; 3|]; [|2; 3; 4|]; [|3; 4; 5|]|]</c>
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("Windowed")>]
     val windowed: windowSize: int -> array: 'T array -> 'T array array
 
@@ -2963,6 +3176,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| (1, "one"); (2, "two") |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the arrays.</remarks>
     [<CompiledName("Zip")>]
     val zip: array1: 'T1 array -> array2: 'T2 array -> ('T1 * 'T2) array
 
@@ -2988,6 +3203,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[|(1, "one", "I"); (2, "two", "II")|]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the arrays.</remarks>
     [<CompiledName("Zip3")>]
     val zip3: array1: 'T1 array -> array2: 'T2 array -> array3: 'T3 array -> ('T1 * 'T2 * 'T3) array
 
@@ -3008,6 +3225,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 0; 2 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("RemoveAt")>]
     val removeAt: index: int -> source: 'T array -> 'T array
 
@@ -3029,6 +3248,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 0; 3 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("RemoveManyAt")>]
     val removeManyAt: index: int -> count: int -> source: 'T array -> 'T array
 
@@ -3050,6 +3271,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 0; 9; 2 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("UpdateAt")>]
     val updateAt: index: int -> value: 'T -> source: 'T array -> 'T array
 
@@ -3071,16 +3294,19 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 0; 9; 1; 2 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("InsertAt")>]
     val insertAt: index: int -> value: 'T -> source: 'T array -> 'T array
 
-    /// <summary>Return a new array with new items inserted before the given index.</summary>
+    /// <summary>Returns an array with new items inserted before the given index.</summary>
     ///
     /// <param name="index">The index where the items should be inserted.</param>
     /// <param name="values">The values to insert.</param>
     /// <param name="source">The input array.</param>
     ///
-    /// <returns>A new array (even if values is empty).</returns>
+    /// <returns>A new array, even if <c>values</c> is empty, unless both <c>source</c> and <c>values</c> are empty.
+    /// In that case, the result can be a shared empty array, including <c>source</c> itself.</returns>
     ///
     /// <exception cref="T:System.ArgumentException">Thrown when index is below 0 or greater than source.Length.</exception>
     ///
@@ -3092,6 +3318,8 @@ module Array =
     /// </code>
     /// Evaluates to <c>[| 0; 8; 9; 1; 2 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n+m) operation, where n is the length of the array and m is the number of elements to insert.</remarks>
     [<CompiledName("InsertManyAt")>]
     val insertManyAt: index: int -> values: seq<'T> -> source: 'T array -> 'T array
 
@@ -3111,6 +3339,8 @@ module Array =
     /// </code>
     /// Can evaluate to <c>[| 0; 2; 4; 3; 1 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("RandomShuffle")>]
     val randomShuffle: source: 'T array -> 'T array
 
@@ -3132,6 +3362,8 @@ module Array =
     /// </code>
     /// Can evaluate to <c>[| 0; 2; 4; 3; 1 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("RandomShuffleWith")>]
     val randomShuffleWith: random: Random -> source: 'T array -> 'T array
 
@@ -3153,6 +3385,8 @@ module Array =
     /// </code>
     /// Can evaluate to <c>[| 0; 2; 4; 3; 1 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("RandomShuffleBy")>]
     val randomShuffleBy: randomizer: (unit -> float) -> source: 'T array -> 'T array
 
@@ -3170,6 +3404,8 @@ module Array =
     /// </code>
     /// After evaluation <c>array</c> can contain <c>[| 0; 2; 4; 3; 1 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("RandomShuffleInPlace")>]
     val randomShuffleInPlace: source: 'T array -> unit
 
@@ -3188,6 +3424,8 @@ module Array =
     /// </code>
     /// After evaluation <c>array</c> can contain <c>[| 0; 2; 4; 3; 1 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("RandomShuffleInPlaceWith")>]
     val randomShuffleInPlaceWith: random: Random -> source: 'T array -> unit
 
@@ -3207,6 +3445,8 @@ module Array =
     /// </code>
     /// After evaluation <c>array</c> can contain <c>[| 0; 2; 4; 3; 1 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
     [<CompiledName("RandomShuffleInPlaceBy")>]
     val randomShuffleInPlaceBy: randomizer: (unit -> float) -> source: 'T array -> unit
 
@@ -3227,6 +3467,8 @@ module Array =
     /// </code>
     /// Can evaluate to <c>3</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("RandomChoice")>]
     val randomChoice: source: 'T array -> 'T
 
@@ -3249,6 +3491,8 @@ module Array =
     /// </code>
     /// Can evaluate to <c>3</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("RandomChoiceWith")>]
     val randomChoiceWith: random: Random -> source: 'T array -> 'T
 
@@ -3271,6 +3515,8 @@ module Array =
     /// </code>
     /// Can evaluate to <c>3</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(1) operation.</remarks>
     [<CompiledName("RandomChoiceBy")>]
     val randomChoiceBy: randomizer: (unit -> float) -> source: 'T array -> 'T
 
@@ -3293,6 +3539,8 @@ module Array =
     /// </code>
     /// Can evaluate to <c>[| 3; 1; 3 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(count) operation.</remarks>
     [<CompiledName("RandomChoices")>]
     val randomChoices: count: int -> source: 'T array -> 'T array
 
@@ -3317,6 +3565,8 @@ module Array =
     /// </code>
     /// Can evaluate to <c>[| 3; 1; 3 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(count) operation.</remarks>
     [<CompiledName("RandomChoicesWith")>]
     val randomChoicesWith: random: Random -> count: int -> source: 'T array -> 'T array
 
@@ -3341,6 +3591,8 @@ module Array =
     /// </code>
     /// Can evaluate to <c>[| 3; 1; 3 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(count) operation.</remarks>
     [<CompiledName("RandomChoicesBy")>]
     val randomChoicesBy: randomizer: (unit -> float) -> count: int -> source: 'T array -> 'T array
 
@@ -3364,6 +3616,8 @@ module Array =
     /// </code>
     /// Can evaluate to <c>[| 3; 1; 2 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(count) operation.</remarks>
     [<CompiledName("RandomSample")>]
     val randomSample: count: int -> source: 'T array -> 'T array
 
@@ -3389,6 +3643,8 @@ module Array =
     /// </code>
     /// Can evaluate to <c>[| 3; 1; 2 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(count) operation.</remarks>
     [<CompiledName("RandomSampleWith")>]
     val randomSampleWith: random: Random -> count: int -> source: 'T array -> 'T array
 
@@ -3414,6 +3670,8 @@ module Array =
     /// </code>
     /// Can evaluate to <c>[| 3; 1; 2 |]</c>.
     /// </example>
+    ///
+    /// <remarks>This is an O(count) operation.</remarks>
     [<CompiledName("RandomSampleBy")>]
     val randomSampleBy: randomizer: (unit -> float) -> count: int -> source: 'T array -> 'T array
 
@@ -3424,7 +3682,7 @@ module Array =
         ///
         /// <remarks>The predicate is applied to the elements of the input collection in parallel. If any application
         /// returns false then the overall result is false and testing of other elements in all threads is stopped at system's earliest convenience.
-        /// Otherwise, true is returned.</remarks>
+        /// Otherwise, true is returned. This is an O(n) operation in the worst case, where n is the length of the array.</remarks>
         ///
         /// <param name="predicate">The function to test the input elements.</param>
         /// <param name="array">The input array.</param>
@@ -3449,7 +3707,7 @@ module Array =
         ///
         /// <remarks>The predicate is applied to the elements of the input array in parallel. If any application
         /// returns true then the overall result is true and testing of other elements in all threads is stopped at system's earliest convenience.
-        /// Otherwise, <c>false</c> is returned.</remarks>
+        /// Otherwise, <c>false</c> is returned. This is an O(n) operation in the worst case, where n is the length of the array.</remarks>
         ///
         /// <param name="predicate">The function to test the input elements.</param>
         /// <param name="array">The input array.</param>
@@ -3505,6 +3763,8 @@ module Array =
         /// </code>
         /// Evaluates to <c>None</c>
         /// </example>
+        ///
+        /// <remarks>This is an O(n) operation in the worst case, where n is the length of the array.</remarks>
         [<CompiledName("TryFind")>]
         val tryFind: predicate: ('T -> bool) -> array: 'T array -> 'T option
 
@@ -3535,6 +3795,8 @@ module Array =
         /// </code>
         /// Evaluates to <c>None</c>
         /// </example>
+        ///
+        /// <remarks>This is an O(n) operation in the worst case, where n is the length of the array.</remarks>
         [<CompiledName("TryFindIndex")>]
         val tryFindIndex: predicate: ('T -> bool) -> array: 'T array -> int option
 
@@ -3567,6 +3829,8 @@ module Array =
         /// Evaluates to <c>None</c>.
         /// </example>
         ///
+        ///
+        /// <remarks>This is an O(n) operation in the worst case, where n is the length of the array.</remarks>
         [<CompiledName("TryPick")>]
         val tryPick: chooser: ('T -> 'U option) -> array: 'T array -> 'U option
 
@@ -3575,7 +3839,7 @@ module Array =
         /// Raises ArgumentException if the array is empty.</summary>
         /// <remarks>The order of processing is not guaranteed. For that reason, the 'reduce' function argument should be commutative.
         /// (That is, changing the order of execution must not affect the result)
-        /// Also, compared to the non-parallel version of Array.reduce, the 'reduce' function may be invoked more times due to the resulting reduction from participating threads.</remarks>
+        /// Also, compared to the non-parallel version of Array.reduce, the 'reduce' function may be invoked more times due to the resulting reduction from participating threads. This is an O(n) operation, where n is the length of the array.</remarks>
         ///
         /// <param name="reduction">The function to reduce a pair of elements to a single element.</param>
         /// <param name="array">The input array.</param>
@@ -3601,7 +3865,7 @@ module Array =
         /// After processing entire input, results from all threads are reduced together.
         /// Raises ArgumentException if the array is empty.</summary>
         /// <remarks>The order of processing is not guaranteed. For that reason, the 'reduction' function argument should be commutative.
-        /// (That is, changing the order of execution must not affect the result) </remarks>
+        /// (That is, changing the order of execution must not affect the result) This is an O(n) operation, where n is the length of the array.</remarks>
         ///
         /// <param name="projection">The function to project from elements of the input array</param>
         /// <param name="reduction">The function to reduce a pair of projected elements to a single element.</param>
@@ -3620,13 +3884,12 @@ module Array =
         /// </code>
         /// Evaluates to <c>1 + 3 + 4 + 2</c>. However, the system could have decided to compute (1+3) and (4+2) first, and then put them together.
         /// </example>
-
         [<CompiledName("ReduceBy")>]
         val reduceBy: projection: ('T -> 'U) -> reduction: ('U -> 'U -> 'U) -> array: 'T array -> 'U
 
         /// <summary>Returns the greatest of all elements of the array, compared via Operators.max.</summary>
         ///
-        /// <remarks>Throws ArgumentException for empty arrays.</remarks>
+        /// <remarks>Throws ArgumentException for empty arrays. This is an O(n) operation, where n is the length of the array.</remarks>
         ///
         /// <param name="array">The input array.</param>
         ///
@@ -3657,7 +3920,7 @@ module Array =
 
         /// <summary>Returns the greatest of all elements of the array, compared via Operators.max on the function result.</summary>
         ///
-        /// <remarks>Throws ArgumentException for empty arrays.</remarks>
+        /// <remarks>Throws ArgumentException for empty arrays. This is an O(n) operation, where n is the length of the array.</remarks>
         ///
         /// <param name="projection">The function to transform the elements into a type supporting comparison.</param>
         /// <param name="array">The input array.</param>
@@ -3689,7 +3952,7 @@ module Array =
 
         /// <summary>Returns the smallest of all elements of the array, compared via Operators.min.</summary>
         ///
-        /// <remarks>Throws ArgumentException for empty arrays</remarks>
+        /// <remarks>Throws ArgumentException for empty arrays This is an O(n) operation, where n is the length of the array.</remarks>
         ///
         /// <param name="array">The input array.</param>
         ///
@@ -3720,7 +3983,7 @@ module Array =
 
         /// <summary>Returns the lowest of all elements of the array, compared via Operators.min on the function result.</summary>
         ///
-        /// <remarks>Throws ArgumentException for empty arrays.</remarks>
+        /// <remarks>Throws ArgumentException for empty arrays. This is an O(n) operation, where n is the length of the array.</remarks>
         ///
         /// <param name="projection">The function to transform the elements into a type supporting comparison.</param>
         /// <param name="array">The input array.</param>
@@ -3766,6 +4029,8 @@ module Array =
         /// </code>
         /// Evaluates to <c>11</c>.
         /// </example>
+        ///
+        /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
         [<CompiledName("Sum")>]
         val inline sum:
             array: ^T array -> ^T when ^T: (static member (+): ^T * ^T -> ^T) and ^T: (static member Zero: ^T)
@@ -3787,6 +4052,8 @@ module Array =
         /// </code>
         /// Evaluates to <c>7</c>.
         /// </example>
+        ///
+        /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
         [<CompiledName("SumBy")>]
         val inline sumBy:
             projection: ('T -> ^U) -> array: 'T array -> ^U
@@ -3814,6 +4081,8 @@ module Array =
         /// </code>
         /// Throws <c>ArgumentException</c>
         /// </example>
+        ///
+        /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
         [<CompiledName("Average")>]
         val inline average:
             array: ^T array -> ^T
@@ -3851,6 +4120,8 @@ module Array =
         /// </code>
         /// Throws <c>ArgumentException</c>
         /// </example>
+        ///
+        /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
         [<CompiledName("AverageBy")>]
         val inline averageBy:
             projection: ('T -> ^U) -> array: 'T array -> ^U
@@ -3860,8 +4131,7 @@ module Array =
         /// the array comprised of the results <c>x</c> for each element where
         /// the function returns <c>Some(x)</c>.</summary>
         ///
-        /// <remarks>Performs the operation in parallel using <see cref="M:System.Threading.Tasks.Parallel.For" />.
-        /// The order in which the given function is applied to elements of the input array is not specified.</remarks>
+        /// <include file="xmldoc/parallel.xml" path="/parallel/arrayUnordered/*"/>
         ///
         /// <param name="chooser">The function to generate options from the elements.</param>
         /// <param name="array">The input array.</param>
@@ -3893,7 +4163,7 @@ module Array =
         /// <summary>For each element of the array, apply the given function. Concatenate all the results and return the combined array.</summary>
         ///
         /// <remarks>Performs the operation in parallel using <see cref="M:System.Threading.Tasks.Parallel.For" />.
-        /// The order in which the given function is applied to elements of the input array is not specified.</remarks>
+        /// The order in which the given function is applied to elements of the input array is not specified. This is an O(n) operation, where n is the total output length.</remarks>
         ///
         /// <param name="mapping"></param>
         /// <param name="array">The input array.</param>
@@ -3927,8 +4197,7 @@ module Array =
         /// <summary>Build a new array whose elements are the results of applying the given function
         /// to each of the elements of the array.</summary>
         ///
-        /// <remarks>Performs the operation in parallel using <see cref="M:System.Threading.Tasks.Parallel.For" />.
-        /// The order in which the given function is applied to elements of the input array is not specified.</remarks>
+        /// <include file="xmldoc/parallel.xml" path="/parallel/arrayUnordered/*"/>
         ///
         /// <param name="mapping"></param>
         /// <param name="array">The input array.</param>
@@ -3952,8 +4221,7 @@ module Array =
         /// to each of the elements of the array. The integer index passed to the
         /// function indicates the index of element being transformed.</summary>
         ///
-        /// <remarks>Performs the operation in parallel using <see cref="M:System.Threading.Tasks.Parallel.For" />.
-        /// The order in which the given function is applied to elements of the input array is not specified.</remarks>
+        /// <include file="xmldoc/parallel.xml" path="/parallel/arrayUnordered/*"/>
         ///
         /// <param name="mapping"></param>
         /// <param name="array">The input array.</param>
@@ -3979,7 +4247,7 @@ module Array =
         ///
         /// <remarks>Performs the operation in parallel using <see cref="M:System.Threading.Tasks.Parallel.For" />.
         /// The order in which the given function is applied to elements of the input array is not specified.
-        /// The order of the keys and values in the result is also not specified</remarks>
+        /// The order of the keys and values in the result is also not specified. This is an O(n) operation, where n is the length of the array.</remarks>
         /// <param name="projection">A function that transforms an element of the array into a comparable key.</param>
         /// <param name="array">The input array.</param>
         ///
@@ -4001,8 +4269,7 @@ module Array =
 
         /// <summary>Apply the given function to each element of the array. </summary>
         ///
-        /// <remarks>Performs the operation in parallel using <see cref="M:System.Threading.Tasks.Parallel.For" />.
-        /// The order in which the given function is applied to elements of the input array is not specified.</remarks>
+        /// <include file="xmldoc/parallel.xml" path="/parallel/arrayUnordered/*"/>
         ///
         /// <param name="action"></param>
         /// <param name="array">The input array.</param>
@@ -4028,8 +4295,7 @@ module Array =
         /// <summary>Apply the given function to each element of the array. The integer passed to the
         /// function indicates the index of element.</summary>
         ///
-        /// <remarks>Performs the operation in parallel using <see cref="M:System.Threading.Tasks.Parallel.For" />.
-        /// The order in which the given function is applied to elements of the input array is not specified.</remarks>
+        /// <include file="xmldoc/parallel.xml" path="/parallel/arrayUnordered/*"/>
         ///
         /// <param name="action"></param>
         /// <param name="array">The input array.</param>
@@ -4040,7 +4306,7 @@ module Array =
         /// <code lang="fsharp">
         /// let inputs = [| "a"; "b"; "c" |]
         ///
-        /// inputs |> Array.Parallel.iteri (fun i v -> printfn "{i}: {v}")
+        /// inputs |> Array.Parallel.iteri (fun i v -> printn $"{i}: {v}")
         /// </code>
         /// Evaluates to <c>unit</c> and prints the following to the console in an unspecified order:
         /// <code>
@@ -4055,7 +4321,7 @@ module Array =
         /// <summary>Create an array given the dimension and a generator function to compute the elements.</summary>
         ///
         /// <remarks>Performs the operation in parallel using <see cref="M:System.Threading.Tasks.Parallel.For" />.
-        /// The order in which the given function is applied to indices is not specified.</remarks>
+        /// The order in which the given function is applied to indices is not specified. This is an O(n) operation, where n is the count.</remarks>
         ///
         /// <param name="count"></param>
         /// <param name="initializer"></param>
@@ -4076,7 +4342,7 @@ module Array =
         /// respectively </summary>
         ///
         /// <remarks>Performs the operation in parallel using <see cref="M:System.Threading.Tasks.Parallel.For" />.
-        /// The order in which the given function is applied to indices is not specified.</remarks>
+        /// The order in which the given function is applied to indices is not specified. This is an O(n) operation, where n is the length of the array.</remarks>
         ///
         /// <param name="predicate">The function to test the input elements.</param>
         /// <param name="array">The input array.</param>
@@ -4096,10 +4362,39 @@ module Array =
         [<CompiledName("Partition")>]
         val partition: predicate: ('T -> bool) -> array: 'T array -> 'T array * 'T array
 
+        /// <summary>Splits the collection into two arrays, by applying the given partitioning function
+        /// to each element. Returns <c>Choice1Of2</c> elements in the first array and
+        /// <c>Choice2Of2</c> elements in the second array. Element order is preserved in both of the created arrays.</summary>
+        ///
+        /// <remarks>Performs the operation in parallel using <see cref="M:System.Threading.Tasks.Parallel.For" />.
+        /// The order in which the given function is applied to elements of the input array is not specified.
+        /// The partitioner function must be thread-safe. This is an O(n) operation, where n is the length of the array.</remarks>
+        ///
+        /// <param name="partitioner">The function to transform and classify each input element into one of two output types.</param>
+        /// <param name="array">The input array.</param>
+        ///
+        /// <returns>A tuple of two arrays. The first containing values from <c>Choice1Of2</c> results and the second
+        /// containing values from <c>Choice2Of2</c> results.</returns>
+        ///
+        /// <exception cref="T:System.ArgumentNullException">Thrown when the input array is null.</exception>
+        ///
+        /// <example id="parallel-partitionWith-1">
+        /// <code lang="fsharp">
+        /// let inputs = [| 1; 2; 3; 4; 5 |]
+        ///
+        /// let evens, odds =
+        ///     inputs |> Array.Parallel.partitionWith (fun x ->
+        ///         if x % 2 = 0 then Choice1Of2 (x * 10)
+        ///         else Choice2Of2 (string x))
+        /// </code>
+        /// Evaluates <c>evens</c> to <c>[|20; 40|]</c> and <c>odds</c> to <c>[|"1"; "3"; "5"|]</c>.
+        /// </example>
+        [<CompiledName("PartitionWith")>]
+        val inline partitionWith: partitioner: ('T -> Choice<'T1, 'T2>) -> array: 'T array -> 'T1 array * 'T2 array
+
         /// <summary>Sorts the elements of an array in parallel, returning a new array. Elements are compared using <see cref="M:Microsoft.FSharp.Core.Operators.compare"/>. </summary>
         ///
-        /// <remarks>This is not a stable sort, i.e. the original order of equal elements is not necessarily preserved.
-        /// For a stable sort, consider using <see cref="M:Microsoft.FSharp.Collections.SeqModule.Sort"/>.</remarks>
+        /// <include file="xmldoc/sort.xml" path="/sort/arrayUnstable/*"/>
         ///
         /// <param name="array">The input array.</param>
         ///
@@ -4121,8 +4416,7 @@ module Array =
         /// <summary>Sorts the elements of an array in parallel, using the given projection for the keys and returning a new array.
         /// Elements are compared using <see cref="M:Microsoft.FSharp.Core.Operators.compare"/>.</summary>
         ///
-        /// <remarks>This is not a stable sort, i.e. the original order of equal elements is not necessarily preserved.
-        /// For a stable sort, consider using <see cref="M:Microsoft.FSharp.Collections.SeqModule.Sort"/>.</remarks>
+        /// <include file="xmldoc/sort.xml" path="/sort/arrayUnstable/*"/>
         ///
         /// <param name="projection">The function to transform array elements into the type that is compared.</param>
         /// <param name="array">The input array.</param>
@@ -4145,8 +4439,7 @@ module Array =
 
         /// <summary>Sorts the elements of an array in parallel, using the given comparison function as the order, returning a new array.</summary>
         ///
-        /// <remarks>This is not a stable sort, i.e. the original order of equal elements is not necessarily preserved.
-        /// For a stable sort, consider using <see cref="M:Microsoft.FSharp.Collections.SeqModule.Sort"/>.</remarks>
+        /// <include file="xmldoc/sort.xml" path="/sort/arrayUnstable/*"/>
         ///
         /// <param name="comparer">The function to compare pairs of array elements.</param>
         /// <param name="array">The input array.</param>
@@ -4174,8 +4467,7 @@ module Array =
         /// <summary>Sorts the elements of an array by mutating the array in-place in parallel, using the given projection for the keys.
         /// Elements are compared using <see cref="M:Microsoft.FSharp.Core.Operators.compare"/>.</summary>
         ///
-        /// <remarks>This is not a stable sort, i.e. the original order of equal elements is not necessarily preserved.
-        /// For a stable sort, consider using <see cref="M:Microsoft.FSharp.Collections.SeqModule.Sort"/>.</remarks>
+        /// <include file="xmldoc/sort.xml" path="/sort/arrayUnstableInPlace/*"/>
         ///
         /// <param name="projection">The function to transform array elements into the type that is compared.</param>
         /// <param name="array">The input array.</param>
@@ -4213,6 +4505,8 @@ module Array =
         /// </code>
         /// After evaluation <c>array</c> contains <c>[|(0, "aa"); (2, "cc"); (3, "dd"); (1, "bbb")|]</c>.
         /// </example>
+        ///
+        /// <remarks>This is an O(n log n) operation, modifying the array in place.</remarks>
         [<CompiledName("SortInPlaceWith")>]
         val sortInPlaceWith: comparer: ('T -> 'T -> int) -> array: 'T array -> unit
 
@@ -4231,13 +4525,14 @@ module Array =
         /// </code>
         /// After evaluation <c>array</c> contains <c>[| 1; 1; 3; 4; 6; 8 |]</c>.
         /// </example>
+        ///
+        /// <remarks>This is an O(n log n) operation, modifying the array in place.</remarks>
         [<CompiledName("SortInPlace")>]
         val sortInPlace: array: 'T array -> unit when 'T: comparison
 
         /// <summary>Sorts the elements of an array in parallel, in descending order, returning a new array. Elements are compared using <see cref="M:Microsoft.FSharp.Core.Operators.compare"/>. </summary>
         ///
-        /// <remarks>This is not a stable sort, i.e. the original order of equal elements is not necessarily preserved.
-        /// For a stable sort, consider using <see cref="M:Microsoft.FSharp.Collections.SeqModule.Sort"/>.</remarks>
+        /// <include file="xmldoc/sort.xml" path="/sort/arrayUnstable/*"/>
         ///
         /// <param name="array">The input array.</param>
         ///
@@ -4257,8 +4552,7 @@ module Array =
         /// <summary>Sorts the elements of an array in parallel, in descending order, using the given projection for the keys and returning a new array.
         /// Elements are compared using <see cref="M:Microsoft.FSharp.Core.Operators.compare"/>.</summary>
         ///
-        /// <remarks>This is not a stable sort, i.e. the original order of equal elements is not necessarily preserved.
-        /// For a stable sort, consider using <see cref="M:Microsoft.FSharp.Collections.SeqModule.Sort"/>.</remarks>
+        /// <include file="xmldoc/sort.xml" path="/sort/arrayUnstable/*"/>
         ///
         /// <param name="projection">The function to transform array elements into the type that is compared.</param>
         /// <param name="array">The input array.</param>
@@ -4296,6 +4590,8 @@ module Array =
         /// </code>
         /// Evaluates to <c>[| (1, "one"); (2, "two") |]</c>.
         /// </example>
+        ///
+        /// <remarks>This is an O(n) operation, where n is the length of the arrays.</remarks>
         [<CompiledName("Zip")>]
         val zip: array1: 'T1 array -> array2: 'T2 array -> ('T1 * 'T2) array
 
@@ -4317,5 +4613,7 @@ module Array =
         /// </code>
         /// Evaluates to <c>[| 2; 4 |]</c>
         /// </example>
+        ///
+        /// <remarks>This is an O(n) operation, where n is the length of the array.</remarks>
         [<CompiledName("Filter")>]
         val filter: predicate: ('T -> bool) -> array: 'T array -> 'T array

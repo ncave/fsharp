@@ -1,5 +1,5 @@
-// #Regression #Conformance #TypesAndModules #Unions 
-#light 
+// #Regression #Conformance #TypesAndModules #Unions
+
 
 // FS1: 325, Case sensitivity reported by Eugene
 

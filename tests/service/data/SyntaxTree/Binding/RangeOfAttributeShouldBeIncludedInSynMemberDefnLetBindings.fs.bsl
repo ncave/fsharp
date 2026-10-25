@@ -10,7 +10,8 @@ ImplFile
           [Types
              ([SynTypeDefn
                  (SynComponentInfo
-                    ([], None, [], [Bar],
+                    ([], None, [],
+                     Some (LongIdent (SynLongIdent ([Bar], [], [None]))),
                      PreXmlDoc ((2,0), FSharp.Compiler.Xml.XmlDocCollector),
                      false, None, (2,5--2,8)),
                   ObjectModel
@@ -36,11 +37,11 @@ ImplFile
                              { LeadingKeyword = Let (4,4--4,7)
                                InlineKeyword = None
                                EqualsRange = Some (4,10--4,11) })], false, false,
-                         (3,4--4,13))], (3,4--4,13)), [], None, (2,5--4,13),
-                  { LeadingKeyword = Type (2,0--2,4)
-                    EqualsRange = Some (2,9--2,10)
-                    WithKeyword = None })], (2,0--4,13))], PreXmlDocEmpty, [],
-          None, (2,0--5,0), { LeadingKeyword = None })], (true, true),
-      { ConditionalDirectives = []
-        WarnDirectives = []
-        CodeComments = [] }, set []))
+                         (3,4--4,13), { InKeyword = None })], (3,4--4,13)), [],
+                  None, (2,5--4,13), { LeadingKeyword = Type (2,0--2,4)
+                                       EqualsRange = Some (2,9--2,10)
+                                       WithKeyword = None })], (2,0--4,13))],
+          PreXmlDocEmpty, [], None, (2,0--5,0), { LeadingKeyword = None })],
+      (true, true), { ConditionalDirectives = []
+                      WarnDirectives = []
+                      CodeComments = [] }, set []))

@@ -683,6 +683,9 @@ type ILCallingConv =
 
     static member Static = ILCallingConvStatics.Static
 
+    static member Create(thisConv, argConv) =
+        ILCallingConvStatics.Get(thisConv, argConv)
+
     override x.ToString() =
         if x.IsStatic then "static" else "instance"
 
@@ -693,9 +696,54 @@ and ILCallingConvStatics() =
 
     static let staticCallConv = Callconv(ILThisConvention.Static, ILArgConvention.Default)
 
+    /// Every combination, so that reading metadata never allocates a calling convention. The two
+    /// common ones above are placed in the table too, so all uses share one instance per combination.
+    static let allCallConvs =
+        let thisConvs =
+            [|
+                ILThisConvention.Instance
+                ILThisConvention.InstanceExplicit
+                ILThisConvention.Static
+            |]
+
+        let argConvs =
+            [|
+                ILArgConvention.Default
+                ILArgConvention.CDecl
+                ILArgConvention.StdCall
+                ILArgConvention.ThisCall
+                ILArgConvention.FastCall
+                ILArgConvention.VarArg
+            |]
+
+        Array.init (thisConvs.Length * argConvs.Length) (fun i ->
+            match thisConvs[i / argConvs.Length], argConvs[i % argConvs.Length] with
+            | ILThisConvention.Instance, ILArgConvention.Default -> instanceCallConv
+            | ILThisConvention.Static, ILArgConvention.Default -> staticCallConv
+            | thisConv, argConv -> Callconv(thisConv, argConv))
+
     static member Instance = instanceCallConv
 
     static member Static = staticCallConv
+
+    static member Get(thisConv, argConv) =
+        // Explicit, so adding a case to either union is a compile error here rather than a bad index.
+        let thisIdx =
+            match thisConv with
+            | ILThisConvention.Instance -> 0
+            | ILThisConvention.InstanceExplicit -> 1
+            | ILThisConvention.Static -> 2
+
+        let argIdx =
+            match argConv with
+            | ILArgConvention.Default -> 0
+            | ILArgConvention.CDecl -> 1
+            | ILArgConvention.StdCall -> 2
+            | ILArgConvention.ThisCall -> 3
+            | ILArgConvention.FastCall -> 4
+            | ILArgConvention.VarArg -> 5
+
+        allCallConvs[thisIdx * 6 + argIdx]
 
 type ILBoxity =
     | AsObject
@@ -1192,6 +1240,7 @@ type ILAttribElem =
     | Type of ILType option
     | TypeRef of ILTypeRef option
     | Array of ILType * ILAttribElem list
+    | Enum of enumType: ILType * value: ILAttribElem
 
 type ILAttributeNamedArg = string * ILType * bool * ILAttribElem
 
@@ -1229,19 +1278,85 @@ type ILAttributes(array: ILAttribute[]) =
 
     static member val internal Empty = ILAttributes([||])
 
-[<NoEquality; NoComparison>]
-type ILAttributesStored =
+[<Flags>]
+type WellKnownILAttributes =
+    | None = 0u
+    | IsReadOnlyAttribute = (1u <<< 0)
+    | IsUnmanagedAttribute = (1u <<< 1)
+    | IsByRefLikeAttribute = (1u <<< 2)
+    | ExtensionAttribute = (1u <<< 3)
+    | NullableAttribute = (1u <<< 4)
+    | ParamArrayAttribute = (1u <<< 5)
+    | AllowNullLiteralAttribute = (1u <<< 6)
+    | ReflectedDefinitionAttribute = (1u <<< 7)
+    | AutoOpenAttribute = (1u <<< 8)
+    | InternalsVisibleToAttribute = (1u <<< 9)
+    | CallerMemberNameAttribute = (1u <<< 10)
+    | CallerFilePathAttribute = (1u <<< 11)
+    | CallerLineNumberAttribute = (1u <<< 12)
+    | IDispatchConstantAttribute = (1u <<< 13)
+    | IUnknownConstantAttribute = (1u <<< 14)
+    | RequiresLocationAttribute = (1u <<< 15)
+    | SetsRequiredMembersAttribute = (1u <<< 16)
+    | NoEagerConstraintApplicationAttribute = (1u <<< 17)
+    | DefaultMemberAttribute = (1u <<< 18)
+    | ObsoleteAttribute = (1u <<< 19)
+    | CompilerFeatureRequiredAttribute = (1u <<< 20)
+    | ExperimentalAttribute = (1u <<< 21)
+    | RequiredMemberAttribute = (1u <<< 22)
+    | NullableContextAttribute = (1u <<< 23)
+    | AttributeUsageAttribute = (1u <<< 24)
+    | NotNullIfNotNullAttribute = (1u <<< 25)
+    | OverloadResolutionPriorityAttribute = (1u <<< 26)
+    | RequireNamedArgumentsAttribute = (1u <<< 27)
+    | EditorBrowsableNever = (1u <<< 28)
+    | EditorBrowsableAdvanced = (1u <<< 29)
+    | NotComputed = (1u <<< 31)
 
-    /// Computed by ilread.fs based on metadata index
-    | Reader of (int32 -> ILAttribute[])
+[<Sealed; NoEquality; NoComparison>]
+type ILAttributesStored private (metadataIndex: int32, reader: int32 -> ILAttribute[], given: ILAttribute[] | null) =
 
-    /// Already computed
-    | Given of ILAttributes
+    /// Stands in for the reader when the attributes are already in hand, so the field can stay non-null.
+    static let noReader: int32 -> ILAttribute[] = fun _ -> [||]
 
-    member x.GetCustomAttrs metadataIndex =
-        match x with
-        | Reader f -> ILAttributes(f metadataIndex)
-        | Given attrs -> attrs
+    // Holds the array rather than an ILAttributesStoredRepr. The reader function is shared per metadata
+    // reader per attribute table, so it is held directly; wrapping it cost one object per owner, and most
+    // owners are never forced, so most of those existed only to say "not read yet". ILAttributes is a
+    // struct over the array, so rewrapping on each read allocates nothing.
+    [<VolatileField>]
+    let mutable attrArray: ILAttribute[] | null = given
+
+    [<VolatileField>]
+    let mutable wellKnownFlags = WellKnownILAttributes.NotComputed
+
+    member _.MetadataIndex = metadataIndex
+
+    member x.CustomAttrs: ILAttributes =
+        match attrArray with
+        | null ->
+            let a = reader metadataIndex
+            attrArray <- a
+            ILAttributes a
+        | a -> ILAttributes a
+
+    member x.HasWellKnownAttribute(flag: WellKnownILAttributes, compute: ILAttributes -> WellKnownILAttributes) : bool =
+        x.GetOrComputeWellKnownFlags(compute) &&& flag <> WellKnownILAttributes.None
+
+    member x.GetOrComputeWellKnownFlags(compute: ILAttributes -> WellKnownILAttributes) : WellKnownILAttributes =
+        let f = wellKnownFlags
+
+        if f <> WellKnownILAttributes.NotComputed then
+            f
+        else
+            let a = x.CustomAttrs
+            let computed = compute a
+            wellKnownFlags <- computed
+            computed
+
+    static member CreateReader(idx: int32, f: int32 -> ILAttribute[]) = ILAttributesStored(idx, f, null)
+
+    static member CreateGiven(attrs: ILAttributes) =
+        ILAttributesStored(-1, noReader, attrs.AsArray())
 
 let emptyILCustomAttrs = ILAttributes [||]
 
@@ -1256,18 +1371,18 @@ let mkILCustomAttrs l =
     | [] -> emptyILCustomAttrs
     | _ -> mkILCustomAttrsFromArray (List.toArray l)
 
-let emptyILCustomAttrsStored = ILAttributesStored.Given emptyILCustomAttrs
+let emptyILCustomAttrsStored = ILAttributesStored.CreateGiven emptyILCustomAttrs
 
 let storeILCustomAttrs (attrs: ILAttributes) =
     if attrs.AsArray().Length = 0 then
         emptyILCustomAttrsStored
     else
-        ILAttributesStored.Given attrs
+        ILAttributesStored.CreateGiven attrs
 
 let mkILCustomAttrsComputed f =
-    ILAttributesStored.Reader(fun _ -> f ())
+    ILAttributesStored.CreateReader(-1, fun _ -> f ())
 
-let mkILCustomAttrsReader f = ILAttributesStored.Reader f
+let mkILCustomAttrsReader f = ILAttributesStored.CreateReader(-1, f)
 
 type ILCodeLabel = int
 
@@ -1527,6 +1642,7 @@ type ILMethodBody =
         MaxStack: int32
         NoInlining: bool
         AggressiveInlining: bool
+        IsRuntimeAsync: bool
         Locals: ILLocals
         Code: ILCode
         DebugRange: ILDebugPoint option
@@ -1791,7 +1907,7 @@ type ILParameter =
         MetadataIndex: int32
     }
 
-    member x.CustomAttrs = x.CustomAttrsStored.GetCustomAttrs x.MetadataIndex
+    member x.CustomAttrs = x.CustomAttrsStored.CustomAttrs
 
     override x.ToString() =
         x.Name |> Option.defaultValue "<no name>"
@@ -1809,7 +1925,7 @@ type ILReturn =
 
     override x.ToString() = "<return>"
 
-    member x.CustomAttrs = x.CustomAttrsStored.GetCustomAttrs x.MetadataIndex
+    member x.CustomAttrs = x.CustomAttrsStored.CustomAttrs
 
     member x.WithCustomAttrs(customAttrs) =
         { x with
@@ -1870,7 +1986,7 @@ type ILGenericParameterDef =
         MetadataIndex: int32
     }
 
-    member x.CustomAttrs = x.CustomAttrsStored.GetCustomAttrs x.MetadataIndex
+    member x.CustomAttrs = x.CustomAttrsStored.CustomAttrs
 
     /// For debugging
     [<DebuggerBrowsable(DebuggerBrowsableState.Never)>]
@@ -1916,13 +2032,7 @@ type InterfaceImpl =
         mutable CustomAttrsStored: ILAttributesStored
     }
 
-    member x.CustomAttrs =
-        match x.CustomAttrsStored with
-        | ILAttributesStored.Reader f ->
-            let res = ILAttributes(f x.Idx)
-            x.CustomAttrsStored <- ILAttributesStored.Given res
-            res
-        | ILAttributesStored.Given attrs -> attrs
+    member x.CustomAttrs = x.CustomAttrsStored.CustomAttrs
 
     static member Create(ilType: ILType, customAttrsStored: ILAttributesStored) =
         {
@@ -2029,7 +2139,7 @@ type ILMethodDef
                  | Some attrs -> attrs)
         )
 
-    member x.CustomAttrs = x.CustomAttrsStored.GetCustomAttrs metadataIndex
+    member x.CustomAttrs = x.CustomAttrsStored.CustomAttrs
 
     member x.SecurityDecls = x.SecurityDeclsStored.GetSecurityDecls x.MetadataIndex
 
@@ -2173,6 +2283,11 @@ type ILMethodDef
     member x.WithRuntime(condition) =
         x.With(implAttributes = (x.ImplAttributes |> conditionalAdd condition MethodImplAttributes.Runtime))
 
+    member x.WithAsync(condition) =
+        // MethodImplOptions.Async is not present in all target reference assemblies.
+        let asyncFlag = enum<MethodImplAttributes> 0x2000
+        x.With(implAttributes = (x.ImplAttributes |> conditionalAdd condition asyncFlag))
+
     [<DebuggerBrowsable(DebuggerBrowsableState.Never)>]
     member x.DebugText = x.ToString()
 
@@ -2266,7 +2381,7 @@ type ILEventDef
 
     member _.MetadataIndex = metadataIndex
 
-    member x.CustomAttrs = customAttrsStored.GetCustomAttrs x.MetadataIndex
+    member x.CustomAttrs = customAttrsStored.CustomAttrs
 
     member x.With(?eventType, ?name, ?attributes, ?addMethod, ?removeMethod, ?fireMethod, ?otherMethods, ?customAttrs) =
         ILEventDef(
@@ -2342,7 +2457,7 @@ type ILPropertyDef
     member x.Init = init
     member x.Args = args
     member x.CustomAttrsStored = customAttrsStored
-    member x.CustomAttrs = customAttrsStored.GetCustomAttrs x.MetadataIndex
+    member x.CustomAttrs = customAttrsStored.CustomAttrs
     member x.MetadataIndex = metadataIndex
 
     member x.With(?name, ?attributes, ?setMethod, ?getMethod, ?callingConv, ?propertyType, ?init, ?args, ?customAttrs) =
@@ -2418,7 +2533,7 @@ type ILFieldDef
     member _.Offset = offset
     member _.Marshal = marshal
     member x.CustomAttrsStored = customAttrsStored
-    member x.CustomAttrs = customAttrsStored.GetCustomAttrs x.MetadataIndex
+    member x.CustomAttrs = customAttrsStored.CustomAttrs
     member x.MetadataIndex = metadataIndex
 
     member x.With
@@ -2519,6 +2634,7 @@ type ILTypeDefLayout =
     | Auto
     | Sequential of ILTypeDefLayoutInfo
     | Explicit of ILTypeDefLayoutInfo (* REVIEW: add field info here *)
+    | Extended
 
 and ILTypeDefLayoutInfo =
     {
@@ -2632,6 +2748,9 @@ let convertLayout layout =
     | ILTypeDefLayout.Auto -> TypeAttributes.AutoLayout
     | ILTypeDefLayout.Sequential _ -> TypeAttributes.SequentialLayout
     | ILTypeDefLayout.Explicit _ -> TypeAttributes.ExplicitLayout
+    | ILTypeDefLayout.Extended ->
+        // Extended layout is represented by TypeAttributes value 0x18 (both Sequential and Explicit bits set)
+        enum<TypeAttributes> (0x18)
 
 let convertEncoding encoding =
     match encoding with
@@ -2676,8 +2795,6 @@ type ILTypeDef
         customAttrsStored: ILAttributesStored,
         metadataIndex: int32
     ) =
-
-    let mutable customAttrsStored = customAttrsStored
 
     let hasFlag flag = additionalFlags &&& flag = flag
 
@@ -2829,13 +2946,7 @@ type ILTypeDef
             customAttrs = defaultArg customAttrs x.CustomAttrsStored
         )
 
-    member x.CustomAttrs: ILAttributes =
-        match customAttrsStored with
-        | ILAttributesStored.Reader f ->
-            let res = ILAttributes(f x.MetadataIndex)
-            customAttrsStored <- ILAttributesStored.Given res
-            res
-        | ILAttributesStored.Given res -> res
+    member x.CustomAttrs: ILAttributes = customAttrsStored.CustomAttrs
 
     member x.SecurityDecls = x.SecurityDeclsStored.GetSecurityDecls x.MetadataIndex
 
@@ -2922,23 +3033,90 @@ type ILTypeDef
 
     override x.ToString() = "type " + x.Name
 
-and [<Sealed>] ILTypeDefs(f: unit -> ILPreTypeDef[]) =
-    inherit DelayInitArrayMap<ILPreTypeDef, string list * string, ILPreTypeDef>(f)
+and [<Sealed>] ILTypeDefs
+    (
+        f: unit -> ILPreTypeDef[],
+        // Plain fields rather than a lazy: there is one ILTypeDefs per read type and per namespace level.
+        fNamespaces: unit -> ILPreNamespace[]
+    ) =
+    inherit DelayInitArrayMap<ILPreTypeDef, string, ILPreTypeDef>(f)
+
+    [<VolatileField>]
+    let mutable namespacesStore: (ILPreNamespace array | null) = null
+
+    let mutable fNamespaces = fNamespaces
+
+    new(f: unit -> ILPreTypeDef[]) = ILTypeDefs(f, Unchecked.defaultof<_>)
 
     override this.CreateDictionary(arr) =
         let t = Dictionary(arr.Length, HashIdentity.Structural)
 
         for pre in arr do
-            let key = pre.Namespace, pre.Name
-            t[key] <- pre
+            t[pre.Name] <- pre
 
         ReadOnlyDictionary t
 
+    member private this.RealiseNamespaces() =
+        Monitor.Enter this
+
+        try
+            match namespacesStore with
+            | NonNull nss -> nss
+            | _ ->
+                let nss =
+                    match box fNamespaces with
+                    | null -> Array.empty
+                    | _ -> fNamespaces ()
+
+                namespacesStore <- nss
+                fNamespaces <- Unchecked.defaultof<_>
+                nss
+        finally
+            Monitor.Exit this
+
+    member this.AsArrayOfPreNamespaces() =
+        match namespacesStore with
+        | NonNull nss -> nss
+        | _ -> this.RealiseNamespaces()
+
+    member x.AllPreTypeDefs() =
+        [|
+            yield! x.GetArray()
+            for ns: ILPreNamespace in x.AsArrayOfPreNamespaces() do
+                yield! ns.AllPreTypeDefs()
+        |]
+
+    member x.TryFindPreTypeDef(ns: string list, n: string) =
+        match ns with
+        | [] ->
+            match x.GetDictionary().TryGetValue n with
+            | true, pre -> Some pre
+            | _ -> None
+        | head :: rest ->
+            match x.AsArrayOfPreNamespaces() |> Array.tryFind (fun ns -> ns.Name = head) with
+            | Some(ns: ILPreNamespace) -> ns.TryFindPreTypeDef(rest, n)
+            | None -> None
+
+    member private x.TryFindPreTypeDefOfWholeName(nm: string) =
+        let ns, n = splitILTypeName nm
+
+        match x.TryFindPreTypeDef(ns, n) with
+        | Some _ as res -> res
+        | None ->
+            match ns with
+            | [] -> None
+            | _ ->
+                // Probing an ungrouped level's whole names only once the walk has failed leaves a grouped
+                // level's types unforced.
+                match x.GetDictionary().TryGetValue nm with
+                | true, pre -> Some pre
+                | _ -> None
+
     member x.AsArray() =
-        [| for pre in x.GetArray() -> pre.GetTypeDef() |]
+        [| for pre in x.AllPreTypeDefs() -> pre.GetTypeDef() |]
 
     member x.AsList() =
-        [ for pre in x.GetArray() -> pre.GetTypeDef() ]
+        [ for pre in x.AllPreTypeDefs() -> pre.GetTypeDef() ]
 
     interface IEnumerable with
         member x.GetEnumerator() =
@@ -2946,43 +3124,142 @@ and [<Sealed>] ILTypeDefs(f: unit -> ILPreTypeDef[]) =
 
     interface IEnumerable<ILTypeDef> with
         member x.GetEnumerator() =
-            (seq { for pre in x.GetArray() -> pre.GetTypeDef() }).GetEnumerator()
+            (seq { for pre in x.AllPreTypeDefs() -> pre.GetTypeDef() }).GetEnumerator()
 
     member x.AsArrayOfPreTypeDefs() = x.GetArray()
 
     member x.FindByName nm =
-        let ns, n = splitILTypeName nm
-        x.GetDictionary().[(ns, n)].GetTypeDef()
+        match x.TryFindPreTypeDefOfWholeName nm with
+        | Some pre -> pre.GetTypeDef()
+        | None -> raise (KeyNotFoundException(nm))
 
     member x.ExistsByName nm =
-        let ns, n = splitILTypeName nm
-        x.GetDictionary().ContainsKey((ns, n))
+        x.TryFindPreTypeDefOfWholeName nm |> Option.isSome
 
 and [<NoEquality; NoComparison>] ILPreTypeDef =
-    abstract Namespace: string list
     abstract Name: string
     abstract GetTypeDef: unit -> ILTypeDef
 
+/// Plain fields rather than lazies: there is one of these per namespace of every assembly read, and one
+/// that nothing looks inside stays a single object holding three nulls.
+and [<NoEquality; NoComparison; AbstractClass>] ILPreNamespace(name: string) =
+
+    [<VolatileField>]
+    let mutable types: (ILPreTypeDef array | null) = null
+
+    [<VolatileField>]
+    let mutable namespaces: (ILPreNamespace array | null) = null
+
+    // Only a namespace someone looks a type up in ever builds one.
+    [<VolatileField>]
+    let mutable typesByName: (IDictionary<string, ILPreTypeDef> | null) = null
+
+    member _.Name = name
+
+    abstract ComputeTypes: unit -> ILPreTypeDef[]
+
+    abstract ComputeNamespaces: unit -> ILPreNamespace[]
+
+    member private this.RealiseTypes() =
+        Monitor.Enter this
+
+        try
+            match types with
+            | NonNull ts -> ts
+            | _ ->
+                let ts = this.ComputeTypes()
+                types <- ts
+                ts
+        finally
+            Monitor.Exit this
+
+    member private this.RealiseNamespaces() =
+        Monitor.Enter this
+
+        try
+            match namespaces with
+            | NonNull nss -> nss
+            | _ ->
+                let nss = this.ComputeNamespaces()
+                namespaces <- nss
+                nss
+        finally
+            Monitor.Exit this
+
+    member this.GetTypes() =
+        match types with
+        | NonNull ts -> ts
+        | _ -> this.RealiseTypes()
+
+    member this.GetNamespaces() =
+        match namespaces with
+        | NonNull nss -> nss
+        | _ -> this.RealiseNamespaces()
+
+    member private this.GetTypesByName() =
+        match typesByName with
+        | NonNull d -> d
+        | _ ->
+            let d = Dictionary(HashIdentity.Structural)
+
+            for pre in this.GetTypes() do
+                d[pre.Name] <- pre
+
+            let d = ReadOnlyDictionary d :> IDictionary<_, _>
+            typesByName <- d
+            d
+
+    member this.TryFindPreTypeDef(ns: string list, n: string) =
+        match ns with
+        | [] ->
+            match this.GetTypesByName().TryGetValue n with
+            | true, pre -> Some pre
+            | _ -> None
+        | head :: rest ->
+            // Levels are narrow - 86% of the framework's have one child - so scanning beats a dictionary.
+            match this.GetNamespaces() |> Array.tryFind (fun ns -> ns.Name = head) with
+            | Some ns -> ns.TryFindPreTypeDef(rest, n)
+            | None -> None
+
+    member this.AllPreTypeDefs() =
+        [|
+            yield! this.GetTypes()
+            for ns in this.GetNamespaces() do
+                yield! ns.AllPreTypeDefs()
+        |]
+
 /// This is a memory-critical class. Very many of these objects get allocated and held to represent the contents of .NET assemblies.
-and [<Sealed>] ILPreTypeDefImpl(nameSpace: string list, name: string, metadataIndex: int32, storage: ILTypeDefStored) =
-    let stored =
-        lazy
-            match storage with
-            | ILTypeDefStored.Given td -> td
-            | ILTypeDefStored.Computed f -> f ()
-            | ILTypeDefStored.Reader f -> f metadataIndex
+///
+/// Two threads racing on the name both resolve it: they get equal strings, so no lock is needed.
+and [<Sealed>] ILPreTypeDefImpl(nameIdx: int32, metadataIndex: int32, storage: ILTypeDefStored) =
+    inherit DelayInitValue<ILTypeDef>()
+
+    [<VolatileField>]
+    let mutable name: (string | null) = null
+
+    override _.Compute() =
+        match storage with
+        | ILTypeDefStored.Reader(getTypeDef, _) -> getTypeDef metadataIndex
 
     interface ILPreTypeDef with
-        member _.Namespace = nameSpace
-        member _.Name = name
-        member x.GetTypeDef() = stored.Value
+        member _.Name =
+            match name with
+            | NonNull n -> n
+            | _ ->
+                let n =
+                    match storage with
+                    | ILTypeDefStored.Reader(_, getName) -> getName nameIdx
 
-and ILTypeDefStored =
-    | Given of ILTypeDef
-    | Reader of (int32 -> ILTypeDef)
-    | Computed of (unit -> ILTypeDef)
+                name <- n
+                n
 
-let mkILTypeDefReader f = ILTypeDefStored.Reader f
+        member this.GetTypeDef() = this.Value
+
+/// Every type a reader reads shares these, so nameIdx is all a pre-type-def holds to name itself.
+and ILTypeDefStored = Reader of getTypeDef: (int32 -> ILTypeDef) * getName: (int32 -> string)
+
+let mkILTypeDefReader (getTypeDef, getName) =
+    ILTypeDefStored.Reader(getTypeDef, getName)
 
 type ILNestedExportedType =
     {
@@ -2993,7 +3270,7 @@ type ILNestedExportedType =
         MetadataIndex: int32
     }
 
-    member x.CustomAttrs = x.CustomAttrsStored.GetCustomAttrs x.MetadataIndex
+    member x.CustomAttrs = x.CustomAttrsStored.CustomAttrs
 
     override x.ToString() = "exported type " + x.Name
 
@@ -3017,7 +3294,7 @@ and [<NoComparison; NoEquality>] ILExportedTypeOrForwarder =
 
     member x.IsForwarder = x.Attributes &&& enum<TypeAttributes> 0x00200000 <> enum 0
 
-    member x.CustomAttrs = x.CustomAttrsStored.GetCustomAttrs x.MetadataIndex
+    member x.CustomAttrs = x.CustomAttrsStored.CustomAttrs
 
     override x.ToString() = "exported type " + x.Name
 
@@ -3057,7 +3334,7 @@ type ILResource =
         | ILResourceLocation.Local bytes -> bytes.GetByteMemory()
         | _ -> failwith "GetBytes"
 
-    member x.CustomAttrs = x.CustomAttrsStored.GetCustomAttrs x.MetadataIndex
+    member x.CustomAttrs = x.CustomAttrsStored.CustomAttrs
 
     override x.ToString() = "resource " + x.Name
 
@@ -3104,7 +3381,7 @@ type ILAssemblyManifest =
         MetadataIndex: int32
     }
 
-    member x.CustomAttrs = x.CustomAttrsStored.GetCustomAttrs x.MetadataIndex
+    member x.CustomAttrs = x.CustomAttrsStored.CustomAttrs
 
     member x.SecurityDecls = x.SecurityDeclsStored.GetSecurityDecls x.MetadataIndex
 
@@ -3151,7 +3428,7 @@ type ILModuleDef =
         | None -> false
         | _ -> true
 
-    member x.CustomAttrs = x.CustomAttrsStored.GetCustomAttrs x.MetadataIndex
+    member x.CustomAttrs = x.CustomAttrsStored.CustomAttrs
 
     override x.ToString() = "assembly " + x.Name
 
@@ -3333,6 +3610,18 @@ let mkILSimpleTypar nm =
         MetadataIndex = NoMetadataIdx
     }
 
+/// Returns gp with all constraint state cleared. CustomAttrsStored is also reset because
+/// some constraints (notably IsUnmanagedAttribute) are encoded there.
+let stripILGenericParamConstraints (gp: ILGenericParameterDef) =
+    { gp with
+        Constraints = []
+        HasReferenceTypeConstraint = false
+        HasNotNullableValueTypeConstraint = false
+        HasDefaultConstructorConstraint = false
+        HasAllowsRefStruct = false
+        CustomAttrsStored = storeILCustomAttrs emptyILCustomAttrs
+    }
+
 let genericParamOfGenericActual (_ga: ILType) = mkILSimpleTypar "T"
 
 let mkILFormalTypars (x: ILGenericArgsList) = List.map genericParamOfGenericActual x
@@ -3357,24 +3646,165 @@ let mkRefForNestedILTypeDef scope (enc: ILTypeDef list, td: ILTypeDef) =
 // Operations on type tables.
 // --------------------------------------------------------------------
 
-let mkILPreTypeDef (td: ILTypeDef) =
-    let ns, n = splitILTypeName td.Name
-    ILPreTypeDefImpl(ns, n, NoMetadataIdx, ILTypeDefStored.Given td) :> ILPreTypeDef
+let mkILPreTypeDefRead (nameIdx, metadataIndex, f) =
+    ILPreTypeDefImpl(nameIdx, metadataIndex, f) :> ILPreTypeDef
 
-let mkILPreTypeDefComputed (ns, n, f) =
-    ILPreTypeDefImpl(ns, n, NoMetadataIdx, ILTypeDefStored.Computed f) :> ILPreTypeDef
+/// A type def already in hand. Named whole: the tables built out of these are not grouped by namespace.
+[<Sealed>]
+type private ILPreTypeDefGiven(td: ILTypeDef) =
+    interface ILPreTypeDef with
+        member _.Name = td.Name
+        member _.GetTypeDef() = td
 
-let mkILPreTypeDefRead (ns, n, idx, f) =
-    ILPreTypeDefImpl(ns, n, idx, f) :> ILPreTypeDef
+let private mkILPreTypeDefGiven (td: ILTypeDef) = ILPreTypeDefGiven td :> ILPreTypeDef
+
+/// A class rather than an object expression: there is one of these per namespace of every assembly read.
+[<Sealed>]
+type private ILPreNamespaceImpl(name: string, types: unit -> ILPreTypeDef[], namespaces: unit -> ILPreNamespace[]) =
+    inherit ILPreNamespace(name)
+
+    override _.ComputeTypes() = types ()
+    override _.ComputeNamespaces() = namespaces ()
+
+let mkILPreNamespaceComputed (name, types, namespaces) =
+    ILPreNamespaceImpl(name, types, namespaces) :> ILPreNamespace
+
+/// A level names a child once: one named by both sources becomes a single child, not two entities of the
+/// same name.
+let rec private mergePreNamespaces (grouped: ILPreNamespace[]) (supplied: ILPreNamespace[]) =
+    if Array.isEmpty supplied then
+        // Grouping never produces two children of one name, so this is the whole answer.
+        grouped
+    else
+        let merged = ResizeArray grouped
+
+        for ns in supplied do
+            match merged.FindIndex(fun (other: ILPreNamespace) -> other.Name = ns.Name) with
+            | -1 -> merged.Add ns
+            | i -> merged[i] <- combinePreNamespaces merged[i] ns
+
+        merged.ToArray()
+
+and private combinePreNamespaces (a: ILPreNamespace) (b: ILPreNamespace) =
+    mkILPreNamespaceComputed (
+        a.Name,
+        (fun () -> Array.append (a.GetTypes()) (b.GetTypes())),
+        (fun () -> mergePreNamespaces (a.GetNamespaces()) (b.GetNamespaces()))
+    )
+
+let inline private namespaceOfEntry (entries: struct (string list * ILPreTypeDef)[]) i =
+    let struct (ns, _) = entries[i]
+    ns
+
+/// Order entries so each namespace is one contiguous run, its own types ahead of its children, both in
+/// first-seen order - which merges a namespace split across the source. Every level is then a range of this
+/// one array: descending costs a node, never a copy.
+let private groupEntriesByNamespace (entries: struct (string list * ILPreTypeDef)[]) =
+    // A level whose types all sit in it needs no ordering.
+    if entries |> Array.forall (fun (struct (ns, _)) -> List.isEmpty ns) then
+        entries
+    else
+        let grouped = ResizeArray entries.Length
+
+        let rec fill (level: ResizeArray<struct (string list * ILPreTypeDef)>) depth =
+            let heads = ResizeArray<string>()
+            let buckets = Dictionary<string, ResizeArray<struct (string list * ILPreTypeDef)>>()
+
+            for entry in level do
+                let struct (ns, _) = entry
+
+                if List.length ns = depth then
+                    grouped.Add entry
+                else
+                    let head = List.item depth ns
+
+                    match buckets.TryGetValue head with
+                    | true, bucket -> bucket.Add entry
+                    | _ ->
+                        let bucket = ResizeArray()
+                        heads.Add head
+                        buckets[head] <- bucket
+                        bucket.Add entry
+
+            for head in heads do
+                fill buckets[head] (depth + 1)
+
+        fill (ResizeArray entries) 0
+        grouped.ToArray()
+
+/// A namespace as a range of the grouped array: one that is never imported stays a single object.
+[<Sealed>]
+type private ILPreNamespaceOfRange(name: string, entries: struct (string list * ILPreTypeDef)[], lo: int, hi: int, depth: int) =
+    inherit ILPreNamespace(name)
+
+    /// Grouping put the level's own types at the front of its range.
+    static member Types(entries: struct (string list * ILPreTypeDef)[], lo, hi, depth) =
+        let mutable count = 0
+
+        while lo + count < hi && List.length (namespaceOfEntry entries (lo + count)) = depth do
+            count <- count + 1
+
+        Array.init count (fun i ->
+            let struct (_, pre) = entries[lo + i]
+            pre)
+
+    static member Namespaces(entries: struct (string list * ILPreTypeDef)[], lo, hi, depth) =
+        let mutable i = lo
+
+        while i < hi && List.length (namespaceOfEntry entries i) = depth do
+            i <- i + 1
+
+        let children = ResizeArray()
+
+        while i < hi do
+            let name = List.item depth (namespaceOfEntry entries i)
+            let start = i
+
+            while i < hi && List.item depth (namespaceOfEntry entries i) = name do
+                i <- i + 1
+
+            children.Add(ILPreNamespaceOfRange(name, entries, start, i, depth + 1) :> ILPreNamespace)
+
+        children.ToArray()
+
+    override _.ComputeTypes() =
+        ILPreNamespaceOfRange.Types(entries, lo, hi, depth)
+
+    override _.ComputeNamespaces() =
+        ILPreNamespaceOfRange.Namespaces(entries, lo, hi, depth)
+
+let mkILTypeDefsComputed f = ILTypeDefs f
+
+let mkILTypeDefsOfNamespace (preNamespace: ILPreNamespace) =
+    ILTypeDefs(preNamespace.GetTypes, preNamespace.GetNamespaces)
+
+let mkILTypeDefsGroupedComputed (types: unit -> struct (string list * ILPreTypeDef)[]) (namespaces: unit -> ILPreNamespace[]) =
+    // Grouping runs once per table, on whichever half of the top level is asked for first.
+    let entries = InterruptibleLazy(fun () -> groupEntriesByNamespace (types ()))
+
+    let getTypes () =
+        let entries = entries.Value
+        ILPreNamespaceOfRange.Types(entries, 0, entries.Length, 0)
+
+    let getNamespaces () =
+        let entries = entries.Value
+        mergePreNamespaces (ILPreNamespaceOfRange.Namespaces(entries, 0, entries.Length, 0)) (namespaces ())
+
+    ILTypeDefs(getTypes, getNamespaces)
 
 let addILTypeDef td (tdefs: ILTypeDefs) =
-    ILTypeDefs(fun () -> [| yield mkILPreTypeDef td; yield! tdefs.AsArrayOfPreTypeDefs() |])
+    ILTypeDefs(
+        (fun () -> [| yield mkILPreTypeDefGiven td; yield! tdefs.AsArrayOfPreTypeDefs() |]),
+        (fun () -> tdefs.AsArrayOfPreNamespaces())
+    )
 
+/// Ungrouped: flattening has to give these back in the order they were built in, which is the TypeDef
+/// order of the module being written.
 let mkILTypeDefsFromArray (l: ILTypeDef[]) =
-    ILTypeDefs(fun () -> Array.map mkILPreTypeDef l)
+    ILTypeDefs(fun () -> Array.map mkILPreTypeDefGiven l)
 
 let mkILTypeDefs l = mkILTypeDefsFromArray (Array.ofList l)
-let mkILTypeDefsComputed f = ILTypeDefs f
+
 let emptyILTypeDefs = mkILTypeDefsFromArray [||]
 
 let emptyILInterfaceImpls = InterruptibleLazy<InterfaceImpl list>.FromValue([])
@@ -3867,6 +4297,7 @@ let mkILMethodBody (initlocals, locals, maxstack, code, tag, imports) : ILMethod
         MaxStack = maxstack
         NoInlining = false
         AggressiveInlining = false
+        IsRuntimeAsync = false
         Locals = locals
         Code = code
         DebugRange = tag
@@ -3925,6 +4356,18 @@ let mkNormalLdsfld fspec = I_ldsfld(Nonvolatile, fspec)
 let mkNormalLdfld fspec = I_ldfld(Aligned, Nonvolatile, fspec)
 
 let mkNormalLdflda fspec = I_ldflda fspec
+
+/// Matches an IL instruction that loads or stores a field, returning the referenced field spec.
+[<return: Struct>]
+let (|ILFieldInstr|_|) instr =
+    match instr with
+    | I_ldsfld(_, fspec)
+    | I_ldfld(_, _, fspec)
+    | I_ldsflda fspec
+    | I_ldflda fspec
+    | I_stsfld(_, fspec)
+    | I_stfld(_, _, fspec) -> ValueSome fspec
+    | _ -> ValueNone
 
 let mkNormalLdobj dt = I_ldobj(Aligned, Nonvolatile, dt)
 
@@ -4831,8 +5274,8 @@ let rec encodeCustomAttrElemTypeForObject x =
     | ILAttribElem.Single _ -> [| et_R4 |]
     | ILAttribElem.Double _ -> [| et_R8 |]
     | ILAttribElem.Array(elemTy, _) -> [| yield et_SZARRAY; yield! encodeCustomAttrElemType elemTy |]
-
-let tspan = TimeSpan(DateTime.UtcNow.Ticks - DateTime(2000, 1, 1).Ticks)
+    // An enum boxed in 'object' is encoded as 0x55 followed by the enum type's qualified name.
+    | ILAttribElem.Enum(enumTy, _) -> encodeCustomAttrElemType enumTy
 
 let parseILVersion (vstr: string) =
     // matches "v1.2.3.4" or "1.2.3.4". Note, if numbers are missing, returns -1 (not 0).
@@ -4842,6 +5285,7 @@ let parseILVersion (vstr: string) =
 
     // account for wildcards
     if versionComponents.Length > 2 then
+        let tspan = TimeSpan(DateTime.UtcNow.Ticks - DateTime(2000, 1, 1).Ticks)
         let defaultBuild = uint16 tspan.Days % UInt16.MaxValue - 1us
 
         let defaultRevision =
@@ -4928,6 +5372,26 @@ let rec decodeCustomAttrElemType bytes sigptr x =
         let elemTy, sigptr = decodeCustomAttrElemType bytes sigptr et
         mkILArr1DTy elemTy, sigptr
     | x when x = 0x50uy -> PrimaryAssemblyILGlobals.typ_Type, sigptr
+    | x when x = 0x51uy -> PrimaryAssemblyILGlobals.typ_Object, sigptr // SERIALIZATION_TYPE_TAGGED_OBJECT (ECMA-335 II.23.3)
+    | x when x = 0x55uy ->
+        // SERIALIZATION_TYPE_ENUM (ECMA-335 II.23.3): the enum type's qualified name follows.
+        // Occurs e.g. when an enum is boxed into an 'object'-typed argument.
+        let qualifiedName, sigptr = sigptr_get_serstring bytes sigptr
+
+        let unqualifiedName, rest =
+            let pieces = qualifiedName.Split ','
+
+            if pieces.Length > 1 then
+                pieces[0], Some(String.concat "," pieces[1..])
+            else
+                pieces[0], None
+
+        let scoref =
+            match rest with
+            | Some aname -> ILScopeRef.Assembly(ILAssemblyRef.FromAssemblyName(AssemblyName aname))
+            | None -> PrimaryAssemblyILGlobals.primaryAssemblyScopeRef
+
+        ILType.Value(mkILNonGenericTySpec (mkILTyRef (scoref, unqualifiedName))), sigptr
     | _ -> failwithf "decodeCustomAttrElemType ilg: unrecognized custom element type: %A" x
 
 /// Given a custom attribute element, encode it to a binary representation according to the rules in Ecma 335 Partition II.
@@ -4958,6 +5422,8 @@ let rec encodeCustomAttrPrimValue c =
             for elem in elems do
                 yield! encodeCustomAttrPrimValue elem
         |]
+    // The enum type is captured separately (in the type tag); the value is the underlying integer.
+    | ILAttribElem.Enum(_, value) -> encodeCustomAttrPrimValue value
 
 and encodeCustomAttrValue ty c =
     match ty, c with
@@ -5304,7 +5770,14 @@ let decodeILAttribData (ca: ILAttribute) =
                     ILAttribElem.Null, sigptr
                 else
                     let ty, sigptr = decodeCustomAttrElemType bytes sigptr et
-                    parseVal ty sigptr
+                    let v, sigptr = parseVal ty sigptr
+                    // Wrap only a genuine enum (the 0x55 tag) as ILAttribElem.Enum so it re-encodes as
+                    // an enum; boxed primitives also decode to an ILType.Value here and must be left as
+                    // their primitive element. See https://github.com/dotnet/fsharp/issues/995.
+                    if et = 0x55uy then
+                        ILAttribElem.Enum(ty, v), sigptr
+                    else
+                        v, sigptr
             | ILType.Array(shape, elemTy) when shape = ILArrayShape.SingleDimensional ->
                 let n, sigptr = sigptr_get_i32 bytes sigptr
 
@@ -5343,29 +5816,9 @@ let decodeILAttribData (ca: ILAttribute) =
                 let isPropByte, sigptr = sigptr_get_u8 bytes sigptr
                 let isProp = (int isPropByte = 0x54)
                 let et, sigptr = sigptr_get_u8 bytes sigptr
-                // We have a named value
-                let ty, sigptr =
-                    if ( (* 0x50 = (int et) || *) 0x55 = (int et)) then
-                        let qualified_tname, sigptr = sigptr_get_serstring bytes sigptr
-
-                        let unqualified_tname, rest =
-                            let pieces = qualified_tname.Split ','
-
-                            if pieces.Length > 1 then
-                                pieces[0], Some(String.concat "," pieces[1..])
-                            else
-                                pieces[0], None
-
-                        let scoref =
-                            match rest with
-                            | Some aname -> ILScopeRef.Assembly(ILAssemblyRef.FromAssemblyName(AssemblyName aname))
-                            | None -> PrimaryAssemblyILGlobals.primaryAssemblyScopeRef
-
-                        let tref = mkILTyRef (scoref, unqualified_tname)
-                        let tspec = mkILNonGenericTySpec tref
-                        ILType.Value tspec, sigptr
-                    else
-                        decodeCustomAttrElemType bytes sigptr et
+                // We have a named value. The type tag (including the 0x55 enum form) is decoded by
+                // decodeCustomAttrElemType.
+                let ty, sigptr = decodeCustomAttrElemType bytes sigptr et
 
                 let nm, sigptr = sigptr_get_serstring bytes sigptr
                 let v, sigptr = parseVal ty sigptr

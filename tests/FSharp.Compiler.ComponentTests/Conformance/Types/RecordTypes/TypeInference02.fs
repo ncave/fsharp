@@ -1,5 +1,5 @@
-// #Conformance #TypesAndModules #Records 
-#light
+// #Conformance #TypesAndModules #Records
+
 
 // Verify no errors for type inference with ambiguous types
 // and type annotations.
@@ -17,7 +17,7 @@ let test2 () =
     let temp : Blue = { A = ' '; B = 42 }
     (funcExpectsBlue temp)
 
-let test3 () = 
+let test3 () =
     // This shouldn't be ambig, since only one record has a C field
     let g = { A = '1'; B = 0; C = "abc" }
     g.C

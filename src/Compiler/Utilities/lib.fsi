@@ -19,7 +19,7 @@ val isEnvVarSet: s: string -> bool
 
 val GetEnvInteger: e: string -> dflt: int -> int
 
-val dispose: x: System.IDisposable MaybeNull -> unit
+val dispose: x: (System.IDisposable | null) -> unit
 
 module Bits =
     /// Get the least significant byte of a 32-bit integer
@@ -243,6 +243,13 @@ val inline cached: cache: cache<'a> -> resF: (unit -> 'a) -> 'a when 'a: not str
 
 val inline cacheOptByref: cache: byref<'T option> -> f: (unit -> 'T) -> 'T
 
+/// Version-stamped variant of 'cacheOptByref' for memo tables whose backing data may be appended to
+/// concurrently. The cached value is tagged with the data 'version' observed when it was computed; a reader
+/// whose 'version' no longer matches recomputes. Callers must read 'version' with acquire semantics before
+/// evaluating 'f', and 'f' must read only data covered by that version. 'cache' must be a reference type so
+/// its publication is a single atomic store.
+val inline cacheOptByrefByVersion: version: int -> cache: byref<(int * 'T) option> -> f: (unit -> 'T) -> 'T
+
 val inline cacheOptRef: cache: 'a option ref -> f: (unit -> 'a) -> 'a
 
 val inline tryGetCacheValue: cache: cache<'a> -> NonNullSlot<'a> voption when 'a: not struct
@@ -263,7 +270,7 @@ type DisposablesTracker =
     new: unit -> DisposablesTracker
 
     /// Register some items to dispose
-    member Register: i: 'a MaybeNull -> unit when 'a :> System.IDisposable and 'a: not struct and 'a: not null
+    member Register: i: ('a | null) -> unit when 'a :> System.IDisposable and 'a: not struct and 'a: not null
 
     interface System.IDisposable
 

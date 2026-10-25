@@ -7,7 +7,8 @@ ImplFile
           [Types
              ([SynTypeDefn
                  (SynComponentInfo
-                    ([], None, [], [Base],
+                    ([], None, [],
+                     Some (LongIdent (SynLongIdent ([Base], [], [None]))),
                      PreXmlDoc ((4,0), FSharp.Compiler.Xml.XmlDocCollector),
                      false, None, (4,5--4,9)),
                   ObjectModel
@@ -27,7 +28,8 @@ ImplFile
            Types
              ([SynTypeDefn
                  (SynComponentInfo
-                    ([], None, [], [Derived],
+                    ([], None, [],
+                     Some (LongIdent (SynLongIdent ([Derived], [], [None]))),
                      PreXmlDoc ((6,0), FSharp.Compiler.Xml.XmlDocCollector),
                      false, None, (6,5--6,12)),
                   ObjectModel
@@ -50,7 +52,8 @@ ImplFile
                     WithKeyword = None })], (6,0--7,18));
            NestedModule
              (SynComponentInfo
-                ([], None, [], [InvalidModule],
+                ([], None, [],
+                 Some (LongIdent (SynLongIdent ([InvalidModule], [], []))),
                  PreXmlDoc ((9,4), FSharp.Compiler.Xml.XmlDocCollector), false,
                  None, (9,4--9,24)), false,
               [Let
@@ -66,7 +69,7 @@ ImplFile
                       Yes (10,8--10,17), { LeadingKeyword = Let (10,8--10,11)
                                            InlineKeyword = None
                                            EqualsRange = Some (10,14--10,15) })],
-                  (10,8--10,17))], false, (9,4--10,17),
+                  (10,8--10,17), { InKeyword = None })], false, (9,4--10,17),
               { ModuleKeyword = Some (9,4--9,10)
                 EqualsRange = Some (9,25--9,26) })],
           PreXmlDoc ((2,0), FSharp.Compiler.Xml.XmlDocCollector), [], None,

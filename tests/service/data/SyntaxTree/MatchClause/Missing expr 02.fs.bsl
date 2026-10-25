@@ -12,7 +12,8 @@ ImplFile
                      ArbitraryAfterError
                        ("typedSequentialExprBlockR1", (4,6--4,6)), (4,2--4,6),
                      Yes, { ArrowRange = Some (4,4--4,6)
-                            BarRange = Some (4,0--4,1) })], (3,0--4,6),
+                            BarRange = Some (4,0--4,1)
+                            WhenKeyword = None })], (3,0--4,6),
                  { MatchKeyword = (3,0--3,5)
                    WithKeyword = (3,9--3,13) }), (3,0--4,6))],
           PreXmlDoc ((1,0), FSharp.Compiler.Xml.XmlDocCollector), [], None,
@@ -22,5 +23,4 @@ ImplFile
         CodeComments = [] }, set []))
 
 (5,0)-(5,0) parse error Unexpected syntax or possible incorrect indentation: this token is offside of context started at position (3:1). Try indenting this further.
-To continue using non-conforming indentation, pass the '--strict-indentation-' flag to the compiler, or set the language version to F# 7.
 (5,0)-(5,0) parse error Incomplete structured construct at or before this point in pattern matching

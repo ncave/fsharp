@@ -37,7 +37,7 @@ type internal TcInfo =
         latestCcuSigForFile: ModuleOrNamespaceType option
 
         /// Accumulated diagnostics, last file first
-        tcDiagnosticsRev: (PhasedDiagnostic * FSharpDiagnosticSeverity)[] list
+        tcDiagnosticsRev: PhasedDiagnostic[] list
 
         tcDependencyFiles: string list
 
@@ -59,7 +59,7 @@ type internal TcIntermediate =
         moduleNamesDict: ModuleNamesDict
 
         /// Accumulated diagnostics, last file first
-        tcDiagnosticsRev: (PhasedDiagnostic * FSharpDiagnosticSeverity) array list
+        tcDiagnosticsRev: PhasedDiagnostic array list
         tcDependencyFiles: string list
         sink: TcResultsSinkImpl
     }
@@ -88,6 +88,9 @@ type internal DependencyGraphType =
 
     /// A dependency graph for a project - it will contain all files in the project
     | Project
+
+    /// A dependency graph for a project without the implementation files that have a signature file
+    | ProjectSignatures
 
 [<System.Runtime.CompilerServices.Extension; Class>]
 type internal Extensions =
@@ -142,6 +145,8 @@ type internal CompilerCaches =
 
     member BootstrapInfo: AsyncMemoize<FSharpProjectIdentifier, string, BootstrapInfo option * FSharpDiagnostic array>
 
+    member ParsingTcConfig: AsyncMemoize<FSharpProjectIdentifier, string, TcConfig option * FSharpDiagnostic array>
+
     member BootstrapInfoStatic:
         AsyncMemoize<FSharpProjectIdentifier, string * string, int * TcImports * TcGlobals * TcInfo * Event<unit>>
 
@@ -190,6 +195,7 @@ type internal TransparentCompiler =
         enableBackgroundItemKeyStoreAndSemanticClassification: bool *
         enablePartialTypeChecking: bool *
         parallelReferenceResolution: ParallelReferenceResolution *
+        shareImportedAssemblies: bool *
         captureIdentifiersWhenParsing: bool *
         getSource: (string -> Async<ISourceText option>) option *
         useChangeNotifications: bool *

@@ -9,11 +9,17 @@ open FSharp.Compiler.Import
 open FSharp.Compiler.Infos
 open FSharp.Compiler.InfoReader
 open FSharp.Compiler.MethodCalls
+open FSharp.Compiler.OverloadResolutionCache
 open FSharp.Compiler.Syntax
 open FSharp.Compiler.TcGlobals
 open FSharp.Compiler.Text
 open FSharp.Compiler.TypedTree
 open FSharp.Compiler.TypedTreeOps
+
+/// Concrete ITraitContext used throughout the compiler.
+type TraitContext = ITraitContext<AccessorDomain, MethInfo, InfoReader>
+
+val constraintResolutionPriority: TcGlobals -> ImportMap -> range -> formalTy: TType * actualTy: TType -> int
 
 /// Information about the context of a type equation.
 [<RequireQualifiedAccess>]
@@ -61,6 +67,21 @@ type ContextInfo =
     /// The type equation comes from a sequence expression.
     | SequenceExpression of TType
 
+    /// The type equation comes from a nullness check of a captured argument (e.g., pipe operators).
+    /// The range points to the original argument location.
+    | NullnessCheckOfCapturedArg of range
+
+    /// Obj-argument type check in a dotted member access on a nullable receiver.
+    | MemberAccessOnNullable of ObjArgInfo
+
+/// Receiver information for a dotted member access, used to produce
+/// targeted nullness warnings (e.g. "Possible dereference of null when
+/// accessing member 'M' on the nullable value 'x'").
+and ObjArgInfo =
+    { ObjExprRange: range
+      MemberName: string
+      BindingName: string option }
+
 /// Captures relevant information for a particular failed overload resolution.
 type OverloadInformation =
     { methodSlot: CalledMeth<Expr>
@@ -73,7 +94,8 @@ type OverloadResolutionFailure =
     | PossibleCandidates of
         methodName: string *
         candidates: OverloadInformation list *  // methodNames may be different (with operators?), this is refactored from original logic to assemble overload failure message
-        cx: TraitConstraintInfo option
+        cx: TraitConstraintInfo option *
+        incomparableConcreteness: OverloadResolutionRules.IncomparableConcretenessInfo option
 
 /// Represents known information prior to checking an expression or pattern, e.g. it's expected type
 type OverallTy =
@@ -139,9 +161,17 @@ exception ConstraintSolverNullnessWarningWithTypes of
 
 exception ConstraintSolverNullnessWarningWithType of DisplayEnv * TType * NullnessInfo * range * range
 
-exception ConstraintSolverNullnessWarning of string * range * range
+exception ConstraintSolverNullnessWarning of RichText * range * range
 
-exception ConstraintSolverError of string * range * range
+exception ConstraintSolverNullnessWarningOnDotAccess of
+    DisplayEnv *
+    objTy: TType *
+    memberName: string *
+    bindingName: string option *
+    objExprRange: range *
+    mMethod: range
+
+exception ConstraintSolverError of RichText * range * range
 
 exception ErrorFromApplyingDefault of
     tcGlobals: TcGlobals *
@@ -199,6 +229,8 @@ type ConstraintSolverState =
         /// The function used to freshen values we encounter during trait constraint solving
         TcVal: TcValF
 
+        StackGuard: StackGuard
+
         /// This table stores all unsolved, ungeneralized trait constraints, indexed by free type variable.
         /// That is, there will be one entry in this table for each free type variable in
         /// each outstanding, unsolved, ungeneralized trait constraint. Constraints are removed from the table and resolved
@@ -211,7 +243,14 @@ type ConstraintSolverState =
         /// Checks to run after all inference is complete.
         PostInferenceChecksFinal: ResizeArray<unit -> unit>
 
+        /// Union attributes awaiting a retry after the recursive group is established.
+        mutable UnionsWithDeferredAttributes: Set<Stamp>
+
+        /// Deferred union constraints not yet checked after their attributes resolved.
+        mutable DeferredUnionNullnessChecks: (TType * range) list
+
         WarnWhenUsingWithoutNullOnAWithNullTarget: string option
+
     }
 
     static member New: TcGlobals * ImportMap * InfoReader * TcValF -> ConstraintSolverState
@@ -228,11 +267,21 @@ type ConstraintSolverState =
 val BakedInTraitConstraintNames: Set<string>
 
 [<Sealed; NoEquality; NoComparison>]
-type Trace
+type Trace =
+    static member New: unit -> Trace
+    member Undo: unit -> unit
 
 type OptionalTrace =
     | NoTrace
     | WithTrace of Trace
+
+    member Exec: (unit -> unit) -> (unit -> unit) -> unit
+    member AddFromReplay: Trace -> unit
+    member CollectThenUndoOrCommit: ('T -> bool) -> (Trace -> 'T) -> 'T
+
+val CollectThenUndo: (Trace -> 'T) -> 'T
+
+val FilterEachThenUndo: (Trace -> 'T -> OperationResult<'U>) -> 'T list -> ('T * exn list * Trace * 'U) list
 
 val SimplifyMeasuresInTypeScheme: TcGlobals -> bool -> Typars -> TType -> TyparConstraint list -> Typars
 
@@ -241,6 +290,7 @@ val ResolveOverloadingForCall:
     DisplayEnv ->
     ConstraintSolverState ->
     range ->
+    objArgInfo: ObjArgInfo option ->
     methodName: string ->
     callerArgs: CallerArgs<Expr> ->
     AccessorDomain ->
@@ -254,6 +304,7 @@ val UnifyUniqueOverloading:
     ConstraintSolverState ->
     range ->
     int * int ->
+        objArgInfo: ObjArgInfo option ->
         string ->
         AccessorDomain ->
         CalledMeth<SynExpr> list ->
@@ -272,6 +323,9 @@ val CheckDeclaredTypars: DisplayEnv -> ConstraintSolverState -> range -> Typars 
 val AddCxTypeEqualsType: ContextInfo -> DisplayEnv -> ConstraintSolverState -> range -> TType -> TType -> unit
 
 val AddCxTypeEqualsTypeUndoIfFailed: DisplayEnv -> ConstraintSolverState -> range -> TType -> TType -> bool
+
+val AddCxTypeEqualsTypeUndoIfFailedWithContext:
+    ContextInfo -> DisplayEnv -> ConstraintSolverState -> range -> TType -> TType -> bool
 
 val AddCxTypeEqualsTypeUndoIfFailedOrWarnings: DisplayEnv -> ConstraintSolverState -> range -> TType -> TType -> bool
 
@@ -324,8 +378,29 @@ val CodegenWitnessExprForTraitConstraint:
 val CodegenWitnessExprForTraitConstraintWillRequireWitnessArgs:
     TcValF -> TcGlobals -> ImportMap -> range -> TraitConstraintInfo -> OperationResult<bool>
 
-/// Generate the arguments passed when using a generic construct that accepts traits witnesses
+/// Retain selected solutions from the actual type arguments before solving fresh constraints.
+val CodegenWitnessesForTyparInstWith:
+    TcValF ->
+    TcGlobals ->
+    ImportMap ->
+    range ->
+    Typars ->
+    TType list ->
+    (TraitConstraintInfo -> Choice<TraitConstraintInfo, Expr> -> 'T) ->
+        OperationResult<'T list>
+
 val CodegenWitnessesForTyparInst:
+    TcValF ->
+    TcGlobals ->
+    ImportMap ->
+    range ->
+    Typars ->
+    TType list ->
+        OperationResult<Choice<TraitConstraintInfo, Expr> list>
+
+// fickl: CodegenWitnessesForTyparInst reusing the caller's InfoReader for the same TcGlobals and ImportMap
+val CodegenWitnessesForTyparInstUsing:
+    InfoReader ->
     TcValF ->
     TcGlobals ->
     ImportMap ->
@@ -351,3 +426,17 @@ val ChooseTyparSolutionAndSolve: ConstraintSolverState -> DisplayEnv -> Typar ->
 val IsApplicableMethApprox: TcGlobals -> ImportMap -> range -> MethInfo -> TType -> bool
 
 val CanonicalizePartialInferenceProblem: ConstraintSolverState -> DisplayEnv -> range -> Typars -> unit
+
+val CanonicalizePartialInferenceProblemForExtensions: ConstraintSolverState -> DisplayEnv -> range -> Typars -> unit
+
+/// Create an ITraitContext from implementation file contents for use during optimization/codegen.
+/// earlierSignatures carries the signatures of preceding same-assembly files so their extension
+/// members are visible to trait-witness generation using the same val identity code generation binds.
+val CreateImplFileTraitContext:
+    TcGlobals -> ModuleOrNamespaceContents list -> ModuleOrNamespaceType list -> CcuThunk list -> TraitContext
+
+/// Preserve the selected witness retained by the application's unstripped support types.
+val GetTraitConstraintForCodegen: g: TcGlobals -> traitInfo: TraitConstraintInfo -> TraitConstraintInfo
+
+val SolveTyparsEqualTypes:
+    g: TcGlobals -> css: ConstraintSolverState -> m: range -> typars: TypeInst -> tys: TypeInst -> unit

@@ -5,9 +5,9 @@
   <PropertyGroup>
     <TargetFrameworks>net472;$(FSharpNetCoreProductTargetFramework)</TargetFrameworks>
     <TargetFrameworks Condition="'$(OS)' == 'Unix' or '$(BUILDING_USING_DOTNET)' == 'true'">$(FSharpNetCoreProductTargetFramework)</TargetFrameworks>
-    <OutputType>Library</OutputType>
+    <!-- xUnit3 requires test projects to be executable -->
+    <OutputType>Exe</OutputType>
     <DisableImplicitFSharpCoreReference>true</DisableImplicitFSharpCoreReference>
-    <UnitTestType>xunit</UnitTestType>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,13 +15,11 @@
       <Link>XunitSetup.fs</Link>
     </Compile>
     <Compile Include="WriteCodeFragmentTests.fs" />
+    <Compile Include="BuildTaskTestHelpers.fs" />
     <Compile Include="MapSourceRootsTests.fs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Content Include="xunit.runner.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <Compile Include="ResourceTests.fs" />
+    <Compile Include="MultiThreadedTaskTests.fs" />
+    <Compile Include="FileTaskEnvironmentTests.fs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -31,13 +29,13 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' != '$(FSharpNetCoreProductTargetFramework)'">
-    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="$(SystemRuntimeCompilerServicesUnsafeVersion)" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Build.Framework" Version="$(MicrosoftBuildFrameworkVersion)" />
-    <PackageReference Include="Microsoft.Build.Tasks.Core" Version="$(MicrosoftBuildTasksCoreVersion)" />
-    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="$(MicrosoftBuildUtilitiesCoreVersion)" />
+    <PackageReference Include="Microsoft.Build.Framework" />
+    <PackageReference Include="Microsoft.Build.Tasks.Core" />
+    <PackageReference Include="Microsoft.Build.Utilities.Core" />
   </ItemGroup>
 
 </Project>

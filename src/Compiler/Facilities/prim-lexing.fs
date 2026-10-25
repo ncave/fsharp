@@ -167,34 +167,36 @@ module SourceTextNew =
     let ofString str = StringText(str) :> ISourceTextNew
 
     let ofISourceText (sourceText: ISourceText) =
-        { new ISourceTextNew with
-            member _.Item
-                with get index = sourceText[index]
+        match sourceText with
+        | :? ISourceTextNew as sourceText -> sourceText
+        | _ ->
+            { new ISourceTextNew with
+                member _.Item
+                    with get index = sourceText[index]
 
-            member _.GetLineString(x) = sourceText.GetLineString(x)
+                member _.GetLineString(x) = sourceText.GetLineString(x)
 
-            member _.GetLineCount() = sourceText.GetLineCount()
+                member _.GetLineCount() = sourceText.GetLineCount()
 
-            member _.GetLastCharacterPosition() = sourceText.GetLastCharacterPosition()
+                member _.GetLastCharacterPosition() = sourceText.GetLastCharacterPosition()
 
-            member _.GetSubTextString(x, y) = sourceText.GetSubTextString(x, y)
+                member _.GetSubTextString(x, y) = sourceText.GetSubTextString(x, y)
 
-            member _.SubTextEquals(x, y) = sourceText.SubTextEquals(x, y)
+                member _.SubTextEquals(x, y) = sourceText.SubTextEquals(x, y)
 
-            member _.Length = sourceText.Length
+                member _.Length = sourceText.Length
 
-            member _.ContentEquals(x) = sourceText.ContentEquals(x)
+                member _.ContentEquals(x) = sourceText.ContentEquals(x)
 
-            member _.CopyTo(a, b, c, d) = sourceText.CopyTo(a, b, c, d)
+                member _.CopyTo(a, b, c, d) = sourceText.CopyTo(a, b, c, d)
 
-            member _.GetSubTextFromRange(x) = sourceText.GetSubTextFromRange(x)
+                member _.GetSubTextFromRange(x) = sourceText.GetSubTextFromRange(x)
 
-            member _.GetChecksum() =
-                // TODO: something better...
-                !!sourceText.ToString()
-                |> Md5Hasher.hashString
-                |> fun byteArray -> ImmutableArray.Create<byte>(byteArray, 0, byteArray.Length)
-        }
+                member _.GetChecksum() =
+                    sourceText.GetSubTextString(0, sourceText.Length)
+                    |> Md5Hasher.hashString
+                    |> fun byteArray -> ImmutableArray.Create<byte>(byteArray, 0, byteArray.Length)
+            }
 
 // NOTE: the code in this file is a drop-in replacement runtime for Lexing.fs from the FsLexYacc repository
 
@@ -242,8 +244,7 @@ type internal Position =
 
 type internal LexBufferFiller<'Char> = LexBuffer<'Char> -> unit
 
-and [<Sealed>] internal LexBuffer<'Char>
-    (filler: LexBufferFiller<'Char>, reportLibraryOnlyFeatures: bool, langVersion: LanguageVersion, strictIndentation: bool option) =
+and [<Sealed>] internal LexBuffer<'Char>(filler: LexBufferFiller<'Char>, reportLibraryOnlyFeatures: bool, langVersion: LanguageVersion) =
     let context = Dictionary<string, obj>(1)
     let mutable buffer = [||]
     /// number of valid characters beyond bufferScanStart.
@@ -344,14 +345,10 @@ and [<Sealed>] internal LexBuffer<'Char>
 
     member _.SupportsFeature featureId = langVersion.SupportsFeature featureId
 
-    member _.StrictIndentation = strictIndentation
-
     member _.CheckLanguageFeatureAndRecover featureId range =
         FSharp.Compiler.DiagnosticsLogger.checkLanguageFeatureAndRecover langVersion featureId range
 
-    static member FromFunction
-        (reportLibraryOnlyFeatures, langVersion, strictIndentation, f: 'Char[] * int * int -> int)
-        : LexBuffer<'Char> =
+    static member FromFunction(reportLibraryOnlyFeatures, langVersion, f: 'Char[] * int * int -> int) : LexBuffer<'Char> =
         let extension = Array.zeroCreate 4096
 
         let filler (lexBuffer: LexBuffer<'Char>) =
@@ -360,35 +357,34 @@ and [<Sealed>] internal LexBuffer<'Char>
             Array.blit extension 0 lexBuffer.Buffer lexBuffer.BufferScanPos n
             lexBuffer.BufferMaxScanLength <- lexBuffer.BufferScanLength + n
 
-        new LexBuffer<'Char>(filler, reportLibraryOnlyFeatures, langVersion, strictIndentation)
+        new LexBuffer<'Char>(filler, reportLibraryOnlyFeatures, langVersion)
 
     // Important: This method takes ownership of the array
-    static member FromArrayNoCopy(reportLibraryOnlyFeatures, langVersion, strictIndentation, buffer: 'Char[]) : LexBuffer<'Char> =
+    static member FromArrayNoCopy(reportLibraryOnlyFeatures, langVersion, buffer: 'Char[]) : LexBuffer<'Char> =
         let lexBuffer =
-            new LexBuffer<'Char>((fun _ -> ()), reportLibraryOnlyFeatures, langVersion, strictIndentation)
+            new LexBuffer<'Char>((fun _ -> ()), reportLibraryOnlyFeatures, langVersion)
 
         lexBuffer.Buffer <- buffer
         lexBuffer.BufferMaxScanLength <- buffer.Length
         lexBuffer
 
     // Important: this method does copy the array
-    static member FromArray(reportLibraryOnlyFeatures, langVersion, strictIndentation, s: 'Char[]) : LexBuffer<'Char> =
+    static member FromArray(reportLibraryOnlyFeatures, langVersion, s: 'Char[]) : LexBuffer<'Char> =
         let buffer = Array.copy s
 
-        LexBuffer<'Char>.FromArrayNoCopy(reportLibraryOnlyFeatures, langVersion, strictIndentation, buffer)
+        LexBuffer<'Char>.FromArrayNoCopy(reportLibraryOnlyFeatures, langVersion, buffer)
 
     // Important: This method takes ownership of the array
-    static member FromChars(reportLibraryOnlyFeatures, langVersion, strictIndentation, arr: char[]) =
-        LexBuffer.FromArrayNoCopy(reportLibraryOnlyFeatures, langVersion, strictIndentation, arr)
+    static member FromChars(reportLibraryOnlyFeatures, langVersion, arr: char[]) =
+        LexBuffer.FromArrayNoCopy(reportLibraryOnlyFeatures, langVersion, arr)
 
-    static member FromSourceText(reportLibraryOnlyFeatures, langVersion, strictIndentation, sourceText: ISourceText) =
+    static member FromSourceText(reportLibraryOnlyFeatures, langVersion, sourceText: ISourceText) =
         let mutable currentSourceIndex = 0
 
         LexBuffer<char>
             .FromFunction(
                 reportLibraryOnlyFeatures,
                 langVersion,
-                strictIndentation,
                 fun (chars, start, length) ->
                     let lengthToCopy =
                         if currentSourceIndex + length <= sourceText.Length then

@@ -1,5 +1,5 @@
-// #Conformance #PatternMatching 
-#light
+// #Conformance #PatternMatching
+
 
 // Verify that the shape of data matched against a wildcard
 // doesn't have to match.

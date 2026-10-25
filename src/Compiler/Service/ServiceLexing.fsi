@@ -27,7 +27,6 @@ type FSharpTokenizerColorState =
     | Comment = 5
     | StringInComment = 6
     | VerbatimStringInComment = 7
-    | CamlOnly = 8
     | VerbatimString = 9
     | SingleLineComment = 10
     | EndLineThenSkip = 11
@@ -177,8 +176,11 @@ module FSharpTokenTag =
     /// Indicates the token is a `..`
     val DOT_DOT: int
 
-    /// Indicates the token is a `..`
+    /// Indicates the token is a `..^`
     val DOT_DOT_HAT: int
+
+    /// Indicates the token is a `...`
+    val DOT_DOT_DOT: int
 
     /// Indicates the token is a `..^`
     val INT32_DOT_DOT: int
@@ -325,12 +327,7 @@ type FSharpLineTokenizer =
 type FSharpSourceTokenizer =
 
     /// Create a tokenizer for a source file.
-    new:
-        conditionalDefines: string list *
-        fileName: string option *
-        langVersion: string option *
-        strictIndentation: bool option ->
-            FSharpSourceTokenizer
+    new: conditionalDefines: string list * fileName: string option * langVersion: string option -> FSharpSourceTokenizer
 
     /// Create a tokenizer for a line of this source file
     member CreateLineTokenizer: lineText: string -> FSharpLineTokenizer
@@ -358,7 +355,6 @@ module FSharpKeywords =
 [<Flags; Experimental("This FCS API is experimental and subject to change.")>]
 type public FSharpLexerFlags =
     | Default = 0x11011
-    | LightSyntaxOn = 0x00001
     | Compiling = 0x00010
     | CompilingFSharpCore = 0x00110
     | SkipTrivia = 0x01000
@@ -370,11 +366,11 @@ type public FSharpTokenKind =
     | HashIf
     | HashElse
     | HashEndIf
+    | HashElif
     | WarnDirective
     | CommentTrivia
     | WhitespaceTrivia
     | HashLine
-    | HashLight
     | InactiveCode
     | LineCommentTrivia
     | StringText
@@ -502,6 +498,7 @@ type public FSharpTokenKind =
     | End
     | DotDot
     | DotDotHat
+    | DotDotDot
     | BarBar
     | Upcast
     | Downcast
@@ -552,13 +549,6 @@ type public FSharpTokenKind =
     | KeywordString
     | String
     | ByteArray
-    | Asr
-    | InfixAsr
-    | InfixLand
-    | InfixLor
-    | InfixLsl
-    | InfixLsr
-    | InfixLxor
     | InfixMod
 
 [<Struct; NoComparison; NoEquality; Experimental("This FCS API is experimental and subject to change.")>]
@@ -589,7 +579,6 @@ type public FSharpLexer =
         text: ISourceText *
         tokenCallback: (FSharpToken -> unit) *
         ?langVersion: string *
-        ?strictIndentation: bool *
         ?filePath: string *
         ?conditionalDefines: string list *
         ?flags: FSharpLexerFlags *

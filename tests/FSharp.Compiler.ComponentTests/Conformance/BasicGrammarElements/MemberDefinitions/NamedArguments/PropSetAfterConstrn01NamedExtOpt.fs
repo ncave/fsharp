@@ -1,5 +1,5 @@
-// #Regression #Conformance #DeclarationElements #MemberDefinitions #NamedArguments 
-#light
+// #Regression #Conformance #DeclarationElements #MemberDefinitions #NamedArguments
+
 
 
 module GenericClass =
@@ -15,7 +15,7 @@ module GenericClass =
         member x.XProxyIntrinsic with set (v:'a) = x.X  <- v
         member x.YProxyIntrinsic with set (v:'b) = x.Y  <- v
 module GenericClassExt =
-    
+
     module Extensions =
         open GenericClass
         type S<'a,'b> with

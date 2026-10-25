@@ -48,6 +48,17 @@ and MatchClause = MatchClause of Pattern * Expr option * DecisionTreeTarget * ra
 
 val ilFieldToTastConst: ILFieldInit -> Const
 
+/// Rethrow an exception from a position that is not a real .NET exception handler, such as the handler
+/// function a computation expression builder is given to simulate one. The IL 'rethrow' instruction is not
+/// valid there, so the exception is rethrown through ExceptionDispatchInfo, which preserves its stack trace.
+val mkThrowUsingEDICapture:
+    infoReader: InfoReader ->
+    tcVal: (ValRef -> ValUseFlag -> TTypes -> range -> Expr * TType) ->
+    m: range ->
+    resultTy: TType ->
+    exnExpr: Expr ->
+        Expr
+
 /// Compile a pattern into a decision tree and a set of targets.
 val internal CompilePattern:
     TcGlobals ->
@@ -69,10 +80,15 @@ val internal CompilePattern:
         TType ->
         // result type
         TType ->
-            DecisionTree * DecisionTreeTarget list
+            DecisionTree * DecisionTreeTarget list * Bindings
 
-exception internal MatchIncomplete of bool * (string * bool) option * range
+/// Exception raised when a pattern match is incomplete.
+/// Fields: isComputationExpression * (counterExample * isShownAsFieldPattern) option * range
+exception internal MatchIncomplete of bool * (RichText * bool) option * range
+
+/// Wrapper that adds a for-loop hint to an existing MatchIncomplete diagnostic.
+exception internal MatchIncompleteForLoopHint of exn
 
 exception internal RuleNeverMatched of range
 
-exception internal EnumMatchIncomplete of bool * (string * bool) option * range
+exception internal EnumMatchIncomplete of bool * (RichText * bool) option * range

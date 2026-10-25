@@ -1,5 +1,5 @@
-// #Conformance #PatternMatching #Tuples 
-#light
+// #Conformance #PatternMatching #Tuples
+
 
 let tupleStartsWithOne x =
     match x with

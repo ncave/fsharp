@@ -1,5 +1,5 @@
-// #NoMT #CodeGen #Interop 
-#light
+// #NoMT #CodeGen #Interop
+
 
 // Verify units of measure are dropped and types are just their
 // underlying primitive values when used in functions.
@@ -13,7 +13,7 @@ type widget
 type sprocket
 
 type AClass() =
-    member this.DoStuff (x : float<widget>, y : float<sprocket>) = 
+    member this.DoStuff (x : float<widget>, y : float<sprocket>) =
         let a = decimal x
         let b = decimal y
         a * b * 0.0M<sprocket>
@@ -33,7 +33,7 @@ module Tester =
         |> getType "Test.AClass"
         |> getMethod "DoStuff"
         |> should takeParams [typeof<float>; typeof<float>]
-        
+
     with
-    | e -> printfn "Unhandled Exception: %s" e.Message 
+    | e -> printfn "Unhandled Exception: %s" e.Message
            raise (Exception($"Oops: {e}"))

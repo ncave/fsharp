@@ -1,5 +1,5 @@
-// #Conformance #TypesAndModules #Records 
-#light
+// #Conformance #TypesAndModules #Records
+
 
 // Test type inference for records
 

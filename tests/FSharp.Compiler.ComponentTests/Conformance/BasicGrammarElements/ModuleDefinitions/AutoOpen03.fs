@@ -1,17 +1,17 @@
-// #Conformance #TypesAndModules #Modules 
-#light
+// #Conformance #TypesAndModules #Modules
+
 
 module A
 
 
 module B =
     [<AutoOpen>]
-    module C = 
+    module C =
        [<AutoOpen>]
-       module D = 
+       module D =
            let x = 0
-      
-// This should cause a cascade...     
+
+// This should cause a cascade...
 open B
 
 // ... bringing x into scope

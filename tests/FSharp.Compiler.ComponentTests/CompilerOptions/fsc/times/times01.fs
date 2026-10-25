@@ -1,5 +1,5 @@
-// #NoMT #CompilerOptions 
-#light
+// #NoMT #CompilerOptions
+
 
 namespace N
    module M =

@@ -8,8 +8,6 @@ open FSharp.Compiler.Text
 open FSharp.Compiler.Text.Layout
 open FSharp.Core.Printf
 
-#nowarn "62" // This construct is for ML compatibility.
-
 type NavigableTaggedText(taggedText: TaggedText, range: range) =
     inherit TaggedText(taggedText.Tag, taggedText.Text)
     member val Range = range
@@ -150,12 +148,17 @@ module LayoutRender =
             member _.Start() = NoState
 
             member _.AddText z text =
-                collector text
+                if not (String.IsNullOrEmpty text.Text) then
+                    collector text
+
                 z
 
             member _.AddBreak rstrs n =
                 collector TaggedText.lineBreak
-                collector (TaggedText.tagSpace (spaces n))
+
+                if n > 0 then
+                    collector (TaggedText.tagSpace (spaces n))
+
                 rstrs
 
             member _.AddTag z (_, _, _) = z
@@ -205,10 +208,9 @@ module LayoutRender =
 
     let bufferL os layout = renderL (bufferR os) layout |> ignore
 
-    let emitL f layout =
-        renderL (taggedTextListR f) layout |> ignore
-
     let toArray layout =
         let output = ResizeArray()
         renderL (taggedTextListR output.Add) layout |> ignore
         output.ToArray()
+
+    let toRichText layout = RichText.ofParts (toArray layout)

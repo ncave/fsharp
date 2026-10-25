@@ -1,7 +1,7 @@
-// #Regression #Conformance #DeclarationElements #MemberDefinitions #Overloading 
+// #Regression #Conformance #DeclarationElements #MemberDefinitions #Overloading
 // Regression test for FSHARP1.0:4730 - Overly restrictive - functions not allowed as operator overloads
 
-#light
+
 
 type public TestType() =
     member public s.Value with get() = 17
@@ -15,7 +15,7 @@ type public TestType() =
     static member public (+++) (a : TestType, b : int -> int) = (b 17) + a.Value
 
     static member public (+++) (a : int -> int, b : TestType) = (a 17) + b.Value
-    
+
     static member public (+++) (a : obj * string -> int, b : TestType) = (a (box 17, "17")) + b.Value
 
 let inline (+++) (a : ^a) (b : ^b) = ((^a or ^b): (static member (+++): ^a * ^b -> ^c) (a,b) )

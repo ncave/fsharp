@@ -196,8 +196,15 @@ type FSharpDiagnostic =
     /// Gets the severity for the diagnostic
     member Severity: FSharpDiagnosticSeverity
 
+    /// Gets the original severity prior to adjustments via compiler flags, #nowarn and other features
+    member DefaultSeverity: FSharpDiagnosticSeverity
+
     /// Gets the message for the diagnostic
     member Message: string
+
+    /// Gets the message for the diagnostic as parts classified by their kind, e.g. so that tooling is
+    /// able to render it with colors. Message is the text of all parts concatenated.
+    member RichMessage: RichText
 
     /// Gets the subcategory for the diagnostic
     member Subcategory: string
@@ -225,12 +232,19 @@ type FSharpDiagnostic =
         ?subcategory: string ->
             FSharpDiagnostic
 
-    static member internal CreateFromException:
-        diagnostic: PhasedDiagnostic *
+    /// Creates a diagnostic whose message parts are classified by their kind, e.g. so that tooling is
+    /// able to render it with colors
+    static member Create:
         severity: FSharpDiagnosticSeverity *
-        suggestNames: bool *
-        flatErrors: bool *
-        symbolEnv: SymbolEnv option ->
+        message: RichText *
+        number: int *
+        range: range *
+        ?numberPrefix: string *
+        ?subcategory: string ->
+            FSharpDiagnostic
+
+    static member internal CreateFromException:
+        diagnostic: PhasedDiagnostic * suggestNames: bool * flatErrors: bool * symbolEnv: SymbolEnv option ->
             FSharpDiagnostic
 
     /// Newlines are recognized and replaced with (ASCII 29, the 'group separator'),
@@ -266,7 +280,7 @@ type internal CompilationDiagnosticLogger =
             CompilationDiagnosticLogger
 
     /// Get the captured diagnostics
-    member GetDiagnostics: unit -> (PhasedDiagnostic * FSharpDiagnosticSeverity)[]
+    member GetDiagnostics: unit -> PhasedDiagnostic[]
 
 module internal DiagnosticHelpers =
 
@@ -275,7 +289,6 @@ module internal DiagnosticHelpers =
         allErrors: bool *
         mainInputFileName: string *
         diagnostic: PhasedDiagnostic *
-        severity: FSharpDiagnosticSeverity *
         suggestNames: bool *
         flatErrors: bool *
         symbolEnv: SymbolEnv option ->
@@ -285,7 +298,7 @@ module internal DiagnosticHelpers =
         FSharpDiagnosticOptions *
         allErrors: bool *
         mainInputFileName: string *
-        seq<PhasedDiagnostic * FSharpDiagnosticSeverity> *
+        seq<PhasedDiagnostic> *
         suggestNames: bool *
         flatErrors: bool *
         symbolEnv: SymbolEnv option ->

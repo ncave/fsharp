@@ -33,7 +33,7 @@ open FSharp.Compiler.TcGlobals
 let verbose = false
 #endif
 
-let ffailwith fileName str =
+let ffailwith (fileName: string) (str: string) =
     let msg = FSComp.SR.pickleErrorReadingWritingMetadata (fileName, str)
     System.Diagnostics.Debug.Assert(false, msg)
     failwith msg
@@ -200,12 +200,27 @@ type ReaderState =
         ivals: NodeInTable<ValData, Val>
         ianoninfos: NodeInTable<AnonRecdTypeInfo, AnonRecdTypeInfo>
         istrings: InputTable<string>
-        ipubpaths: InputTable<PublicPath>
+        ipubpaths: InputTable<string[]>
         inlerefs: InputTable<NonLocalEntityRef>
+        itcrefs: EntityRef array
         isimpletys: InputTable<TType>
         ifile: string
         iILModule: ILModuleDef option // the Abstract IL metadata for the DLL being read
+
+        // The pickled format has no table for these, so each is written out at every mention while a
+        // blob names very few distinct ones.
+        iilscopes: Dictionary<ILScopeRef, ILScopeRef>
+        iiltyperefs: Dictionary<ILTypeRef, ILTypeRef>
+        iilmethodrefs: Dictionary<ILMethodRef, ILMethodRef>
     }
+
+// A `HashSet` would fit better, but the member returning the instance it holds is netstandard2.1.
+let shareIL (table: Dictionary<'T, 'T>) (v: 'T) : 'T =
+    match table.TryGetValue v with
+    | true, existing -> existing
+    | _ ->
+        table[v] <- v
+        v
 
 let ufailwith st str = ffailwith st.ifile str
 
@@ -855,12 +870,12 @@ let p_ccuref s st = p_int (encode_ccuref st.occus s) st
 // References to public items in this module
 // A huge number of these occur in pickled F# data, so make them unique
 let decode_pubpath st stringTab a =
-    PubPath(Array.map (lookup_string st stringTab) a)
+    Array.map (lookup_string st stringTab) a
 
 let u_encoded_pubpath = u_array u_int
 let u_pubpath st = lookup_uniq st st.ipubpaths (u_int st)
 
-let encode_pubpath stringTab pubpathTab (PubPath a) =
+let encode_pubpath stringTab pubpathTab (a: string[]) =
     encode_uniq pubpathTab (Array.map (encode_string stringTab) a)
 
 let p_encoded_pubpath = p_array p_int
@@ -875,7 +890,6 @@ let decode_nleref st ccuTab stringTab (a, b) =
 
 let lookup_nleref st nlerefTab x = lookup_uniq st nlerefTab x
 let u_encoded_nleref = u_tup2 u_int (u_array u_int)
-let u_nleref st = lookup_uniq st st.inlerefs (u_int st)
 
 let encode_nleref ccuTab stringTab nlerefTab thisCcu (nleref: NonLocalEntityRef) =
 #if !NO_TYPEPROVIDERS
@@ -883,7 +897,7 @@ let encode_nleref ccuTab stringTab nlerefTab thisCcu (nleref: NonLocalEntityRef)
     // References to these nodes _do_ appear in F# assembly metadata, because they may be public.
     let nleref =
         match nleref.Deref.PublicPath with
-        | Some pubpath when nleref.Deref.IsProvidedGeneratedTycon ->
+        | ValueSome pubpath when nleref.Deref.IsProvidedGeneratedTycon ->
             if verbose then
                 dprintfn "remapping pickled reference to provider-generated type %s" nleref.Deref.DisplayNameWithStaticParameters
 
@@ -1062,10 +1076,14 @@ let unpickleObjWithDanglingCcus
                     .Create(AnonRecdTypeInfo.NewUnlinked, (fun osgn tg -> osgn.Link tg), (fun osgn -> osgn.IsLinked), "ianoninfos", 0)
             istrings = new_itbl "istrings (fake)" [||]
             inlerefs = new_itbl "inlerefs (fake)" [||]
+            itcrefs = [||]
             ipubpaths = new_itbl "ipubpaths (fake)" [||]
             isimpletys = new_itbl "isimpletys (fake)" [||]
             ifile = file
             iILModule = ilModule
+            iilscopes = Dictionary<_, _>()
+            iiltyperefs = Dictionary<_, _>()
+            iilmethodrefs = Dictionary<_, _>()
         }
 
     let ccuNameTab = u_array u_encoded_ccuref st2
@@ -1123,9 +1141,13 @@ let unpickleObjWithDanglingCcus
                 istrings = stringTab
                 ipubpaths = pubpathTab
                 inlerefs = nlerefTab
+                itcrefs = Array.zeroCreate nlerefTab.itbl_rows.Length
                 isimpletys = simpletypTab
                 ifile = file
                 iILModule = ilModule
+                iilscopes = Dictionary<_, _>()
+                iiltyperefs = Dictionary<_, _>()
+                iilmethodrefs = Dictionary<_, _>()
             }
 
         let res = u st1
@@ -1231,7 +1253,7 @@ let u_ILScopeRef st =
         | _ -> ufailwith st "u_ILScopeRef"
 
     let res = rescopeILScopeRef st.iilscope res
-    res
+    shareIL st.iilscopes res
 
 let p_ILHasThis x st =
     p_byte
@@ -1285,8 +1307,8 @@ and p_ILBasicCallConv x st =
          | ILArgConvention.VarArg -> 5)
         st
 
-and p_ILCallConv (Callconv(x, y)) st =
-    p_tup2 p_ILHasThis p_ILBasicCallConv (x, y) st
+and p_ILCallConv (x: ILCallingConv) st =
+    p_tup2 p_ILHasThis p_ILBasicCallConv (x.ThisConv, x.BasicConv) st
 
 and p_ILCallSig x st =
     p_tup3 p_ILCallConv p_ILTypes p_ILType (x.CallingConv, x.ArgTypes, x.ReturnType) st
@@ -1316,11 +1338,12 @@ let u_ILHasThis st =
 
 let u_ILCallConv st =
     let a, b = u_tup2 u_ILHasThis u_ILBasicCallConv st
-    Callconv(a, b)
+    ILCallingConv.Create(a, b)
 
 let u_ILTypeRef st =
     let a, b, c = u_tup3 u_ILScopeRef u_strings u_string st
-    ILTypeRef.Create(a, b, c)
+    let res = ILTypeRef.Create(a, b, c)
+    shareIL st.iiltyperefs res
 
 let u_ILArrayShape =
     u_wrap ILArrayShape (u_list (u_tup2 (u_option u_int32) (u_option u_int32)))
@@ -1413,7 +1436,8 @@ let u_ILMethodRef st =
     let x1, x2, x3, x4, x5, x6 =
         u_tup6 u_ILTypeRef u_ILCallConv u_int u_string u_ILTypes u_ILType st
 
-    ILMethodRef.Create(x1, x2, x4, x3, x5, x6)
+    let res = ILMethodRef.Create(x1, x2, x4, x3, x5, x6)
+    shareIL st.iilmethodrefs res
 
 let u_ILFieldRef st =
     let x1, x2, x3 = u_tup3 u_ILTypeRef u_string u_ILType st
@@ -1944,7 +1968,17 @@ let u_tcref st =
 
     match tag with
     | 0 -> u_local_item_ref st.ientities st |> ERefLocal
-    | 1 -> u_nleref st |> ERefNonLocal
+    | 1 ->
+        let idx = u_int st
+        let nleref = lookup_uniq st st.inlerefs idx
+        let cached = st.itcrefs[idx]
+
+        if obj.ReferenceEquals(cached, null) then
+            let tcref = ERefNonLocal nleref
+            st.itcrefs[idx] <- tcref
+            tcref
+        else
+            cached
     | _ -> ufailwith st "u_tcref"
 
 let u_ucref st =
@@ -2130,7 +2164,7 @@ let p_trait_sln sln st =
         p_byte 7 st
         p_tup4 p_ty (p_vref "trait") p_tys p_ty (a, b, c, d) st
 
-let p_trait (TTrait(a, b, c, d, e, _, f)) st =
+let p_trait (TTrait(a, b, c, d, e, _, f, _)) st =
     p_tup6 p_tys p_string p_MemberFlags p_tys (p_option p_ty) (p_option p_trait_sln) (a, b, c, d, e, f.Value) st
 
 let u_anonInfo_data st =
@@ -2171,7 +2205,7 @@ let u_trait st =
     let a, b, c, d, e, f =
         u_tup6 u_tys u_string u_MemberFlags u_tys (u_option u_ty) (u_option u_trait_sln) st
 
-    TTrait(a, b, c, d, e, ref None, ref f)
+    TTrait(a, b, c, d, e, ref None, ref f, None)
 
 let p_rational q st =
     p_int32 (GetNumerator q) st
@@ -2380,7 +2414,7 @@ let p_tyar_spec_data (x: Typar) st =
 let p_tyar_spec (x: Typar) st =
     //Disabled, workaround for bug 2721: if x.Rigidity <> TyparRigidity.Rigid then warning(Error(sprintf "p_tyar_spec: typar#%d is not rigid" x.Stamp, x.Range))
     if x.IsFromError then
-        warning (Error((0, "p_tyar_spec: from error"), x.Range))
+        warning (Error((0, RichText.mkText "p_tyar_spec: from error"), x.Range))
 
     p_osgn_decl st.otypars p_tyar_spec_data x st
 
@@ -2415,6 +2449,19 @@ let u_tyar_spec st =
 
 let u_tyar_specs = (u_list u_tyar_spec)
 
+/// Write nullness information to stream B for a type.
+/// Always writes exactly one byte to keep stream B aligned with unconditional reads in u_ty.
+/// Other data (e.g. typar constraints) is also written to stream B unconditionally,
+/// so skipping nullness bytes would cause stream B misalignment when langFeatureNullness = false.
+let p_nullnessB baseTag (nullness: Nullness) st =
+    if st.oglobals.langFeatureNullness then
+        match nullness.Evaluate() with
+        | NullnessInfo.WithNull -> p_byteB baseTag st
+        | NullnessInfo.WithoutNull -> p_byteB (baseTag + 1) st
+        | NullnessInfo.AmbivalentToNull -> p_byteB (baseTag + 2) st
+    else
+        p_byteB 0 st
+
 let _ =
     fill_p_ty2 (fun isStructThisArgPos ty st ->
         let ty = stripTyparEqns ty
@@ -2437,45 +2484,25 @@ let _ =
                 p_tys l st
 
         | TType_app(ERefNonLocal nleref, [], nullness) ->
-            if st.oglobals.langFeatureNullness then
-                match nullness.Evaluate() with
-                | NullnessInfo.WithNull -> p_byteB 9 st
-                | NullnessInfo.WithoutNull -> p_byteB 10 st
-                | NullnessInfo.AmbivalentToNull -> p_byteB 11 st
-
+            p_nullnessB 9 nullness st // B tags: 9=WithNull, 10=WithoutNull, 11=Ambivalent
             p_byte 1 st
             p_simpletyp nleref st
 
         | TType_app(tc, tinst, nullness) ->
-            if st.oglobals.langFeatureNullness then
-                match nullness.Evaluate() with
-                | NullnessInfo.WithNull -> p_byteB 12 st
-                | NullnessInfo.WithoutNull -> p_byteB 13 st
-                | NullnessInfo.AmbivalentToNull -> p_byteB 14 st
-
+            p_nullnessB 12 nullness st // B tags: 12=WithNull, 13=WithoutNull, 14=Ambivalent
             p_byte 2 st
             p_tcref "typ" tc st
             p_tys tinst st
 
         | TType_fun(d, r, nullness) ->
-            if st.oglobals.langFeatureNullness then
-                match nullness.Evaluate() with
-                | NullnessInfo.WithNull -> p_byteB 15 st
-                | NullnessInfo.WithoutNull -> p_byteB 16 st
-                | NullnessInfo.AmbivalentToNull -> p_byteB 17 st
-
+            p_nullnessB 15 nullness st // B tags: 15=WithNull, 16=WithoutNull, 17=Ambivalent
             p_byte 3 st
             // Note, the "this" argument may be found in the domain position of a function type, so propagate the isStructThisArgPos value
             p_ty2 isStructThisArgPos d st
             p_ty r st
 
         | TType_var(r, nullness) ->
-            if st.oglobals.langFeatureNullness then
-                match nullness.Evaluate() with
-                | NullnessInfo.WithNull -> p_byteB 18 st
-                | NullnessInfo.WithoutNull -> p_byteB 19 st
-                | NullnessInfo.AmbivalentToNull -> p_byteB 20 st
-
+            p_nullnessB 18 nullness st // B tags: 18=WithNull, 19=WithoutNull, 20=Ambivalent
             p_byte 4 st
             p_tpref r st
 
@@ -2598,7 +2625,7 @@ let fill_u_constraints, u_constraints = u_hole ()
 let fill_u_Vals, u_Vals = u_hole ()
 
 let p_ArgReprInfo (x: ArgReprInfo) st =
-    p_attribs x.Attribs st
+    p_attribs (x.Attribs.AsList()) st
     p_option p_ident x.Name st
 
 let p_TyparReprInfo (TyparReprInfo(a, b)) st =
@@ -2618,7 +2645,7 @@ let u_ArgReprInfo st =
     | [], None -> ValReprInfo.unnamedTopArg1
     | _ ->
         {
-            Attribs = a
+            Attribs = WellKnownValAttribs.Create(a)
             Name = b
             OtherRange = None
         }
@@ -2696,7 +2723,7 @@ let rec p_tycon_repr x st =
 
             let allFieldsText =
                 fields
-                |> Array.map (fun f -> f.LogicalName)
+                |> Array.map _.LogicalName
                 |> String.concat System.Environment.NewLine
 
             raise (Error(FSComp.SR.pickleFsharpCoreBackwardsCompatible ("fields in union", allFieldsText), firstFieldRange))
@@ -2799,17 +2826,24 @@ and p_rfield_table x st =
     p_array p_recdfield_spec x.FieldsByIndex st
 
 and p_entity_spec_data (x: Entity) st =
-    p_tyar_specs (x.entity_typars.Force(x.entity_range)) st
+    if not x.IsLinked then
+        pfailwith st "p_entity_spec_data: entity was never linked during unpickling"
+
+    p_tyar_specs x.Typars st
     p_string x.entity_logical_name st
     p_option p_string x.EntityCompiledName st
     p_range x.entity_range st
-    p_option p_pubpath x.entity_pubpath st
+    let pubPathOpt =
+        match x.PublicPath with
+        | ValueSome pubpath -> Some pubpath.FullPath
+        | ValueNone -> None
+    p_option p_pubpath pubPathOpt st
     p_access x.Accessibility st
     p_access x.TypeReprAccessibility st
-    p_attribs x.entity_attribs st
+    p_attribs (x.entity_attribs.AsList()) st
     let flagBit = p_tycon_repr x.entity_tycon_repr st
     p_option p_ty x.TypeAbbrev st
-    p_tcaug x.entity_tycon_tcaug st
+    p_tcaug x.TypeContents st
     p_string System.String.Empty st
     p_kind x.TypeOrMeasureKind st
 
@@ -2846,8 +2880,7 @@ and p_tcaug p st =
          p.tcaug_hash_and_equals_withc
          |> Option.map (fun (v1, v2, v3, _) -> (v1, v2, v3)),
          p.tcaug_equals,
-         (p.tcaug_adhoc_list
-          |> ResizeArray.toList
+         (p.AdhocMembers
           // Explicit impls of interfaces only get kept in the adhoc list
           // in order to get check the well-formedness of an interface.
           // Keeping them across assembly boundaries is not valid, because relinking their ValRefs
@@ -2882,7 +2915,18 @@ and p_attribkind x st =
 and p_attrib (Attrib(a, b, c, d, e, _targets, f)) st = // AttributeTargets are not preserved
     p_tup6 (p_tcref "attrib") p_attribkind (p_list p_attrib_expr) (p_list p_attrib_arg) p_bool p_dummy_range (a, b, c, d, e, f) st
 
-and p_attrib_expr (AttribExpr(e1, e2)) st = p_tup2 p_expr p_expr (e1, e2) st
+and p_attrib_expr (AttribExpr(e1, e2)) st =
+    // Normalize Expr.Val back to Expr.Const before pickling.
+    // The literal name recovery (Expr.Val in source field) is an in-memory optimization
+    // for signature generation display. We must not change the pickle format, because
+    // old compilers reading Expr.Val in this position would show degraded attribute display.
+    let e1 =
+        match e1 with
+        | Expr.Val(vref, _, m) when vref.LiteralValue.IsSome ->
+            Expr.Const(vref.LiteralValue.Value, m, vref.Type)
+        | _ -> e1
+
+    p_tup2 p_expr p_expr (e1, e2) st
 
 and p_attrib_arg (AttribNamedArg(a, b, c, d)) st =
     p_tup4 p_string p_ty p_bool p_attrib_expr (a, b, c, d) st
@@ -3122,7 +3166,7 @@ and u_rfield_table st =
     Construct.MakeRecdFieldsTable(u_list u_recdfield_spec st)
 
 and u_entity_spec_data st : Entity =
-    let x1, x2a, x2b, x2c, x3, (x4a, x4b), x6, x7f, x8, x9, _x10, x10b, x11, x12, x13, x14, x15 =
+    let x1, x2a, x2b, x2c, _x3, (x4a, x4b), x6, x7f, x8, x9, _x10, x10b, x11, x12, x13, x14, x15 =
         u_tup17
             u_tyar_specs
             u_string
@@ -3151,11 +3195,10 @@ and u_entity_spec_data st : Entity =
         entity_stamp = newStamp ()
         entity_logical_name = x2a
         entity_range = x2c
-        entity_pubpath = x3
-        entity_attribs = x6
+        entity_attribs = WellKnownEntityAttribs.Create(x6)
         entity_tycon_repr = x7
         entity_tycon_tcaug = x9
-        entity_flags = EntityFlags x11
+        entity_flags = (EntityFlags x11).WithIsAugmentationClosed
         entity_cpath = x12
         entity_modul_type = MaybeLazy.Lazy x13
         entity_il_repr_cache = newCache ()
@@ -3197,12 +3240,14 @@ and u_tcaug st =
         tcaug_equals = b2
         // only used for code generation and checking - hence don't care about the values when reading back in
         tcaug_hasObjectGetHashCode = false
-        tcaug_adhoc_list = ResizeArray<_>(c |> List.map (fun (_, vref) -> (false, vref)))
+        tcaug_adhoc_list =
+            match c with
+            | [] -> null
+            | _ -> ResizeArray<_>(c |> List.map (fun (_, vref) -> (false, vref)))
         tcaug_adhoc = NameMultiMap.ofList c
         tcaug_interfaces = d
         tcaug_super = e
         // pickled type definitions are always closed (i.e. no more intrinsic members allowed)
-        tcaug_closed = true
         tcaug_abstract = g
     }
 
@@ -3297,7 +3342,7 @@ and u_ValData st =
              | Some(a, _) -> a)
         val_type = x2
         val_stamp = newStamp ()
-        val_flags = ValFlags x4
+        val_flags = ValFlags.OfPickledBits x4
         val_opt_data =
             match x1z, x1a, x10, x14, x13, x15, x8, x13b, x12, x9 with
             | None, None, None, None, TAccess [], None, None, ParentNone, "", [] -> None
@@ -3320,7 +3365,7 @@ and u_ValData st =
                         val_member_info = x8
                         val_declaring_entity = x13b
                         val_xmldocsig = x12
-                        val_attribs = x9
+                        val_attribs = WellKnownValAttribs.Create(x9)
                     }
     }
 
@@ -3621,7 +3666,8 @@ and p_op x st =
         p_int n st
     | TOp.Goto _
     | TOp.Label _
-    | TOp.Return -> failwith "unexpected backend construct in pickled TAST"
+    | TOp.Return
+    | TOp.DebugLocalScope _ -> failwith "unexpected backend construct in pickled TAST"
 
 and u_op st =
     let tag = u_byte st

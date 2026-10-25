@@ -46,8 +46,37 @@ open FSharp.Compiler.GraphChecking
 // InteractiveChecker
 //-------------------------------------------------------------------------
 
-type internal TcResult = TcEnv * TopAttribs * CheckedImplFile option * ModuleOrNamespaceType
+type internal TcResult = PartialResult
 type internal TcErrors = FSharpDiagnostic[]
+
+/// The result of checking one file over the dependency graph, kept for reuse while
+/// neither the file nor anything it depends on changes.
+type internal GraphCheckEntry = {
+    parseResults: FSharpParseFileResults
+    qualifiedName: string
+    fileIndex: int
+    /// Identifies the finisher: a new one gets a new generation.
+    generation: int
+    /// The files this one depends on, with the generations of the finishers it was checked against.
+    dependencyGenerations: (string * int)[]
+    /// Adds the file's signature to the state its dependents are checked in. Kept from an earlier check while later
+    /// checks of the file give the same signature, so the dependents' results stay valid.
+    finisher: Finisher<NodeToTypeCheck, TcState, PartialResult>
+    /// The implementation to report, from the latest check of the file.
+    implFile: CheckedImplFile option
+    signature: Lazy<string option>
+    tcErrors: TcErrors
+}
+
+/// How a file's result was obtained in a check over the dependency graph.
+type internal GraphCheckOutcome =
+    /// The file is unchanged, and none of the files it depends on, now or in the earlier check, was replaced.
+    | Reused of GraphCheckEntry
+    /// The file changed but its signature did not, and none of the files it depends on was replaced. The earlier
+    /// finisher stays, so the file's dependents can be reused; the new implementation is reported.
+    | Kept of GraphCheckEntry * CheckedImplFile
+    /// The file was checked, and its dependents see the new result.
+    | Replaced of Finisher<NodeToTypeCheck, TcState, PartialResult> * dependencyGenerations: (string * int)[]
 
 type internal CompilerState = {
     tcConfig: TcConfig
@@ -57,6 +86,7 @@ type internal CompilerState = {
     projectOptions: FSharpProjectOptions
     parseCache: ConcurrentDictionary<string * int, FSharpParseFileResults>
     checkCache: ConcurrentDictionary<string, (TcResult * TcErrors) * (TcState * ModuleNamesDict)>
+    graphCheckCache: ConcurrentDictionary<string, GraphCheckEntry>
 }
 
 type internal CacheMsg<'T> =
@@ -85,6 +115,312 @@ type internal Cache<'T>(init: (unit -> unit) -> Async<'T>) =
             loop None)
     member _.Get() = agent.PostAndAsyncReply(Get)
     member _.Reset() = agent.Post Reset
+
+/// What the files that depend on a file see of it: the types, values, members and attributes its signature declares,
+/// without ranges or stamps, and with type parameters numbered by position. Equal fingerprints mean the dependents
+/// would check the same against either signature. Anything it cannot describe exactly gives None, so the file
+/// always counts as changed.
+module internal SignatureFingerprint =
+
+    exception private NotDescribable
+
+    let compute (mty: ModuleOrNamespaceType) (topAttrs: TopAttribs) : string option =
+        let sb = Text.StringBuilder()
+        let add (s: string) = sb.Append(s).Append('|') |> ignore
+        let typarNumbers = Collections.Generic.Dictionary<Typar, int>(HashIdentity.Reference)
+
+        let rec ty (t: TType) =
+            match stripTyparEqns t with
+            | TType_app (tcref, tinst, nullness) ->
+                add "app"
+                add (fullDisplayTextOfTyconRef tcref)
+                nullnessOf nullness
+                tys tinst
+            | TType_fun (domainTy, rangeTy, nullness) ->
+                add "fun"
+                ty domainTy
+                ty rangeTy
+                nullnessOf nullness
+            | TType_tuple (tupInfo, elementTys) ->
+                add (if evalTupInfoIsStruct tupInfo then "struct tuple" else "tuple")
+                tys elementTys
+            | TType_anon (anonInfo, fieldTys) ->
+                add "anon"
+                add anonInfo.Assembly.AssemblyName
+                add (string (evalAnonInfoIsStruct anonInfo))
+                for name in anonInfo.SortedNames do add name
+                tys fieldTys
+            | TType_var (tp, nullness) ->
+                typar tp
+                nullnessOf nullness
+            | TType_forall (tps, bodyTy) ->
+                add "forall"
+                typars tps
+                ty bodyTy
+            | TType_measure m ->
+                add "measure"
+                measure m
+            | TType_ucase (ucref, tinst) ->
+                add "ucase"
+                add (fullDisplayTextOfTyconRef ucref.TyconRef)
+                add ucref.CaseName
+                tys tinst
+
+        and tys (l: TType list) =
+            add (string l.Length)
+            List.iter ty l
+
+        and nullnessOf (nullness: Nullness) = add (string (nullness.Evaluate()))
+
+        and measure (m: Measure) =
+            match stripUnitEqns m with
+            | Measure.Var tp -> typar tp
+            | Measure.Const (tcref, _) -> add (fullDisplayTextOfTyconRef tcref)
+            | Measure.Prod (m1, m2, _) ->
+                add "*"
+                measure m1
+                measure m2
+            | Measure.Inv m1 ->
+                add "/"
+                measure m1
+            | Measure.One _ -> add "1"
+            | Measure.RationalPower (m1, power) ->
+                add "^"
+                measure m1
+                add (sprintf "%A" power)
+
+        // A type parameter is described once, where it first appears, and by its number after that.
+        and typar (tp: Typar) =
+            match typarNumbers.TryGetValue tp with
+            | true, n -> add ("'" + string n)
+            | _ ->
+                let n = typarNumbers.Count
+                typarNumbers[tp] <- n
+                add ("'" + string n + " new")
+                add (sprintf "%A %A" tp.StaticReq tp.Kind)
+                add (string tp.Constraints.Length)
+                List.iter constr tp.Constraints
+
+        and typars (tps: Typars) =
+            add (string tps.Length)
+            List.iter typar tps
+
+        and constr (c: TyparConstraint) =
+            match c with
+            | TyparConstraint.CoercesTo (t, _) ->
+                add ":>"
+                ty t
+            | TyparConstraint.DefaultsTo (priority, t, _) ->
+                add "default"
+                add (string priority)
+                ty t
+            | TyparConstraint.MayResolveMember (TTrait (supportTys, memberName, memberFlags, argTys, returnTy, _, _, _), _) ->
+                add "member"
+                tys supportTys
+                add memberName
+                add (sprintf "%A" memberFlags)
+                tys argTys
+                optTy returnTy
+            | TyparConstraint.SimpleChoice (choiceTys, _) ->
+                add "choice"
+                tys choiceTys
+            | TyparConstraint.IsEnum (t, _) ->
+                add "enum"
+                ty t
+            | TyparConstraint.IsDelegate (argsTy, retTy, _) ->
+                add "delegate"
+                ty argsTy
+                ty retTy
+            | TyparConstraint.SupportsNull _ -> add "null"
+            | TyparConstraint.NotSupportsNull _ -> add "not null"
+            | TyparConstraint.IsNonNullableStruct _ -> add "struct"
+            | TyparConstraint.IsReferenceType _ -> add "not struct"
+            | TyparConstraint.RequiresDefaultConstructor _ -> add "new"
+            | TyparConstraint.SupportsComparison _ -> add "comparison"
+            | TyparConstraint.SupportsEquality _ -> add "equality"
+            | TyparConstraint.IsUnmanaged _ -> add "unmanaged"
+            | TyparConstraint.AllowsRefStruct _ -> add "allows ref struct"
+
+        and optTy (t: TType option) =
+            match t with
+            | Some t -> ty t
+            | None -> add "-"
+
+        and access (TAccess paths) =
+            add (string paths.Length)
+            for path in paths do add (sprintf "%A" path.AccessPath)
+
+        and attribs (l: Attribs) =
+            add (string l.Length)
+            for Attrib (tcref, _, args, namedArgs, appliedToAccessor, targets, _) in l do
+                add (fullDisplayTextOfTyconRef tcref)
+                add (sprintf "%b %A" appliedToAccessor targets)
+                add (string args.Length)
+                for AttribExpr (_, e) in args do attribExpr e
+                add (string namedArgs.Length)
+                for AttribNamedArg (name, t, isField, AttribExpr (_, e)) in namedArgs do
+                    add name
+                    ty t
+                    add (string isField)
+                    attribExpr e
+
+        and attribExpr (e: Expr) =
+            match e with
+            | Expr.Const (c, _, t) ->
+                add (sprintf "%A" c)
+                ty t
+            | Expr.Op (TOp.Coerce, tinst, [ e ], _) ->
+                add "coerce"
+                tys tinst
+                attribExpr e
+            | Expr.Op (TOp.Array, tinst, elements, _) ->
+                add "array"
+                tys tinst
+                add (string elements.Length)
+                List.iter attribExpr elements
+            | Expr.App (Expr.Val (vref, _, _), _, tinst, args, _) ->
+                add (vref.LogicalName)
+                tys tinst
+                add (string args.Length)
+                List.iter attribExpr args
+            | _ -> raise NotDescribable
+
+        and argInfo (info: ArgReprInfo) =
+            add (match info.Name with Some id -> id.idText | None -> "-")
+            attribs (info.Attribs.AsList())
+
+        and slotSig (TSlotSig (name, declaringTy, classTps, methodTps, paramGroups, returnTy)) =
+            add name
+            ty declaringTy
+            typars classTps
+            typars methodTps
+            add (string paramGroups.Length)
+            for group in paramGroups do
+                add (string group.Length)
+                for TSlotParam (paramName, paramTy, isIn, isOut, isOptional, paramAttribs) in group do
+                    add (defaultArg paramName "-")
+                    ty paramTy
+                    add (sprintf "%b %b %b" isIn isOut isOptional)
+                    attribs paramAttribs
+            optTy returnTy
+
+        and value (v: Val) =
+            add "val"
+            add v.LogicalName
+            add (defaultArg v.ValCompiledName "-")
+            access v.Accessibility
+            ty v.Type
+            attribs v.Attribs
+            add (sprintf "%A %A %b %b %b" v.LiteralValue v.InlineInfo v.IsMutable v.IsCompilerGenerated v.IsExtensionMember)
+
+            match v.ValReprInfo with
+            | Some (ValReprInfo (typarInfos, argGroups, result)) ->
+                add (string typarInfos.Length)
+                add (string argGroups.Length)
+                for group in argGroups do
+                    add (string group.Length)
+                    List.iter argInfo group
+                argInfo result
+            | None -> add "-"
+
+            match v.MemberInfo with
+            | Some memberInfo ->
+                add (fullDisplayTextOfTyconRef memberInfo.ApparentEnclosingEntity)
+                add (sprintf "%A %b" memberInfo.MemberFlags memberInfo.IsImplemented)
+                add (string memberInfo.ImplementedSlotSigs.Length)
+                List.iter slotSig memberInfo.ImplementedSlotSigs
+            | None -> add "-"
+
+        and field (f: RecdField) =
+            add f.LogicalName
+            ty f.FormalType
+            add (sprintf "%b %b %b %A" f.IsMutable f.IsStatic f.IsVolatile f.LiteralValue)
+            access f.Accessibility
+            attribs f.PropertyAttribs
+            attribs f.FieldAttribs
+
+        and entity (e: Entity) =
+            add "entity"
+            add e.LogicalName
+            add e.CompiledName
+            access e.Accessibility
+            access e.TypeReprAccessibility
+            attribs e.Attribs
+            typars e.Typars
+
+            if e.IsModuleOrNamespace then
+                add (sprintf "%A" e.ModuleOrNamespaceType.ModuleOrNamespaceKind)
+                moduleOrNamespace e.ModuleOrNamespaceType
+            else
+                optTy e.TypeAbbrev
+
+                match e.TypeReprInfo with
+                | TFSharpTyconRepr data ->
+                    match data.fsobjmodel_kind with
+                    | TFSharpRecord -> add "record"
+                    | TFSharpUnion -> add "union"
+                    | TFSharpClass -> add "class"
+                    | TFSharpInterface -> add "interface"
+                    | TFSharpStruct -> add "struct"
+                    | TFSharpEnum -> add "enum"
+                    | TFSharpDelegate ss ->
+                        add "delegate"
+                        slotSig ss
+                | TMeasureableRepr t ->
+                    add "measureable"
+                    ty t
+                | TNoRepr -> add "no repr"
+                | TILObjectRepr _
+                | TAsmRepr _
+                | TProvidedTypeRepr _
+                | TProvidedNamespaceRepr _ -> raise NotDescribable
+
+                let contents = e.TypeContents
+                optTy contents.tcaug_super
+                add (string contents.tcaug_interfaces.Length)
+                for interfaceTy, compilerGenerated, _ in contents.tcaug_interfaces do
+                    ty interfaceTy
+                    add (string compilerGenerated)
+                add (sprintf "%b %b %b %b %b" contents.tcaug_compare.IsSome contents.tcaug_compare_withc.IsSome
+                        contents.tcaug_equals.IsSome contents.tcaug_hash_and_equals_withc.IsSome contents.tcaug_abstract)
+
+                add (string e.AllFieldsArray.Length)
+                Array.iter field e.AllFieldsArray
+                add (string e.UnionCasesArray.Length)
+                for uc in e.UnionCasesArray do
+                    add uc.LogicalName
+                    add uc.CompiledName
+                    access uc.Accessibility
+                    attribs uc.Attribs
+                    ty uc.ReturnType
+                    add (string uc.RecdFieldsArray.Length)
+                    Array.iter field uc.RecdFieldsArray
+
+                match e.ExceptionInfo with
+                | TExnAbbrevRepr tcref -> add (fullDisplayTextOfTyconRef tcref)
+                | TExnFresh fields ->
+                    add "exception"
+                    add (string fields.FieldsByIndex.Length)
+                    Array.iter field fields.FieldsByIndex
+                | TExnNone -> add "-"
+                | TExnAsmRepr _ -> raise NotDescribable
+
+        and moduleOrNamespace (m: ModuleOrNamespaceType) =
+            let entities = m.AllEntities |> Seq.toList
+            add (string entities.Length)
+            List.iter entity entities
+            let vals = m.AllValsAndMembers |> Seq.toList
+            add (string vals.Length)
+            List.iter value vals
+
+        try
+            moduleOrNamespace mty
+            attribs topAttrs.mainMethodAttrs
+            attribs topAttrs.netModuleAttrs
+            attribs topAttrs.assemblyAttrs
+            Some (sb.ToString())
+        with NotDescribable ->
+            None
 
 [<AutoOpen>]
 module internal ParseAndCheck =
@@ -149,6 +485,8 @@ module internal ParseAndCheck =
         let parseCache = ConcurrentDictionary<string * int, FSharpParseFileResults>(HashIdentity.Structural)
         // type check cache, keyed on file name
         let checkCache = ConcurrentDictionary<string, (TcResult * TcErrors) * (TcState * ModuleNamesDict)>(HashIdentity.Structural)
+        // graph type check cache, keyed on file name
+        let graphCheckCache = ConcurrentDictionary<string, GraphCheckEntry>(HashIdentity.Structural)
 
         return {
             tcConfig = tcConfig
@@ -158,6 +496,7 @@ module internal ParseAndCheck =
             projectOptions = projectOptions
             parseCache = parseCache
             checkCache = checkCache
+            graphCheckCache = graphCheckCache
         }
     }
 
@@ -199,6 +538,12 @@ module internal ParseAndCheck =
             let dependencyFiles = [||] // interactions have no dependencies
             FSharpParseFileResults (parseErrors, parseTreeOpt, anyErrors, dependencyFiles) )
 
+    /// Counts the compiler-generated names of a file from zero again, before checking it, so a file checked again in
+    /// this process, as in watch mode, gets the names a fresh compilation gives instead of continuing from its last check.
+    let ResetGeneratedNames (input: ParsedInput, compilerState) =
+        compilerState.tcGlobals.CompilerGlobalState
+        |> Option.iter (fun state -> state.ResetCompilerGeneratedNamesOfFile input.QualifiedName.Range.FileIndex)
+
     let TypeCheckOneInputEntry (parseResults: FSharpParseFileResults, tcSink: TcResultsSink, tcState: TcState, moduleNamesDict: ModuleNamesDict, compilerState) =
         let input = parseResults.ParseTree
         let diagnosticsOptions = compilerState.tcConfig.diagnosticsOptions
@@ -210,6 +555,7 @@ module internal ParseAndCheck =
         let prefixPathOpt = None
 
         let input, moduleNamesDict = input |> DeduplicateParsedInputModuleName moduleNamesDict
+        ResetGeneratedNames (input, compilerState)
         let tcResult, tcState =
             CheckOneInput (checkForErrors, compilerState.tcConfig, compilerState.tcImports, compilerState.tcGlobals, prefixPathOpt, tcSink, tcState, input)
             |> Cancellable.runWithoutCancellation
@@ -231,13 +577,179 @@ module internal ParseAndCheck =
         let loadClosure = None
         let keepAssemblyContents = true
 
-        let tcEnvAtEnd, _topAttrs, implFile, ccuSigForFile = tcResult
+        let tcEnvAtEnd, _topAttrs, implFile, ccuSigForFile, ownSigForFile = tcResult
         let errors = Array.append parseResults.Diagnostics tcErrors
 
-        let scope = TypeCheckInfo (compilerState.tcConfig, compilerState.tcGlobals, ccuSigForFile, tcState.Ccu, compilerState.tcImports, tcEnvAtEnd.AccessRights,
+        let scope = TypeCheckInfo (compilerState.tcConfig, compilerState.tcGlobals, ccuSigForFile, ownSigForFile, tcState.Ccu, compilerState.tcImports, tcEnvAtEnd.AccessRights,
                                 projectFileName, fileName, Some compilerState.projectOptions, sink.GetResolutions(), sink.GetSymbolUses(), tcEnvAtEnd.NameEnv,
                                 loadClosure, implFile, sink.GetOpenDeclarations())
         FSharpCheckFileResults (fileName, errors, Some scope, parseResults.DependencyFiles, None, keepAssemblyContents)
+
+    /// The last generation given to a graph check finisher; 0 is never given.
+    let lastGraphCheckGeneration = ref 0
+
+    /// Whether a changed file whose signature is the same keeps its dependents' results (FICKL_FCS_SIGNATURE_CUTOFF=0 turns it off).
+    let signatureCutoff = Environment.GetEnvironmentVariable "FICKL_FCS_SIGNATURE_CUTOFF" <> "0"
+
+    let ReportCheckedFile (tcState: TcState, tcResult: TcResult, compilerState, subscriber) =
+        let _, _, implFile, _, _ = tcResult
+        match subscriber, implFile with
+        | Some subscriber, Some implFile ->
+            let cenv = SymbolEnv(compilerState.tcGlobals, tcState.Ccu, Some tcState.CcuSig, compilerState.tcImports)
+            FSharpImplementationFileContents(cenv, implFile) |> subscriber
+        | _ -> ()
+
+    /// Type checks the files in parallel where the file dependency graph allows. A file checked by an earlier call is
+    /// reused while neither it nor anything it depends on has changed, so after an edit only the edited file and its
+    /// dependents are checked again. Fills the check cache with the same per-file entries a sequential check would
+    /// leave. The subscriber gets the files in project order, each as soon as it and all files before it are checked,
+    /// because Fable expects every earlier file to be known, not only the file's dependencies.
+    let TypeCheckInputsInParallel (parseResults: FSharpParseFileResults[], tcState: TcState, compilerState, subscriber) =
+        let tcConfig = compilerState.tcConfig
+        let diagnosticsOptions = tcConfig.diagnosticsOptions
+
+        let inputsAndModuleNames, _ =
+            (Map.empty, parseResults) ||> Array.mapFold (fun moduleNamesDict parseRes ->
+                let input, moduleNamesDict = parseRes.ParseTree |> DeduplicateParsedInputModuleName moduleNamesDict
+                (input, moduleNamesDict), moduleNamesDict)
+        let inputs, moduleNamesDicts = Array.unzip inputsAndModuleNames
+        let fileNames = parseResults |> Array.map (fun parseRes -> parseRes.FileName)
+
+        let sourceFiles = inputs |> Array.mapi (fun idx input -> { Idx = idx; FileName = input.FileName; ParsedInput = input })
+        let filePairs = FilePairMap(sourceFiles)
+        let graph, _trie = DependencyResolution.mkGraph filePairs sourceFiles
+        let dependencies = Array.init inputs.Length (fun idx -> graph[idx] |> Array.filter ((<>) idx) |> Array.map (fun dep -> fileNames[dep]))
+
+        // Each file's outcome is decided when the graph reaches it, after the files it depends on: dependencies always
+        // come earlier in the project. Entities are compared by identity, so a file's earlier result stays valid only
+        // while the finishers of everything it depends on are the ones it was checked with, also across checks of
+        // part of the project.
+        let outcomes = Array.zeroCreate<GraphCheckOutcome> inputs.Length
+        let generations = Array.zeroCreate<int> inputs.Length
+        let fileIndexes = Collections.Generic.Dictionary<string, int>()
+        fileNames |> Array.iteri (fun idx fileName -> fileIndexes[fileName] <- idx)
+
+        // A file this check reaches later is not settled yet, and gets 0, which no finisher has.
+        let currentGeneration fileName =
+            match fileIndexes.TryGetValue fileName with
+            | true, idx -> generations[idx]
+            | _ ->
+                match compilerState.graphCheckCache.TryGetValue fileName with
+                | true, entry -> entry.generation
+                | _ -> -1
+
+        let capturingLoggers = parseResults |> Array.map (fun _ -> CompilationDiagnosticLogger("TypeCheckFile", diagnosticsOptions))
+        let loggers = capturingLoggers |> Array.map (fun logger -> GetDiagnosticsLoggerFilteringByScopedNowarn(diagnosticsOptions, logger))
+
+        let checkFile idx tcState =
+            let settle outcome generation =
+                outcomes[idx] <- outcome
+                generations[idx] <- generation
+            let earlier =
+                match compilerState.graphCheckCache.TryGetValue fileNames[idx] with
+                | true, entry when
+                    entry.qualifiedName = inputs[idx].QualifiedName.Text
+                    && entry.fileIndex = idx
+                    && entry.dependencyGenerations |> Array.forall (fun (dep, generation) -> currentGeneration dep = generation)
+                    && dependencies[idx] |> Array.forall (fun dep -> entry.dependencyGenerations |> Array.exists (fst >> (=) dep)) -> Some entry
+                | _ -> None
+            match earlier with
+            | Some entry when obj.ReferenceEquals(entry.parseResults, parseResults[idx]) ->
+                settle (Reused entry) entry.generation
+                entry.finisher
+            | _ ->
+            let parseRes = parseResults[idx]
+            let logger = loggers[idx]
+            use _scope = new CompilationGlobalsScope (logger, BuildPhase.TypeCheck)
+            let checkForErrors () = parseRes.ParseHadErrors || logger.ErrorCount > 0
+            let prefixPathOpt = None
+            ResetGeneratedNames (inputs[idx], compilerState)
+            let finisher =
+                CheckOneInputWithCallback (NodeToTypeCheck.PhysicalFile idx)
+                    (checkForErrors, tcConfig, compilerState.tcImports, compilerState.tcGlobals, prefixPathOpt, TcResultsSink.NoSink, tcState, inputs[idx], false)
+                |> Cancellable.runWithoutCancellation
+            let kept =
+                match earlier with
+                | Some entry when signatureCutoff ->
+                    // The graph applies a finisher once for every file that depends on it, so applying it once more to
+                    // read the signature changes nothing. Its diagnostics are already in the file's logger.
+                    let (Finisher (finisher = finish)) = finisher
+                    let partialResult, _ =
+                        use _ = new CompilationGlobalsScope (DiscardErrorsLogger, BuildPhase.TypeCheck)
+                        finish tcState
+                    match partialResult with
+                    | _, topAttrs, Some implFile, _, _ ->
+                        let signature = SignatureFingerprint.compute implFile.Signature topAttrs
+                        if signature.IsSome && signature = entry.signature.Force() then Some (entry, implFile) else None
+                    | _ -> None
+                | _ -> None
+            match kept with
+            | Some (entry, implFile) ->
+                settle (Kept (entry, implFile)) entry.generation
+                entry.finisher
+            | None ->
+                let dependencyGenerations = dependencies[idx] |> Array.map (fun dep -> dep, currentGeneration dep)
+                settle (Replaced (finisher, dependencyGenerations)) (Interlocked.Increment &lastGraphCheckGeneration.contents)
+                finisher
+
+        // The implementation to report for a file: a kept or reused file's finisher gives an earlier one.
+        let withLatestImplFile idx ((tcEnv, topAttrs, implFile, ccuSig, ownSig): TcResult) : TcResult =
+            let implFile =
+                match outcomes[idx] with
+                | Reused entry -> entry.implFile
+                | Kept (_, implFile) -> Some implFile
+                | Replaced _ -> implFile
+            tcEnv, topAttrs, implFile, ccuSig, ownSig
+
+        let checkedFiles = Array.zeroCreate<(TcResult * TcState) option> parseResults.Length
+        let nextToReport = ref 0
+        let onChecked idx tcResult tcState =
+            lock checkedFiles (fun () ->
+                checkedFiles[idx] <- Some (withLatestImplFile idx tcResult, tcState)
+                while nextToReport.Value < checkedFiles.Length && checkedFiles[nextToReport.Value].IsSome do
+                    let tcResult, tcState = checkedFiles[nextToReport.Value].Value
+                    ReportCheckedFile (tcState, tcResult, compilerState, subscriber)
+                    nextToReport.Value <- nextToReport.Value + 1)
+
+        let fileResults =
+            use _ = UseBuildPhase BuildPhase.TypeCheck
+            CheckMultipleInputsUsingGraphModeWithStates (compilerState.tcImports, compilerState.tcGlobals, None, tcState, inputs,
+                graph, filePairs, checkFile, onChecked, (fun idx -> loggers[idx]), CancellationToken.None)
+
+        let flatErrors = tcConfig.flatErrors
+        let results =
+            fileResults |> Array.mapi (fun idx (tcResult, tcState) ->
+                let fileName = fileNames[idx]
+                let tcResult = withLatestImplFile idx tcResult
+                let newErrors () =
+                    let diagnostics = capturingLoggers[idx].GetDiagnostics()
+                    DiagnosticHelpers.CreateDiagnostics (diagnosticsOptions, false, fileName, diagnostics, suggestNamesForErrors, flatErrors, None)
+                let entry =
+                    match outcomes[idx] with
+                    | Reused entry -> entry
+                    | Kept (entry, implFile) ->
+                        // The kept finisher was checked against the earlier dependencies, which include the current ones.
+                        { entry with parseResults = parseResults[idx]; implFile = Some implFile; tcErrors = newErrors () }
+                    | Replaced (finisher, dependencyGenerations) ->
+                        let _, topAttrs, implFile, _, _ = tcResult
+                        { parseResults = parseResults[idx]; qualifiedName = inputs[idx].QualifiedName.Text; fileIndex = idx
+                          generation = generations[idx]; dependencyGenerations = dependencyGenerations
+                          finisher = finisher; implFile = implFile
+                          signature = lazy (implFile |> Option.bind (fun implFile -> SignatureFingerprint.compute implFile.Signature topAttrs))
+                          tcErrors = newErrors () }
+                compilerState.graphCheckCache[fileName] <- entry
+                compilerState.checkCache[fileName] <- ((tcResult, entry.tcErrors), (tcState, moduleNamesDicts[idx]))
+                tcResult, entry.tcErrors)
+
+        if not (isNull (Environment.GetEnvironmentVariable "FICKL_FCS_GRAPH_LOG")) then
+            let count f = outcomes |> Array.filter f |> Array.length
+            eprintfn "Graph check: %d reused, %d kept, %d replaced"
+                (count (function Reused _ -> true | _ -> false))
+                (count (function Kept _ -> true | _ -> false))
+                (count (function Replaced _ -> true | _ -> false))
+
+        let lastState = fileResults |> Array.last |> snd
+        results, (lastState, Array.last moduleNamesDicts)
 
     let TypeCheckClosedInputSet (parseResults: FSharpParseFileResults[], tcState, compilerState, subscriber) =
         let cachedTypeCheck (tcState, moduleNamesDict) (parseRes: FSharpParseFileResults) =
@@ -247,18 +759,20 @@ module internal ParseAndCheck =
                 TypeCheckOneInputEntry (parseRes, TcResultsSink.NoSink, tcState, moduleNamesDict, compilerState)
 
             let (result, errors), (tcState, moduleNamesDict) = compilerState.checkCache.GetOrAdd(checkCacheKey, typeCheckOneInput)
-
-            let _, _, implFile, _ = result
-            match subscriber, implFile with
-            | Some subscriber, Some implFile ->
-                let cenv = SymbolEnv(compilerState.tcGlobals, tcState.Ccu, Some tcState.CcuSig, compilerState.tcImports)
-                FSharpImplementationFileContents(cenv, implFile) |> subscriber
-            | _ -> ()
-
+            ReportCheckedFile (tcState, result, compilerState, subscriber)
             (result, errors), (tcState, moduleNamesDict)
 
+        // Several files go through the dependency graph in parallel, reusing unaffected results from earlier checks.
+        let checkInParallel =
+            parseResults.Length > 1
+            && compilerState.tcConfig.typeCheckingConfig.Mode = TypeCheckingMode.Graph
+            && not compilerState.tcConfig.compilingFSharpCore
+
         let results, (tcState, moduleNamesDict) =
-            ((tcState, Map.empty), parseResults) ||> Array.mapFold cachedTypeCheck
+            if checkInParallel then
+                TypeCheckInputsInParallel (parseResults, tcState, compilerState, subscriber)
+            else
+                ((tcState, Map.empty), parseResults) ||> Array.mapFold cachedTypeCheck
 
         let tcResults, tcErrors = Array.unzip results
         let (tcEnvAtEndOfLastFile, topAttrs, implFiles, _ccuSigsForFiles), tcState =
@@ -280,11 +794,18 @@ type InteractiveChecker internal (compilerStateCache) =
     static member Create(projectOptions: FSharpProjectOptions) =
         Cache(initializeCompilerState projectOptions) |> InteractiveChecker
 
+    /// Treats the anonymous record types of the assemblies `isUnified` accepts as one, as if compiled together, for
+    /// every checker in the process: for sources checked as assemblies of their own that a compile of the project
+    /// would check in its assembly.
+    static member SetAnonRecdTypesUnifiedAssembly(isUnified: string -> bool) =
+        FSharp.Compiler.TypedTreeBasics.anonRecdTypesUnifiedAssembly <- isUnified
+
     /// Clears parse and typecheck caches.
     member _.ClearCache () = async {
         let! compilerState = compilerStateCache.Get()
         compilerState.parseCache.Clear()
         compilerState.checkCache.Clear()
+        compilerState.graphCheckCache.Clear()
     }
 
     member _.GetImportedAssemblies() = async {
@@ -387,7 +908,7 @@ type InteractiveChecker internal (compilerStateCache) =
         let parseFileResults = parseFile fileName
         let checkFileResults = CheckFile (projectFileName, parseFileResults, tcState, moduleNamesDict, compilerState)
         let (tcResult, _tcErrors), (tcState, _moduleNamesDict) = compilerState.checkCache.[fileName]
-        let _tcEnvAtEndFile, topAttrsFile, implFile, _ccuSigForFile = tcResult
+        let _tcEnvAtEndFile, topAttrsFile, implFile, _ccuSigForFile, _ownSigForFile = tcResult
 
         // collect errors
         let parseErrorsBefore = parseResults |> Array.collect (fun p -> p.Diagnostics)

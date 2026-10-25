@@ -1,5 +1,5 @@
-// #Conformance #TypesAndModules #GeneratedEqualityAndHashing 
-#light
+// #Conformance #TypesAndModules #GeneratedEqualityAndHashing
+
 
 // Test generated comparison on tuples.
 
@@ -78,5 +78,5 @@ if foo (ref 0.0) (ref nan) then exit 1
 if foo (ref nan) (ref 0.0) then exit 1
 if foo (ref 0.0f) (ref nanf) then exit 1
 if foo (ref nanf) (ref 0.0f) then exit 1
- 
+
 exit 0

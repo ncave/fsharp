@@ -113,11 +113,9 @@ let view model dispatch =
        div [] []
    ]
         """
-        |> withLangVersion46
+        |> withLangVersionPreview
         |> typecheck
-        |> shouldFail
-        |> withSingleDiagnostic (Warning 3221, Line 9, Col 8, Line 9, Col 17,
-                                 "This expression returns a value of type 'int' but is implicitly discarded. Consider using 'let' to bind the result to a name, e.g. 'let result = expression'. If you intended to use the expression as a value in the sequence then use an explicit 'yield'.")
+        |> shouldSucceed
 
     [<Fact>]
     let ``Warn If Discarded In List 2``() =
@@ -125,6 +123,7 @@ let view model dispatch =
 // stupid things to make the sample compile
 let div _ _ = 1
 let subView _ _ = [1; 2]
+let subView2 _ _ = 1
 let y = 1
 
 // elmish view
@@ -133,15 +132,13 @@ let view model dispatch =
         div [] [
            match y with
            | 1 -> yield! subView model dispatch
-           | _ -> subView model dispatch
+           | _ -> subView2 model dispatch
         ]
    ]
         """
-        |> withLangVersion46
+        |> withLangVersionPreview
         |> typecheck
-        |> shouldFail
-        |> withSingleDiagnostic (Warning 3222, Line 13, Col 19, Line 13, Col 41,
-                                 "This expression returns a value of type 'int list' but is implicitly discarded. Consider using 'let' to bind the result to a name, e.g. 'let result = expression'. If you intended to use the expression as a value in the sequence then use an explicit 'yield!'.")
+        |> shouldSucceed
 
     [<Fact>]
     let ``Warn If Discarded In List 3``() =
@@ -161,11 +158,9 @@ let view model dispatch =
         ]
    ]
         """
-        |> withLangVersion46
+        |> withLangVersionPreview
         |> typecheck
-        |> shouldFail
-        |> withSingleDiagnostic (Warning 20, Line 13, Col 19, Line 13, Col 41,
-                                 "The result of this expression has type 'bool' and is implicitly ignored. Consider using 'ignore' to discard this value explicitly, e.g. 'expr |> ignore', or 'let' to bind the result to a name, e.g. 'let result = expr'.")
+        |> shouldSucceed
 
     [<Fact>]
     let ``Warn Only On Last Expression``() =
@@ -180,6 +175,142 @@ while x < 1 do
         |> shouldFail
         |> withSingleDiagnostic (Warning 20, Line 6, Col 5, Line 6, Col 9,
                                  "The result of this expression has type 'bool' and is implicitly ignored. Consider using 'ignore' to discard this value explicitly, e.g. 'expr |> ignore', or 'let' to bind the result to a name, e.g. 'let result = expr'.")
+
+    [<Fact>]
+    let ``Warn On Last Expression In For Loop - int``() =
+        FSharp """
+module ClassLibrary17
+
+for i in 1 .. 10 do
+    printfn ""
+    printfn "" |> ignore
+    123
+        """
+        |> typecheck
+        |> shouldFail
+        |> withSingleDiagnostic (Warning 20, Line 7, Col 5, Line 7, Col 8,
+                                 "The result of this expression has type 'int' and is implicitly ignored. Consider using 'ignore' to discard this value explicitly, e.g. 'expr |> ignore', or 'let' to bind the result to a name, e.g. 'let result = expr'.")
+
+    [<Fact>]
+    let ``Warn On Last Expression In For Loop - string``() =
+        FSharp """
+for i in 1 .. 10 do
+    printfn ""
+    "hello"
+        """
+        |> typecheck
+        |> shouldFail
+        |> withSingleDiagnostic (Warning 20, Line 4, Col 5, Line 4, Col 12,
+                                 "The result of this expression has type 'string' and is implicitly ignored. Consider using 'ignore' to discard this value explicitly, e.g. 'expr |> ignore', or 'let' to bind the result to a name, e.g. 'let result = expr'.")
+
+    [<Fact>]
+    let ``Warn On Last Expression In Integer For Loop``() =
+        FSharp """
+for i = 1 to 10 do
+    printfn ""
+    42
+        """
+        |> typecheck
+        |> shouldFail
+        |> withSingleDiagnostic (Warning 20, Line 4, Col 5, Line 4, Col 7,
+                                 "The result of this expression has type 'int' and is implicitly ignored. Consider using 'ignore' to discard this value explicitly, e.g. 'expr |> ignore', or 'let' to bind the result to a name, e.g. 'let result = expr'.")
+
+    [<Fact>]
+    let ``Warn On Last Expression In While Loop - non-bool``() =
+        FSharp """
+let mutable x = 0
+while x < 1 do
+    printfn "unneeded"
+    x <- x + 1
+    123
+        """
+        |> typecheck
+        |> shouldFail
+        |> withSingleDiagnostic (Warning 20, Line 6, Col 5, Line 6, Col 8,
+                                 "The result of this expression has type 'int' and is implicitly ignored. Consider using 'ignore' to discard this value explicitly, e.g. 'expr |> ignore', or 'let' to bind the result to a name, e.g. 'let result = expr'.")
+
+    [<Fact>]
+    let ``Warn On Last Expression In For Loop - non-unit after let binding``() =
+        FSharp """
+for _ in [] do
+    let x = 1
+    x
+        """
+        |> typecheck
+        |> shouldFail
+        |> withSingleDiagnostic (Warning 20, Line 4, Col 5, Line 4, Col 6,
+                                 "The result of this expression has type 'int' and is implicitly ignored. Consider using 'ignore' to discard this value explicitly, e.g. 'expr |> ignore', or 'let' to bind the result to a name, e.g. 'let result = expr'.")
+
+    [<Fact>]
+    let ``Warn On Last Expression In For Loop - non-unit after nested let bindings``() =
+        FSharp """
+for _ in 1 .. 3 do
+    let a = 1
+    let b = 2
+    a + b
+        """
+        |> typecheck
+        |> shouldFail
+        |> withSingleDiagnostic (Warning 20, Line 5, Col 5, Line 5, Col 10,
+                                 "The result of this expression has type 'int' and is implicitly ignored. Consider using 'ignore' to discard this value explicitly, e.g. 'expr |> ignore', or 'let' to bind the result to a name, e.g. 'let result = expr'.")
+
+    [<Fact>]
+    let ``Warn On Last Expression In For Loop - non-unit after use binding``() =
+        FSharp """
+type D() =
+    interface System.IDisposable with
+        member _.Dispose() = ()
+    member _.Value = 1
+for _ in [] do
+    use d = new D()
+    d.Value
+        """
+        |> typecheck
+        |> shouldFail
+        |> withSingleDiagnostic (Warning 20, Line 8, Col 5, Line 8, Col 12,
+                                 "The result of this expression has type 'int' and is implicitly ignored. Consider using 'ignore' to discard this value explicitly, e.g. 'expr |> ignore', or 'let' to bind the result to a name, e.g. 'let result = expr'.")
+
+    [<Fact>]
+    let ``Warn On Last Expression In While Loop - non-unit after let binding``() =
+        FSharp """
+let mutable x = 0
+while x < 3 do
+    let y = x + 1
+    x <- y
+    y
+        """
+        |> typecheck
+        |> shouldFail
+        |> withSingleDiagnostic (Warning 20, Line 6, Col 5, Line 6, Col 6,
+                                 "The result of this expression has type 'int' and is implicitly ignored. Consider using 'ignore' to discard this value explicitly, e.g. 'expr |> ignore', or 'let' to bind the result to a name, e.g. 'let result = expr'.")
+
+    [<Fact>]
+    let ``Warn On Last Expression Inside async Computation Expression - highlights only offending expression``() =
+        FSharp """
+let _ =
+    async {
+        for _ in [1] do
+            let x = 1
+            x
+    }
+        """
+        |> typecheck
+        |> shouldFail
+        |> withSingleDiagnostic (Warning 20, Line 6, Col 13, Line 6, Col 14,
+                                 "The result of this expression has type 'int' and is implicitly ignored. Consider using 'ignore' to discard this value explicitly, e.g. 'expr |> ignore', or 'let' to bind the result to a name, e.g. 'let result = expr'.")
+
+    [<Fact>]
+    let ``No Warning 20 For Trailing Non-unit Expression In seq Computation Expression (implicit yield)``() =
+        FSharp """
+let _ =
+    seq {
+        for _ in [1] do
+            let x = 1
+            x
+    }
+        """
+        |> typecheck
+        |> shouldSucceed
 
     [<Fact>]
     let ``Warn If Possible Property Setter``() =
@@ -223,5 +354,21 @@ let main _argv =
 
     0
         """
+        |> typecheck
+        |> shouldSucceed
+
+    // https://github.com/dotnet/fsharp/issues/4473
+    [<Fact>]
+    let ``Issue 4473 - extern function parameters not flagged as unused with warnon 1182``() =
+        FSharp """
+module Test4473
+
+open System.Runtime.InteropServices
+
+[<DllImport("kernel32.dll")>]
+extern bool Beep(int frequency, int duration)
+        """
+        |> withWarnOn 1182
+        |> asLibrary
         |> typecheck
         |> shouldSucceed

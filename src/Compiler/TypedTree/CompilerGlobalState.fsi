@@ -17,7 +17,15 @@ type NiceNameGenerator =
 
     new: unit -> NiceNameGenerator
     member FreshCompilerGeneratedName: name: string * m: range -> string
-    member IncrementOnly: name: string * m: range -> int
+
+    /// Reset the per-(basicName, file) occurrence counters so a subsequent codegen run assigns the
+    /// same compiler-generated occurrence names a fresh process would. Callers must ensure no
+    /// concurrent codegen is using this generator when resetting.
+    member ResetCompilerGeneratedNameState: unit -> unit
+
+    /// Reset the occurrence counters of one file, so checking it again assigns the names its first check did.
+    /// Callers must ensure nothing generates names in that file meanwhile; other files are untouched.
+    member ResetCompilerGeneratedNamesOfFile: fileIndex: int -> unit
 
 /// Generates compiler-generated names marked up with a source code location, but if given the same unique value then
 /// return precisely the same name. Each name generated also includes the StartLine number of the range passed in
@@ -29,6 +37,25 @@ type StableNiceNameGenerator =
 
     new: unit -> StableNiceNameGenerator
     member GetUniqueCompilerGeneratedName: name: string * m: range * uniq: int64 -> string
+
+    /// Reset the stable-name cache and inner occurrence counters, so both the cached stable names and
+    /// the underlying occurrence counters are cleared. See NiceNameGenerator.ResetCompilerGeneratedNameState.
+    member ResetCompilerGeneratedNameState: unit -> unit
+
+    /// Reset the occurrence counters of one file. The names already given to values stay cached, so a value
+    /// checked earlier keeps its name. See NiceNameGenerator.ResetCompilerGeneratedNamesOfFile.
+    member ResetCompilerGeneratedNamesOfFile: fileIndex: int -> unit
+
+/// A compiler-generated-name allocation scope bound to a single ImplFile being optimized.
+/// Instances can only be obtained from CompilerGlobalState.NewFileScope so a call site can't
+/// accidentally bucket names by the wrong (e.g. inlined-source) file and reintroduce the
+/// non-determinism fixed by https://github.com/dotnet/fsharp/issues/19732.
+[<Sealed>]
+type PerFileNamingScope =
+
+    /// Allocate a fresh compiler-generated name within this file's scope. 'm' contributes only the
+    /// source-location marker baked into the generated name; the uniqueness bucket is this scope's file.
+    member Fresh: name: string * m: range -> string
 
 type internal CompilerGlobalState =
 
@@ -42,6 +69,21 @@ type internal CompilerGlobalState =
 
     /// A global generator of stable compiler generated names
     member StableNameGenerator: StableNiceNameGenerator
+
+    /// Create a per-file naming scope for the ImplFile identified by 'fileRange'. All names allocated
+    /// through the returned scope are bucketed by that file's FileIndex, guaranteeing determinism
+    /// under parallel optimization. See https://github.com/dotnet/fsharp/issues/19732.
+    member NewFileScope: fileRange: range -> PerFileNamingScope
+
+    /// Reset all compiler-generated-name occurrence counters on this state, so successive in-process
+    /// codegen runs over the same source produce identical generated names (a fresh-process layout).
+    /// Callers must ensure no compilation is concurrently generating names (quiescence). Needed by
+    /// Edit-and-Continue style scenarios that re-emit from a warm checker.
+    member ResetCompilerGeneratedNameState: unit -> unit
+
+    /// Reset the type-checking name counters of one file, before checking it again in the same process, so it
+    /// gets the names a first check gives. The IlxGen counters are left alone: they belong to code generation.
+    member ResetCompilerGeneratedNamesOfFile: fileIndex: int -> unit
 
 type Unique = int64
 

@@ -4,6 +4,8 @@ module internal FSharp.Compiler.NameResolution
 
 open Internal.Utilities.Library
 open FSharp.Compiler.AccessibilityLogic
+open FSharp.Compiler.AttributeChecking
+open FSharp.Compiler.CodeAnalysis
 open FSharp.Compiler.Infos
 open FSharp.Compiler.Import
 open FSharp.Compiler.InfoReader
@@ -28,8 +30,6 @@ type NameResolver =
     member amap: ImportMap
 
     member g: TcGlobals
-
-    member languageSupportsNameOf: bool
 
 /// Get the active pattern elements defined in a module, if any. Cache in the slot in the module type.
 val ActivePatternElemsOfModuleOrNamespace: g: TcGlobals -> ModuleOrNamespaceRef -> NameMap<ActivePatternElemRef>
@@ -105,7 +105,7 @@ type Item =
     /// CustomOperation(nm, helpText, methInfo)
     ///
     /// Used to indicate the availability or resolution of a custom query operation such as 'sortBy' or 'where' in computation expression syntax
-    | CustomOperation of string * (unit -> string option) * MethInfo option
+    | CustomOperation of string * (unit -> RichText option) * MethInfo option
 
     /// Represents the resolution of a name to a custom builder in the F# computation expression syntax
     | CustomBuilder of string * ValRef
@@ -173,8 +173,9 @@ type ExtensionMember =
 
     /// ILExtMem(declaringTyconRef, ilMetadata, pri)
     ///
-    /// IL-style extension member, backed by some kind of method with an [<Extension>] attribute
-    | ILExtMem of TyconRef * MethInfo * ExtensionMethodPriority
+    /// IL-style extension members, backed by methods with an [<Extension>] attribute. Methods extending
+    /// the same type via one 'open' are grouped: an 'open' of a class like Enumerable adds dozens of them.
+    | ILExtMem of TyconRef * MethInfo list * ExtensionMethodPriority
 
     /// Describes the sequence order of the introduction of an extension method. Extension methods that are introduced
     /// later through 'open' get priority in overload resolution.
@@ -231,6 +232,9 @@ type NameResolutionEnv =
 
         /// Other extension members unindexed by type
         eUnindexedExtensionMembers: ExtensionMember list
+
+        /// Static operator methods from 'open type' declarations, available for SRTP resolution
+        eOpenedTypeOperators: NameMultiMap<MethInfo>
 
         /// Typars (always available by unqualified names). Further typars can be
         /// in the tpenv, a structure folded through each top-level definition.
@@ -437,6 +441,9 @@ type internal TcResolutions =
     /// See TypeCheckInfo.GetCapturedNameResolutions for example.
     member CapturedMethodGroupResolutions: ResizeArray<CapturedNameResolution>
 
+    /// Related symbol uses reported via NotifyRelatedSymbolUse
+    member CapturedRelatedSymbolUses: ResizeArray<range * Item * RelatedSymbolUseKind>
+
     /// Represents the empty set of resolutions
     static member Empty: TcResolutions
 
@@ -452,7 +459,7 @@ type TcSymbolUseData =
 type internal TcSymbolUses =
 
     /// Get all the uses of a particular item within the file
-    member GetUsesOfSymbol: Item -> TcSymbolUseData[]
+    member GetUsesOfSymbol: item: Item * ?relatedSymbolKinds: RelatedSymbolUseKind -> TcSymbolUseData[]
 
     /// All the uses of all items within the file
     member AllUsesOfSymbols: TcSymbolUseData[][]
@@ -482,6 +489,8 @@ type ITypecheckResultsSink =
     /// Record that an expression has a specific type at the given range.
     abstract NotifyExprHasType: TType * NameResolutionEnv * AccessorDomain * range -> unit
 
+    abstract NotifyExprHasTypeSynthetic: TType * NameResolutionEnv * AccessorDomain * range -> unit
+
     /// Record that a name resolution occurred at a specific location in the source
     abstract NotifyNameResolution:
         pos * Item * TyparInstantiation * ItemOccurrence * NameResolutionEnv * AccessorDomain * range * bool -> unit
@@ -493,6 +502,10 @@ type ITypecheckResultsSink =
 
     /// Record that a printf format specifier occurred at a specific location in the source
     abstract NotifyFormatSpecifierLocation: range * int -> unit
+
+    /// Record that a symbol is implicitly referenced at a source range.
+    /// Unlike NotifyNameResolution, this does not affect colorization or symbol info.
+    abstract NotifyRelatedSymbolUse: range * Item * RelatedSymbolUseKind -> unit
 
     /// Record that an open declaration occurred in a given scope range
     abstract NotifyOpenDeclaration: OpenDeclaration -> unit
@@ -611,6 +624,14 @@ val internal WithNewTypecheckResultsSink: ITypecheckResultsSink * TcResultsSink 
 /// Temporarily suspend reporting of name resolution and type checking results
 val internal TemporarilySuspendReportingTypecheckResultsToSink: TcResultsSink -> System.IDisposable
 
+/// Run `compute` with all typecheck-results reporting (sink notifications and diagnostics) buffered. If
+/// `commitWhen` holds for the result they are flushed to the sink and diagnostics logger that were active
+/// before buffering began; otherwise they are dropped. Diagnostics from a `compute` that raises are always
+/// flushed so the error still surfaces. `commitWhen` runs after reporting is restored, so it must be
+/// side-effect-free. `loggerName` names the internal capturing logger for debugging.
+val internal RunWithBufferedReporting:
+    sink: TcResultsSink -> loggerName: string -> compute: (unit -> 'T) -> commitWhen: ('T -> bool) -> 'T
+
 /// Report the active name resolution environment for a source range
 val internal CallEnvSink: TcResultsSink -> range * NameResolutionEnv * AccessorDomain -> unit
 
@@ -628,8 +649,17 @@ val internal CallMethodGroupNameResolutionSink:
 val internal CallNameResolutionSinkReplacing:
     TcResultsSink -> range * NameResolutionEnv * Item * TyparInstantiation * ItemOccurrence * AccessorDomain -> unit
 
+/// #16621
+val internal RegisterUnionCaseTesterForProperty: TcResultsSink -> identRange: range -> PropInfo list -> unit
+
+/// Report a related symbol use at a source range (does not affect colorization or symbol info)
+val internal CallRelatedSymbolSink: TcResultsSink -> range * Item * RelatedSymbolUseKind -> unit
+
 /// Report a specific name resolution at a source range
 val internal CallExprHasTypeSink: TcResultsSink -> range * NameResolutionEnv * TType * AccessorDomain -> unit
+
+/// Report a captured type at a range, but don't use it in features like code completion, only in TryGetCapturedType
+val internal CallExprHasTypeSinkSynthetic: TcResultsSink -> range * NameResolutionEnv * TType * AccessorDomain -> unit
 
 /// Report an open declaration
 val internal CallOpenDeclarationSink: TcResultsSink -> OpenDeclaration -> unit
@@ -658,6 +688,18 @@ val internal ExtensionPropInfosOfTypeInScope:
     ty: TType ->
         PropInfo list
 
+/// Get the intrinsic methods of a type (both declared and inherited), without the extension methods in
+/// scope. Callers that filter extension members out again should use this and skip the extension scan.
+val internal IntrinsicMethInfosOfType:
+    infoReader: InfoReader ->
+    optFilter: string option ->
+    ad: AccessorDomain ->
+    allowMultiIntfInst: TypeHierarchy.AllowMultiIntfInstantiations ->
+    findFlag: FindMemberFlag ->
+    m: range ->
+    ty: TType ->
+        MethInfo list
+
 /// Get the available methods of a type (both declared and inherited)
 val internal AllMethInfosOfTypeInScope:
     collectionSettings: ResultCollectionSettings ->
@@ -669,6 +711,9 @@ val internal AllMethInfosOfTypeInScope:
     m: range ->
     ty: TType ->
         MethInfo list
+
+/// Check whether the 'this' argument of an extension method is compatible with the target type
+val internal IsExtensionMethCompatibleWithTy: infoReader: InfoReader -> m: range -> ty: TType -> minfo: MethInfo -> bool
 
 /// Used to report an error condition where name resolution failed due to an indeterminate type
 exception internal IndeterminateType of range
@@ -707,13 +752,18 @@ val NewInferenceTypes: TcGlobals -> 'T list -> TType list
 /// each and ensure that the constraints on the new type variables are adjusted.
 ///
 /// Returns the inference type variables as a list of types.
-val FreshenTypars: g: TcGlobals -> range -> Typars -> TType list
+val FreshenTypars: g: TcGlobals -> traitCtxt: ITraitContext option -> range -> Typars -> TType list
 
 /// Given a method, which may be generic, make new inference type variables for
 /// its generic parameters, and ensure that the constraints the new type variables are adjusted.
 ///
 /// Returns the inference type variables as a list of types.
-val FreshenMethInfo: range -> MethInfo -> TType list
+val FreshenMethInfo: g: TcGlobals -> traitCtxt: ITraitContext option -> range -> MethInfo -> TType list
+
+/// Select extension method infos that are relevant to solving a trait constraint.
+val SelectExtensionMethInfosForTrait:
+    traitInfo: TraitConstraintInfo * m: range * nenv: NameResolutionEnv * infoReader: InfoReader ->
+        (TType * MethInfo) list
 
 /// Given a set of formal type parameters and their constraints, make new inference type variables for
 /// each and ensure that the constraints on the new type variables are adjusted to refer to these.
@@ -724,6 +774,7 @@ val FreshenMethInfo: range -> MethInfo -> TType list
 ///   3. the inference type variables as a list of types.
 val FreshenAndFixupTypars:
     g: TcGlobals ->
+    traitCtxt: ITraitContext option ->
     m: range ->
     rigid: TyparRigidity ->
     fctps: Typars ->
@@ -738,7 +789,12 @@ val FreshenAndFixupTypars:
 ///   1. the new type parameters
 ///   2. the instantiation mapping old type parameters to inference variables
 ///   3. the inference type variables as a list of types.
-val FreshenTypeInst: g: TcGlobals -> m: range -> tpsorig: Typar list -> Typar list * TyparInstantiation * TTypes
+val FreshenTypeInst:
+    g: TcGlobals ->
+    traitCtxt: ITraitContext option ->
+    m: range ->
+    tpsorig: Typar list ->
+        Typar list * TyparInstantiation * TTypes
 
 /// Resolve a long identifier to a namespace, module.
 val internal ResolveLongIdentAsModuleOrNamespace:
@@ -812,6 +868,16 @@ val internal ResolveTypeLongIdent:
     genOk: PermitDirectReferenceToGeneratedType ->
         ResultOrException<EnclosingTypeInst * TyconRef * TypeInst>
 
+[<RequireQualifiedAccess; NoEquality; NoComparison>]
+type internal ExplicitOrSpread<'Explicit, 'Spread> =
+    /// An expression or value derived from an explicit member or record field.
+    | Explicit of 'Explicit
+
+    /// An expression or value derived from a member or field coming from a spread.
+    | Spread of 'Spread
+
+val (|ExplicitOrSpread|): ExplicitOrSpread<'Value, 'Value> -> 'Value
+
 /// Resolve a long identifier to a field
 val internal ResolveField:
     sink: TcResultsSink ->
@@ -819,10 +885,9 @@ val internal ResolveField:
     nenv: NameResolutionEnv ->
     ad: AccessorDomain ->
     ty: TType ->
-    mp: Ident list ->
-    id: Ident ->
+    fldInfo: ExplicitOrSpread<Ident list * Ident, Ident> ->
     allFields: Ident list ->
-        FieldResolution list
+        FieldResolution list option
 
 /// Resolve a long identifier to a nested field
 val internal ResolveNestedField:
@@ -848,14 +913,30 @@ val internal ResolveExprLongIdent:
 
 val internal getRecordFieldsInScope: NameResolutionEnv -> Item list
 
+val internal getRecordTyconsInScope:
+    g: TcGlobals ->
+    ncenv: NameResolver ->
+    nenv: NameResolutionEnv ->
+    ad: AccessorDomain ->
+    m: range ->
+        (TyconRef * Item) list
+
 /// Resolve a (possibly incomplete) long identifier to a list of possible class or record fields
 val internal ResolvePartialLongIdentToClassOrRecdFields:
-    NameResolver -> NameResolutionEnv -> range -> AccessorDomain -> string list -> bool -> bool -> Item list
+    NameResolver ->
+    NameResolutionEnv ->
+    range ->
+    AccessorDomain ->
+    string list ->
+    allowUnseen: UnseenItems ->
+    fieldsOnly: bool ->
+        Item list
 
 /// Return the fields for the given class or record
 val internal ResolveRecordOrClassFieldsOfType: NameResolver -> range -> AccessorDomain -> TType -> bool -> Item list
 
 /// Resolve a long identifier occurring in an expression position.
+/// Returns the terminal identifier range (#14284).
 val internal ResolveLongIdentAsExprAndComputeRange:
     sink: TcResultsSink ->
     ncenv: NameResolver ->
@@ -865,9 +946,10 @@ val internal ResolveLongIdentAsExprAndComputeRange:
     typeNameResInfo: TypeNameResolutionInfo ->
     lid: Ident list ->
     maybeAppliedArgExpr: SynExpr option ->
-        ResultOrException<EnclosingTypeInst * Item * range * Ident list * AfterResolution>
+        ResultOrException<EnclosingTypeInst * Item * range * range * Ident list * AfterResolution>
 
 /// Resolve a long identifier occurring in an expression position, qualified by a type.
+/// Returns the terminal identifier range (#14284).
 val internal ResolveExprDotLongIdentAndComputeRange:
     sink: TcResultsSink ->
     ncenv: NameResolver ->
@@ -880,7 +962,7 @@ val internal ResolveExprDotLongIdentAndComputeRange:
     findFlag: FindMemberFlag ->
     staticOnly: bool ->
     maybeAppliedArgExpr: SynExpr option ->
-        Item * range * Ident list * AfterResolution
+        Item * range * range * Ident list * AfterResolution
 
 /// A generator of type instantiations used when no more specific type instantiation is known.
 val FakeInstantiationGenerator: range -> Typar list -> TType list
@@ -896,7 +978,7 @@ val ResolvePartialLongIdent:
     m: range ->
     ad: AccessorDomain ->
     plid: string list ->
-    allowObsolete: bool ->
+    allowUnseen: UnseenItems ->
         Item list
 
 [<RequireQualifiedAccess>]
@@ -913,7 +995,7 @@ val ResolveCompletionsInType:
     AccessorDomain ->
     bool ->
     TType ->
-    allowObsolete: bool ->
+    allowUnseen: UnseenItems ->
         Item list
 
 val GetVisibleNamespacesAndModulesAtPoint:
@@ -922,10 +1004,12 @@ val GetVisibleNamespacesAndModulesAtPoint:
     FullyQualifiedFlag ->
     range ->
     AccessorDomain ->
-    allowObsolete: bool ->
+    allowUnseen: UnseenItems ->
         ModuleOrNamespaceRef list
 
 val IsItemResolvable: NameResolver -> NameResolutionEnv -> range -> AccessorDomain -> string list -> Item -> bool
+
+val ItemIsUnseen: AccessorDomain -> TcGlobals -> ImportMap -> range -> allowUnseen: UnseenItems -> Item -> bool
 
 val TrySelectExtensionMethInfoOfILExtMem:
     range -> ImportMap -> TType -> TyconRef * MethInfo * ExtensionMethodPriority -> MethInfo option

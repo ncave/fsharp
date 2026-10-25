@@ -6,72 +6,12 @@ module internal FSharp.Compiler.Features
 /// LanguageFeature enumeration
 [<RequireQualifiedAccess>]
 type LanguageFeature =
-    | SingleUnderscorePattern
-    | WildCardInForLoop
-    | RelaxWhitespace
-    | RelaxWhitespace2
-    | StrictIndentation
-    | NameOf
-    | ImplicitYield
-    | OpenTypeDeclaration
-    | DotlessFloat32Literal
-    | PackageManagement
     | FromEndSlicing
-    | FixedIndexSlice3d4d
-    | AndBang
-    | ResumableStateMachines
-    | NullableOptionalInterop
-    | DefaultInterfaceMemberConsumption
-    | WitnessPassing
-    | AdditionalTypeDirectedConversions
-    | InterfacesWithMultipleGenericInstantiation
-    | StringInterpolation
-    | OverloadsForCustomOperations
-    | ExpandedMeasurables
+    | RuntimeAsync
     | NullnessChecking
-    | StructActivePattern
-    | PrintfBinaryFormat
-    | IndexerNotationWithoutDot
-    | RefCellNotationInformationals
-    | UseBindingValueDiscard
     | UnionIsPropertiesVisible
-    | NonVariablePatternsToRightOfAsPatterns
-    | AttributesToRightOfModuleKeyword
-    | MLCompatRevisions
-    | BetterExceptionPrinting
-    | DelegateTypeNameResolutionFix
-    | ReallyLongLists
-    | ErrorOnDeprecatedRequireQualifiedAccess
-    | RequiredPropertiesSupport
-    | InitPropertiesSupport
-    | LowercaseDUWhenRequireQualifiedAccess
-    | InterfacesWithAbstractStaticMembers
-    | SelfTypeConstraints
-    | AccessorFunctionShorthand
-    | MatchNotAllowedForUnionCaseWithNoData
-    | CSharpExtensionAttributeNotRequired
-    | ErrorForNonVirtualMembersOverrides
-    | WarningWhenInliningMethodImplNoInlineMarkedFunction
-    | EscapeDotnetFormattableStrings
-    | ArithmeticInLiterals
-    | ErrorReportingOnStaticClasses
-    | TryWithInSeqExpression
-    | WarningWhenCopyAndUpdateRecordChangesAllFields
-    | StaticMembersInInterfaces
-    | NonInlineLiteralsAsPrintfFormat
-    | NestedCopyAndUpdate
-    | ExtendedStringInterpolation
-    | WarningWhenMultipleRecdTypeChoice
-    | ImprovedImpliedArgumentNames
-    | DiagnosticForObjInference
-    | ConstraintIntersectionOnFlexibleTypes
-    | StaticLetInRecordsDusEmptyTypes
-    | WarningWhenTailRecAttributeButNonTailRecUsage
     | UnmanagedConstraintCsharpInterop
-    | WhileBang
     | ReuseSameFieldsInStructUnions
-    | ExtendedFixedBindings
-    | PreferStringGetPinnableReference
     /// RFC-1137
     | PreferExtensionMethodOverPlainProperty
     | WarningIndexedPropertiesGetSetSameType
@@ -96,24 +36,50 @@ type LanguageFeature =
     | ErrorOnInvalidDeclsInTypeDefinitions
     | AllowTypedLetUseAndBang
     | ReturnFromFinal
+    | MoreConcreteTiebreaker
+    | OverloadResolutionPriority
+    | WarnWhenFunctionValueUsedAsInterpolatedStringArg
+    | MethodOverloadsCache
+    | ImplicitDIMCoverage
+    | PreprocessorElif
+    | ExtensionConstraintSolutions
+    | ExceptionFieldSerializationSupport
+    | ErrorOnMissingSignatureAttribute
+    | RecordConstructorSyntax
+    | NotNullIfNotNull
+    | DirectDelegateConstruction
+    | AccessProtectedBaseFieldFromClosure
+    | ImprovedImpliedArgumentNamesPartTwo
+    | RecordSpreads
+    | RequireNamedArguments
+    | TypeArgumentDependencyOrdering
+    | ErrorOnBitwiseOpsOnNonIntegralEnums
+    | OptimizeClosureIfNotInlined
+    | ReraiseInComputationExpressions
 
 /// LanguageVersion management
 type LanguageVersion =
 
     /// Create a LanguageVersion management object
-    new: string -> LanguageVersion
+    new: string * ?disabledFeaturesArray: LanguageFeature array -> LanguageVersion
 
-    /// Get the list of valid versions
+    /// Is the selected LanguageVersion valid
     static member ContainsVersion: string -> bool
+
+    /// Is the selected LanguageVersion currently supported
+    static member IsVersionSupported: string -> bool
 
     /// Has preview been explicitly specified
     member IsPreviewEnabled: bool
 
-    /// Has been explicitly specified as 4.6, 4.7 or 5.0
-    member IsExplicitlySpecifiedAs50OrBefore: unit -> bool
-
     /// Does the selected LanguageVersion support the specified feature
     member SupportsFeature: LanguageFeature -> bool
+
+    /// Get the disabled features
+    member DisabledFeatures: LanguageFeature array
+
+    /// Create a new LanguageVersion with updated disabled features
+    member WithDisabledFeatures: LanguageFeature array -> LanguageVersion
 
     /// Get the list of valid versions
     static member ValidVersions: string[]
@@ -135,5 +101,8 @@ type LanguageVersion =
 
     /// Get a version string associated with the given feature.
     static member GetFeatureVersionString: feature: LanguageFeature -> string
+
+    /// Try to parse a feature name string to a LanguageFeature option
+    static member TryParseFeature: featureName: string -> LanguageFeature option
 
     static member Default: LanguageVersion

@@ -28,6 +28,50 @@ module Inlining =
         |> getCompilation
         |> verifyCompilation
 
+    // Regression baseline for dotnet/fsharp#20368: the inline StackGuard.Guard shape must inline the
+    // [<InlineIfLambda>] lambda on the common path. In `callDirect` the closure `newobj` is confined to
+    // the cold else-branch (common path allocates nothing); `callPiped` shows the `<|` form hoisting it
+    // to method entry. A regression that reintroduces a common-path allocation changes this baseline.
+    // Realsig has no effect on this IL, so a single variant is snapshotted.
+    [<Theory; FileInlineData("StackGuardInlineIfLambda.fs")>]
+    let ``StackGuardInlineIfLambda_fs`` compilation =
+        compilation
+        |> getCompilation
+        |> verifyCompilation
+
+    [<Theory; FileInlineData("Regression_TLR_MutualInnerRec.fs", Realsig=BooleanOptions.Both)>]
+    let ``Regression_TLR_MutualInnerRec_fs`` compilation =
+        compilation
+        |> getCompilation
+        |> verifyCompilation
+
+    [<Theory; FileInlineData("Regression_TLR_MutualInnerRec_Point2D.fs", Realsig=BooleanOptions.Both)>]
+    let ``Regression_TLR_MutualInnerRec_Point2D_fs`` compilation =
+        compilation
+        |> getCompilation
+        |> verifyCompilation
+
+    [<Theory; FileInlineData("Regression_TLR_MutualInnerRec_Generic.fs", Realsig=BooleanOptions.Both)>]
+    let ``Regression_TLR_MutualInnerRec_Generic_fs`` compilation =
+        compilation
+        |> getCompilation
+        |> verifyCompilation
+
+    [<Theory; FileInlineData("Regression_TLR_MutualInnerRec_CapturedEnv.fs", Realsig=BooleanOptions.Both)>]
+    let ``Regression_TLR_MutualInnerRec_CapturedEnv_fs`` compilation =
+        compilation
+        |> getCompilation
+        |> verifyCompilation
+
+    // Baseline lock for dotnet/fsharp#19933: a closure inside a `type C with member ...`
+    // augmentation must nest inside C (realsig+) so it can reach C's IL-private members.
+    // Realsig=Both snapshots both the realsig+ nesting and the realsig- lowering.
+    [<Theory; FileInlineData("AugmentationClosureNesting.fs", Realsig=BooleanOptions.Both)>]
+    let ``AugmentationClosureNesting_fs`` compilation =
+        compilation
+        |> getCompilation
+        |> verifyCompilation
+
     // SOURCE=Match02.fs SCFLAGS="-a --optimize+" COMPILE_ONLY=1 POSTCMD="..\\CompareIL.cmd Match02.dll"	# Match02.fs
     [<Theory; FileInlineData("Match02.fs")>]
     let ``Match02_fs`` compilation =
@@ -64,7 +108,6 @@ let found = data |> List.contains nan
         |> compile
         (* This is the essential aspect of the IL we are interested in - doing a direct specialized 'ceq' on primitive values, and not going via a GenericEqualityIntrinsic call*)
         |> verifyIL
-#if Release
             ["""
     .method assembly static bool  contains@1<a>(!!a e,
                                                   class [FSharp.Core]Microsoft.FSharp.Collections.FSharpList`1<float64> xs1) cil managed
@@ -106,49 +149,6 @@ let found = data |> List.contains nan
         IL_0030:  starg.s    e
         IL_0032:  br.s       IL_0000
       }"""]
-#else
-            ["""
-  .method assembly static bool  contains@1<a>(!!a e,
-                                              class [FSharp.Core]Microsoft.FSharp.Collections.FSharpList`1<float64> xs1) cil managed
-  {
-    .custom instance void [runtime]System.Runtime.CompilerServices.CompilerGeneratedAttribute::.ctor() = ( 01 00 00 00 ) 
-    
-    .maxstack  4
-    .locals init (class [FSharp.Core]Microsoft.FSharp.Collections.FSharpList`1<float64> V_0,
-             class [FSharp.Core]Microsoft.FSharp.Collections.FSharpList`1<float64> V_1,
-             float64 V_2)
-    IL_0000:  ldarg.1
-    IL_0001:  call       instance class [FSharp.Core]Microsoft.FSharp.Collections.FSharpList`1<!0> class [FSharp.Core]Microsoft.FSharp.Collections.FSharpList`1<float64>::get_TailOrNull()
-    IL_0006:  brfalse.s  IL_000a
-
-    IL_0008:  br.s       IL_000c
-
-    IL_000a:  ldc.i4.0
-    IL_000b:  ret
-
-    IL_000c:  ldarg.1
-    IL_000d:  stloc.0
-    IL_000e:  ldloc.0
-    IL_000f:  call       instance class [FSharp.Core]Microsoft.FSharp.Collections.FSharpList`1<!0> class [FSharp.Core]Microsoft.FSharp.Collections.FSharpList`1<float64>::get_TailOrNull()
-    IL_0014:  stloc.1
-    IL_0015:  ldloc.0
-    IL_0016:  call       instance !0 class [FSharp.Core]Microsoft.FSharp.Collections.FSharpList`1<float64>::get_HeadOrDefault()
-    IL_001b:  stloc.2
-    IL_001c:  call       float64 [FSharp.Core]Microsoft.FSharp.Core.Operators::get_NaN()
-    IL_0021:  ldloc.2
-    IL_0022:  ceq
-    IL_0024:  brfalse.s  IL_0028
-
-    IL_0026:  ldc.i4.1
-    IL_0027:  ret
-
-    IL_0028:  ldarg.0
-    IL_0029:  ldloc.1
-    IL_002a:  starg.s    xs1
-    IL_002c:  starg.s    e
-    IL_002e:  br.s       IL_0000
-  }"""]
-#endif
 
     [<InlineData(true)>]        // RealSig
     [<InlineData(false)>]       // Regular
@@ -229,3 +229,69 @@ printfn $"{(SecondType ()).SecondMethod()}"
         |> compileAndRun
         |> shouldSucceed
 
+    [<Theory>]
+    [<InlineData("--optimize-")>]
+    [<InlineData("--optimize+")>]
+    let ``Issue 20614 - inline base call to inline member`` optimization =
+        let library =
+            FSharp """
+module InlineBaseCall
+
+type One() =
+    member inline _.Source1 x = x
+    member inline _.P = 5
+
+type Two() =
+    inherit One()
+    member inline this.Source2 x = base.Source1 x
+    // A generic sibling that uses 'base' wraps the members in a free-choice type binding
+    member inline this.P2 = base.P
+    member this.Generic x = base.Source1 x
+"""
+            |> withOptions [ optimization ]
+            |> asLibrary
+
+        FSharp """
+module Consumer
+
+open InlineBaseCall
+
+[<EntryPoint>]
+let main _ =
+    let two = Two()
+    if two.Source2 42 = 42 && two.P2 = 5 && two.Generic "a" = "a" then 0 else 1
+"""
+        |> withReferences [ library ]
+        |> withOptions [ optimization ]
+        |> asExe
+        |> compileAndRun
+        |> shouldSucceed
+
+    [<Theory>]
+    [<InlineData("--optimize-")>]
+    [<InlineData("--optimize+")>]
+    let ``Issue 20614 - base reference cannot escape inline member`` optimization =
+        FSharp """
+module InlineBaseCall
+
+type One() =
+    member _.Value = 2
+    member inline this.Source1 x = this.Value + x
+
+type Two() =
+    inherit One()
+    member inline this.Source2 x = base.Source1 x
+    member inline this.Text () = base.ToString()
+"""
+        |> withOptions [ optimization ]
+        |> asLibrary
+        |> compile
+        |> shouldFail
+        |> withErrorCodes [ 3925; 3925 ]
+
+    // Test empty string pattern optimization in inlining
+    [<Theory; FileInlineData("EmptyStringPattern.fs")>]
+    let ``EmptyStringPattern_fs`` compilation =
+        compilation
+        |> getCompilation
+        |> verifyCompilation

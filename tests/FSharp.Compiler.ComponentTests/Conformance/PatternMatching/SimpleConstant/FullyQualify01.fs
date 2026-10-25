@@ -1,14 +1,14 @@
-// #Conformance #PatternMatching #Constants 
-#light
+// #Conformance #PatternMatching #Constants
+
 
 // Verify ability to pattern match against a fully qualified constant or literal
 
 module Test =
 
     module A =
-        module B = 
-            module C = 
-                module D = 
+        module B =
+            module C =
+                module D =
                      type DU =
                          | A of int
                          | B of string
@@ -26,7 +26,7 @@ module Test =
         | _ -> 0
 
 
-    if test (A.B.C.D.A(5)) <> 1 then exit 1   
+    if test (A.B.C.D.A(5)) <> 1 then exit 1
     if test (A.B.C.D.B(A.B.C.D.literalValue)) <> 2 then exit 1
     if test (A.B.C.D.C)    <> 0 then exit 1
 

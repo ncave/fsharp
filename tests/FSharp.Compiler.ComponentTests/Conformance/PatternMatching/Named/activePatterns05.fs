@@ -1,5 +1,5 @@
-// #Conformance #PatternMatching #ActivePatterns 
-#light
+// #Conformance #PatternMatching #ActivePatterns
+
 
 open System
 

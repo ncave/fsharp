@@ -103,7 +103,7 @@ module ModuleDefinitions =
             (Error 37, Line 9, Col 1, Line 9, Col 18, "Duplicate definition of type, exception or module 'module'")
         ]
 
-    // SOURCE="E_ModuleWithSameNameInNamespace02a.fsx E_ModuleWithSameNameInNamespace02b.fsx" SCFLAGS="--test:ErrorRanges" # E_ModuleWithSameNameInNamespace02 
+    // SOURCE="E_ModuleWithSameNameInNamespace02a.fsx E_ModuleWithSameNameInNamespace02b.fsx" SCFLAGS="--test:ErrorRanges" # E_ModuleWithSameNameInNamespace02
     [<Theory; Directory(__SOURCE_DIRECTORY__, Includes=[|"E_ModuleWithSameNameInNamespace02a.fsx"|])>]
     let ``E_ModuleWithSameNameInNamespace02a_fsx`` compilation =
         compilation
@@ -239,15 +239,6 @@ module ModuleDefinitions =
         |> verifyCompileAndRun
         |> shouldSucceed
 
-    // SOURCE=Production_OCamlCompat.fsx                                                                                   # Production_OCamlCompat.fsx
-    [<Theory; Directory(__SOURCE_DIRECTORY__, Includes=[|"Production_OCamlCompat.fsx"|])>]
-    let ``Production_OCamlCompat_fsx`` compilation =
-        compilation
-        |> withOcamlCompat
-        |> withLangVersion50
-        |> verifyCompileAndRun
-        |> shouldSucceed
-
     // SOURCE=Production_TypeDefinitions.fsx                                                                               # Production_TypeDefinitions.fsx
     [<Theory; Directory(__SOURCE_DIRECTORY__, Includes=[|"Production_TypeDefinitions.fsx"|])>]
     let ``Production_TypeDefinitions_fsx`` compilation =
@@ -265,23 +256,7 @@ module ModuleDefinitions =
             (Error 965, Line 8, Col 1, Line 9, Col 26, "The path 'Microsoft.FSharp.Core' is a namespace. A module abbreviation may not abbreviate a namespace.")
         ]
 
-    // SOURCE=W_Production_OCamlCompat.fsx SCFLAGS="--test:ErrorRanges"                                                    # W_Production_OCamlCompat.fsx
-    [<Theory; Directory(__SOURCE_DIRECTORY__, Includes=[|"W_Production_OCamlCompat.fsx"|])>]
-    let ``W_Production_OCamlCompat_fsx`` compilation =
-        compilation
-        |> verifyCompile
-        |> shouldFail
-        |> withDiagnostics [
-            (Error 62, Line 14, Col 13, Line 14, Col 19, "This construct is deprecated. The use of 'module M = struct ... end ' was deprecated in F# 2.0 and is no longer supported. Remove the 'struct' and 'end' and use indentation instead. You can enable this feature by using '--langversion:5.0' and '--mlcompatibility'.")
-            (Error 62, Line 18, Col 13, Line 18, Col 19, "This construct is deprecated. The use of 'module M = struct ... end ' was deprecated in F# 2.0 and is no longer supported. Remove the 'struct' and 'end' and use indentation instead. You can enable this feature by using '--langversion:5.0' and '--mlcompatibility'.")
-            (Error 62, Line 22, Col 13, Line 22, Col 19, "This construct is deprecated. The use of 'module M = struct ... end ' was deprecated in F# 2.0 and is no longer supported. Remove the 'struct' and 'end' and use indentation instead. You can enable this feature by using '--langversion:5.0' and '--mlcompatibility'.")
-            (Error 62, Line 26, Col 13, Line 26, Col 19, "This construct is deprecated. The use of 'module M = struct ... end ' was deprecated in F# 2.0 and is no longer supported. Remove the 'struct' and 'end' and use indentation instead. You can enable this feature by using '--langversion:5.0' and '--mlcompatibility'.")
-            (Error 62, Line 30, Col 13, Line 30, Col 19, "This construct is deprecated. The use of 'module M = struct ... end ' was deprecated in F# 2.0 and is no longer supported. Remove the 'struct' and 'end' and use indentation instead. You can enable this feature by using '--langversion:5.0' and '--mlcompatibility'.")
-            (Error 62, Line 35, Col 13, Line 35, Col 19, "This construct is deprecated. The use of 'module M = struct ... end ' was deprecated in F# 2.0 and is no longer supported. Remove the 'struct' and 'end' and use indentation instead. You can enable this feature by using '--langversion:5.0' and '--mlcompatibility'.")
-            (Error 62, Line 39, Col 13, Line 39, Col 19, "This construct is deprecated. The use of 'module M = struct ... end ' was deprecated in F# 2.0 and is no longer supported. Remove the 'struct' and 'end' and use indentation instead. You can enable this feature by using '--langversion:5.0' and '--mlcompatibility'.")
-        ]
-
-    // 
+    //
     // #These 2 are not actual testcases, just test libraries for the next 2
     // SOURCE=LibFoo1.fs SCFLAGS="-a"
     // SOURCE=LibFOo2.fs SCFLAGS="-a"

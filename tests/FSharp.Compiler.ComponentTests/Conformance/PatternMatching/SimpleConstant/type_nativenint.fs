@@ -1,7 +1,7 @@
-// #Conformance #PatternMatching #Constants 
+// #Conformance #PatternMatching #Constants
 // Pattern Matching - Simple Constants
 // Type: nativeint
-#light
+
 
 let isZero x =
     match x with

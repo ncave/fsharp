@@ -23,6 +23,14 @@ type public RecordContext =
     | Declaration of isInIdentifier: bool
 
 [<RequireQualifiedAccess>]
+type public RecordSpreadContext =
+    /// type R = { ...| }
+    | Declaration
+
+    /// let r = { ...| }
+    | Construction
+
+[<RequireQualifiedAccess>]
 type public PatternContext =
     /// <summary>Completing union case field pattern (e.g. fun (Some v| ) -> ) or fun (Some (v| )) -> ). In theory, this could also be parameterized active pattern usage.</summary>
     /// <param name="fieldIndex">Position in the tuple. <see cref="None">None</see> if there is no tuple, with only one field outside of parentheses - `Some v|`</param>
@@ -58,6 +66,9 @@ type public CompletionContext =
 
     /// Completing records field
     | RecordField of context: RecordContext
+
+    /// Completing a record spread: { ...| }
+    | RecordSpread of context: RecordSpreadContext
 
     | RangeOperator
 
@@ -160,8 +171,6 @@ type public InsertionContextEntity =
 
 /// Operations querying the entire syntax tree
 module public ParsedInput =
-    /// A pattern that collects all sequential expressions to avoid StackOverflowException
-    val internal (|Sequentials|_|): SynExpr -> SynExpr list option
 
     val TryFindExpressionASTLeftOfDotLeftOfCursor: pos: pos * parsedInput: ParsedInput -> (pos * bool) option
 
@@ -172,6 +181,8 @@ module public ParsedInput =
     val TryGetCompletionContext: pos: pos * parsedInput: ParsedInput * lineStr: string -> CompletionContext option
 
     val GetEntityKind: pos: pos * parsedInput: ParsedInput -> EntityKind option
+
+    val internal getScopeInfo: pos: pos * parsedInput: ParsedInput -> struct (ShortIdents * ShortIdents)
 
     val GetFullNameOfSmallestModuleOrNamespaceAtPoint: pos: pos * parsedInput: ParsedInput -> string[]
 
@@ -200,6 +211,16 @@ module public ParsedInput =
 
     /// Corrects insertion line number based on kind of scope and text surrounding the insertion point.
     val AdjustInsertionPoint: getLineStr: (int -> string) -> ctx: InsertionContext -> pos
+
+[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
+module internal Entity =
+    val getRelativeNamespace: targetNs: ShortIdents -> sourceNs: ShortIdents -> ShortIdents
+
+    val getOpenableNamespace:
+        requiresQualifiedAccessParent: ShortIdents option ->
+        autoOpenParent: ShortIdents option ->
+        candidate: ShortIdents ->
+            struct (ShortIdents * ShortIdents * ShortIdents)
 
 // implementation details used by other code in the compiler
 module internal SourceFileImpl =

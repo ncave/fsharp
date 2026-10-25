@@ -16,7 +16,7 @@ module ``Required and init-only properties`` =
 
     }""" |> withCSharpLanguageVersion CSharpLanguageVersion.Preview |> withName "csLib"
 
-    let csharpBaseClass = 
+    let csharpBaseClass =
         CSharp """
     namespace RequiredAndInitOnlyProperties
     {
@@ -29,7 +29,7 @@ module ``Required and init-only properties`` =
 
     }""" |> withCSharpLanguageVersion CSharpLanguageVersion.Preview |> withName "csLib"
 
-    let csharpRBaseClass = 
+    let csharpRBaseClass =
         CSharp """
     namespace RequiredAndInitOnlyProperties
     {
@@ -63,7 +63,7 @@ let main _ =
 """
         FSharp fsharpSource
         |> asExe
-        |> withLangVersion70
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compileAndRun
         |> shouldSucceed
@@ -94,11 +94,11 @@ let main _ =
 """
         FSharp fsharpSource
         |> asExe
-        |> withLangVersion70
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compileAndRun
         |> shouldSucceed
-    
+
     [<FactForNETCOREAPP>]
     let ``F# can change set property via calling an explicit setter`` () =
 
@@ -125,7 +125,7 @@ let main _ =
 """
         FSharp fsharpSource
         |> asExe
-        |> withLangVersion70
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compileAndRun
         |> shouldSucceed
@@ -151,7 +151,7 @@ let main _ =
 """
         FSharp fsharpSource
         |> asExe
-        |> withLangVersion70
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compileAndRun
         |> shouldSucceed
@@ -176,12 +176,12 @@ let main _ =
 """
         FSharp fsharpSource
         |> asExe
-        |> withLangVersion70
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compile
         |> shouldFail
         |> withDiagnostics [
-            Error 810, Line 9, Col 5, Line 9, Col 17, "Init-only property 'GetInit' cannot be set outside the initialization code. See https://aka.ms/fsharp-assigning-values-to-properties-at-initialization"
+            Error 810, Line 9, Col 10, Line 9, Col 17, "Init-only property 'GetInit' cannot be set outside the initialization code. See https://aka.ms/fsharp-assigning-values-to-properties-at-initialization"
         ]
 
     [<FactForNETCOREAPP>]
@@ -204,12 +204,12 @@ let main _ =
 """
         FSharp fsharpSource
         |> asExe
-        |> withLangVersion70
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compile
         |> shouldFail
         |> withDiagnostics [
-            Error 810, Line 9, Col 5, Line 9, Col 21, "Cannot call 'set_GetInit' - a setter for init-only property, please use object initialization instead. See https://aka.ms/fsharp-assigning-values-to-properties-at-initialization"
+            Error 810, Line 9, Col 10, Line 9, Col 21, "Cannot call 'set_GetInit' - a setter for init-only property, please use object initialization instead. See https://aka.ms/fsharp-assigning-values-to-properties-at-initialization"
         ]
 
     [<FactForNETCOREAPP>]
@@ -231,7 +231,7 @@ let main _ =
 """
         FSharp fsharpSource
         |> asExe
-        |> withLangVersion70
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compile
         |> shouldFail
@@ -259,7 +259,7 @@ let main _ =
 """
         FSharp fsharpSource
         |> asExe
-        |> withLangVersion70
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compile
         |> shouldSucceed
@@ -284,7 +284,7 @@ let main _ =
 """
         FSharp fsharpSource
         |> asExe
-        |> withLangVersion70
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compile
         |> shouldSucceed
@@ -308,7 +308,7 @@ let main _ =
 """
         FSharp fsharpSource
         |> asExe
-        |> withLangVersion70
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compile
         |> shouldFail
@@ -335,7 +335,7 @@ let main _ =
 """
         FSharp fsharpSource
         |> asExe
-        |> withLangVersion70
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compile
         |> shouldFail
@@ -367,7 +367,7 @@ let main _ =
 """
         FSharp fsharpSource
         |> asExe
-        |> withLangVersion70
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compileAndRun
         |> shouldSucceed
@@ -405,7 +405,7 @@ let main _ =
     """
         FSharp fsharpSource
         |> asExe
-        |> withLangVersion70
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compileAndRun
         |> shouldSucceed
@@ -423,7 +423,7 @@ let main _ =
     """
         FSharp fsharpSource2
         |> asExe
-        |> withLangVersion70
+        |> withLangVersion80
         |> withReferences [csharpLib]
         |> compile
         |> shouldFail
@@ -442,7 +442,7 @@ type RAIOFS() =
 """
         FSharp fsharpSource
         |> asLibrary
-        |> withLangVersion70
+        |> withLangVersion80
         |> compile
         |> shouldFail
         |> withSingleDiagnostic (Warning 202, Line 6, Col 7, Line 6, Col 21, "This attribute is currently unsupported by the F# compiler. Applying it will not achieve its intended effect.")

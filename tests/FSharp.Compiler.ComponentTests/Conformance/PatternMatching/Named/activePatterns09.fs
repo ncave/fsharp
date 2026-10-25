@@ -1,5 +1,5 @@
-// #Conformance #PatternMatching #ActivePatterns 
-#light
+// #Conformance #PatternMatching #ActivePatterns
+
 
 // Verify AND on active patterns with exceptions
 

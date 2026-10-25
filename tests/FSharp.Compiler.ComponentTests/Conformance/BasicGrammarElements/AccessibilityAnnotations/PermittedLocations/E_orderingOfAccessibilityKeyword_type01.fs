@@ -1,10 +1,10 @@
-// #Regression #Conformance #DeclarationElements #Accessibility 
+// #Regression #Conformance #DeclarationElements #Accessibility
 // On type
 
 
-#light
+
 
 module M =
-            private type Foo() = class 
-                                 end   
+            private type Foo() = class
+                                 end
 

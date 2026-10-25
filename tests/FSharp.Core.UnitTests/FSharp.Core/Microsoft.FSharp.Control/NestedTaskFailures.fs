@@ -1,9 +1,7 @@
 ﻿namespace FSharp.Core.UnitTests.Control.Tasks
 
-// The tasks below fail state machine compilation.  This failure was causing subsequent problems in code generation.
+// The tasks below used to fail state machine compilation.  This failure was causing subsequent problems in code generation.
 // See https://github.com/dotnet/fsharp/issues/13404
-
-#nowarn "3511"  // state machine not statically compilable - this is a separate issue, see  https://github.com/dotnet/fsharp/issues/13404
 
 open System
 open Microsoft.FSharp.Control
@@ -16,7 +14,7 @@ module NestedTasksFailingStateMachine =
         let FetchInternalTransfers (includeConfirmeds: int) =
             task {
 
-                let! mapPrioritiesTransfers = 
+                let! mapPrioritiesTransfers =
                     task {
                         if includeConfirmeds > 1 then
 
@@ -108,7 +106,7 @@ module NestedTasksFailingStateMachine =
         System.Threading.Tasks.Task.WaitAll test
         let result = test.Result |> printfn "%A"
 
-type NestedStateMachineTests() = 
+type NestedStateMachineTests() =
     [<Fact>]
     member _.NestedStateMachineFailure1() =
         let test = NestedTasksFailingStateMachine.Example1.FetchInternalTransfers 2

@@ -271,6 +271,9 @@ type CalledMeth<'T> =
 
     member IsIndexParamArraySetter: bool
 
+    /// True when this method call is for a property indexer setter (set_Item or named indexer set).
+    member IsIndexerSetter: bool
+
     /// The method we're attempting to call
     member Method: MethInfo
 
@@ -291,6 +294,9 @@ type CalledMeth<'T> =
     member TotalNumUnnamedCalledArgs: int
 
     member TotalNumUnnamedCallerArgs: int
+
+    /// FS-1095: name to report if this positional call targets a RequireNamedArguments method, else None.
+    member TryGetRequireNamedArgumentsViolationName: m: range -> string option
 
     /// Unassigned args
     member UnassignedNamedArgs: CallerNamedArg<'T> list
@@ -444,7 +450,6 @@ val AdjustCallerArgs:
         (Expr -> Expr) *
         Expr list *
         'b option list *
-        AssignedCalledArg<Expr> list *
         Expr list *
         (Expr -> Expr) *
         'c option list *
@@ -500,14 +505,6 @@ val GenWitnessExpr:
 /// Generate a lambda expression for the given solved trait.
 val GenWitnessExprLambda:
     amap: ImportMap -> g: TcGlobals -> m: range -> traitInfo: TraitConstraintInfo -> Choice<TraitConstraintInfo, Expr>
-
-/// Generate the arguments passed for a set of (solved) traits in non-generic code
-val GenWitnessArgs:
-    amap: ImportMap ->
-    g: TcGlobals ->
-    m: range ->
-    traitInfos: TraitConstraintInfo list ->
-        Choice<TraitConstraintInfo, Expr> list
 
 #if !NO_TYPEPROVIDERS
 module ProvidedMethodCalls =

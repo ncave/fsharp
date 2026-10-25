@@ -16,7 +16,7 @@ module As =
         |> withOptions ["--test:ErrorRanges"]
         |> compile
         |> shouldSucceed
-        
+
     // This test was automatically generated (moved from FSharpQA suite - Conformance/PatternMatching/As)
     [<Theory; FileInlineData("asPattern02.fs")>]
     let ``Simple - asPattern02_fs - --test:ErrorRanges`` compilation =
@@ -26,7 +26,7 @@ module As =
         |> withOptions ["--test:ErrorRanges"]
         |> compile
         |> shouldSucceed
-        
+
     [<Fact>]
     let ``As patterns``() =
         Fsx """
@@ -37,10 +37,10 @@ module As =
         | _ -> failwith "Match failed"
         """
         |> asExe
-        |> withLangVersion60
+        |> withLangVersion80
         |> compileExeAndRun
         |> shouldSucceed
-        
+
     [<Theory>]
     [<InlineData("DateTime", "DateTime.Now")>]
     [<InlineData("int", "1")>]

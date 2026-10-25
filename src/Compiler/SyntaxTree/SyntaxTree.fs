@@ -14,6 +14,13 @@ open FSharp.Compiler.SyntaxTrivia
 type Ident(text: string, range: range) =
     member _.idText = text
     member _.idRange = range
+
+    member x.MakeSynthetic() =
+        if range.IsSynthetic then
+            x
+        else
+            Ident(text, range.MakeSynthetic())
+
     override _.ToString() = text
 
 type SynIdent =
@@ -263,7 +270,7 @@ type DebugPointAtTry =
     | No
 
 [<RequireQualifiedAccess>]
-type DebugPointAtLeafExpr = Yes of range
+type DebugPointAtLeafExpr = Yes of isHidden: bool * range: range
 
 [<RequireQualifiedAccess>]
 type DebugPointAtWith =
@@ -309,6 +316,11 @@ type SeqExprOnly = SeqExprOnly of bool
 type BlockSeparator = range * pos option
 
 type RecordFieldName = SynLongIdent * bool
+
+[<NoEquality; NoComparison; RequireQualifiedAccess>]
+type RecordBinding =
+    | Field of name: RecordFieldName * equalsRange: range option * declExpr: SynExpr option
+    | Spread of spread: SynExprSpread
 
 type ExprAtomicFlag =
     | Atomic = 0
@@ -534,7 +546,7 @@ type SynExpr =
     | AnonRecd of
         isStruct: bool *
         copyInfo: (SynExpr * BlockSeparator) option *
-        recordFields: (SynLongIdent * range option * SynExpr) list *
+        recordFields: SynExprAnonRecordFieldOrSpread list *
         range: range *
         trivia: SynExprAnonRecdTrivia
 
@@ -543,7 +555,7 @@ type SynExpr =
     | Record of
         baseInfo: (SynType * SynExpr * range * BlockSeparator option * range) option *
         copyInfo: (SynExpr * BlockSeparator) option *
-        recordFields: SynExprRecordField list *
+        recordFields: SynExprRecordFieldOrSpread list *
         range: range
 
     | New of isProtected: bool * targetType: SynType * expr: SynExpr * range: range
@@ -718,15 +730,7 @@ type SynExpr =
 
     | YieldOrReturnFrom of flags: (bool * bool) * expr: SynExpr * range: range * trivia: SynExprYieldOrReturnFromTrivia
 
-    | LetOrUse of
-        isRecursive: bool *
-        isUse: bool *
-        isFromSource: bool *
-        isBang: bool *
-        bindings: SynBinding list *
-        body: SynExpr *
-        range: range *
-        trivia: SynExprLetOrUseTrivia
+    | LetOrUse of SynLetOrUse
 
     | MatchBang of
         matchDebugPoint: DebugPointAtBinding *
@@ -794,7 +798,7 @@ type SynExpr =
         | SynExpr.Assert(range = m)
         | SynExpr.App(range = m)
         | SynExpr.TypeApp(range = m)
-        | SynExpr.LetOrUse(range = m)
+        | SynExpr.LetOrUse({ Range = m })
         | SynExpr.TryWith(range = m)
         | SynExpr.TryFinally(range = m)
         | SynExpr.Sequential(range = m)
@@ -865,18 +869,41 @@ type SynExpr =
         | _ -> false
 
 [<NoEquality; NoComparison>]
-type SynExprRecordField =
-    | SynExprRecordField of
-        fieldName: RecordFieldName *
-        equalsRange: range option *
-        expr: SynExpr option *
-        range: range *
-        blockSeparator: BlockSeparator option
+type SynTypeSpread = SynTypeSpread of spreadRange: range * ty: SynType * range: range
+
+[<NoEquality; NoComparison>]
+type SynExprSpread = SynExprSpread of spreadRange: range * expr: SynExpr * range: range
+
+[<NoEquality; NoComparison>]
+type SynExprRecordField = SynExprRecordField of fieldName: RecordFieldName * equalsRange: range option * expr: SynExpr option * range: range
+
+[<NoEquality; NoComparison; RequireQualifiedAccess>]
+type SynExprRecordFieldOrSpread =
+    | Field of field: SynExprRecordField * blockSeparator: BlockSeparator option
+    | Spread of spread: SynExprSpread * blockSeparator: BlockSeparator option
+
+[<NoEquality; NoComparison>]
+type SynExprAnonRecordField = SynExprAnonRecordField of fieldName: SynLongIdent * equalsRange: range option * expr: SynExpr * range: range
+
+[<NoEquality; NoComparison; RequireQualifiedAccess>]
+type SynExprAnonRecordFieldOrSpread =
+    | Field of field: SynExprAnonRecordField * blockSeparator: BlockSeparator option
+    | Spread of spread: SynExprSpread * blockSeparator: BlockSeparator option
+
+    member this.Range =
+        match this with
+        | SynExprAnonRecordFieldOrSpread.Field(SynExprAnonRecordField(_, _, _, m), _)
+        | SynExprAnonRecordFieldOrSpread.Spread(SynExprSpread(_, _, m), _) -> m
 
 [<NoEquality; NoComparison; RequireQualifiedAccess>]
 type SynInterpolatedStringPart =
     | String of value: string * range: range
-    | FillExpr of fillExpr: SynExpr * qualifiers: Ident option
+    | FillExpr of fillExpr: SynExpr * formatting: SynInterpolationFormatting
+
+[<NoEquality; NoComparison; RequireQualifiedAccess>]
+type SynInterpolationFormatting =
+    | DotNet of alignment: SynExpr option * format: Ident option
+    | Printf of specifier: string * range: range
 
 [<NoEquality; NoComparison; RequireQualifiedAccess>]
 type SynSimplePat =
@@ -1124,6 +1151,50 @@ type SynBinding =
     member x.Trivia = let (SynBinding(trivia = trivia)) = x in trivia
 
 [<NoEquality; NoComparison>]
+type SynLetOrUse =
+    {
+        /// true for 'let rec' and 'use rec' bindings, false for 'let' and 'use' bindings
+        IsRecursive: bool
+
+        /// The bindings in this let/use expression
+        Bindings: SynBinding list
+
+        /// The body expression
+        Body: SynExpr
+
+        /// The syntax range of this expression
+        Range: range
+
+        /// Trivia for this expression
+        Trivia: SynLetOrUseTrivia
+
+        /// true if the binding was explicitly written by the user in the source code, false if generated by the compiler
+        IsFromSource: bool
+    }
+
+    /// true for 'use' and 'use!' bindings, false for 'let' and 'let!' bindings
+    member this.IsUse =
+        match this.Bindings with
+        | firstBinding :: _ ->
+            match firstBinding.Trivia.LeadingKeyword with
+            | SynLeadingKeyword.Use _
+            | SynLeadingKeyword.UseBang _
+            | SynLeadingKeyword.UseRec _ -> true
+            | _ -> false
+        | [] -> false
+
+    /// true for 'let!' and 'use!' bindings, false for 'let' and 'use' bindings
+    member this.IsBang =
+        match this.Bindings with
+        | firstBinding :: _ ->
+            match firstBinding.Trivia.LeadingKeyword with
+            | SynLeadingKeyword.LetBang _
+            | SynLeadingKeyword.UseBang _
+            | SynLeadingKeyword.AndBang _ -> true
+            | _ -> false
+        | [] -> false
+
+[<NoEquality; NoComparison>]
 type SynBindingReturnInfo =
     | SynBindingReturnInfo of typeName: SynType * range: range * attributes: SynAttributes * trivia: SynBindingReturnInfoTrivia
 
@@ -1220,7 +1291,7 @@ type SynTypeDefnSimpleRepr =
 
     | Enum of cases: SynEnumCase list * range: range
 
-    | Record of accessibility: SynAccess option * recordFields: SynField list * range: range
+    | Record of accessibility: SynAccess option * recordFieldsAndSpreads: SynFieldOrSpread list * range: range
 
     | General of
         kind: SynTypeDefnKind *
@@ -1252,6 +1323,11 @@ type SynTypeDefnSimpleRepr =
         | TypeAbbrev(range = m)
         | None(range = m) -> m
         | Exception t -> t.Range
+
+[<NoEquality; NoComparison; RequireQualifiedAccess>]
+type SynFieldOrSpread =
+    | Field of field: SynField
+    | Spread of spread: SynTypeSpread
 
 [<NoEquality; NoComparison>]
 type SynEnumCase =
@@ -1343,7 +1419,7 @@ type SynComponentInfo =
         attributes: SynAttributes *
         typeParams: SynTyparDecls option *
         constraints: SynTypeConstraint list *
-        longId: LongIdent *
+        synType: SynType option *
         xmlDoc: PreXmlDoc *
         preferPostfix: bool *
         accessibility: SynAccess option *
@@ -1352,6 +1428,11 @@ type SynComponentInfo =
     member this.Range =
         match this with
         | SynComponentInfo(range = m) -> m
+
+    member this.LongIdent =
+        match this with
+        | SynComponentInfo(synType = Some(SynType.LongIdent(SynLongIdent(lid, _, _)))) -> lid
+        | _ -> []
 
 [<NoEquality; NoComparison; RequireQualifiedAccess>]
 type SynValSigAccess =
@@ -1436,7 +1517,8 @@ type SynExceptionDefnRepr =
         longId: LongIdent option *
         xmlDoc: PreXmlDoc *
         accessibility: SynAccess option *
-        range: range
+        range: range *
+        trivia: SynExceptionDefnReprTrivia
 
     member this.Range =
         match this with
@@ -1509,7 +1591,7 @@ type SynMemberDefn =
         range: range *
         trivia: SynMemberDefnInheritTrivia
 
-    | LetBindings of bindings: SynBinding list * isStatic: bool * isRecursive: bool * range: range
+    | LetBindings of bindings: SynBinding list * isStatic: bool * isRecursive: bool * range: range * trivia: SynMemberDefnLetBindingsTrivia
 
     | AbstractSlot of slotSig: SynValSig * flags: SynMemberFlags * range: range * trivia: SynMemberDefnAbstractSlotTrivia
 
@@ -1565,7 +1647,7 @@ type SynModuleDecl =
         range: range *
         trivia: SynModuleDeclNestedModuleTrivia
 
-    | Let of isRecursive: bool * bindings: SynBinding list * range: range
+    | Let of isRecursive: bool * bindings: SynBinding list * range: range * trivia: SynModuleDeclLetTrivia
 
     | Expr of expr: SynExpr * range: range
 

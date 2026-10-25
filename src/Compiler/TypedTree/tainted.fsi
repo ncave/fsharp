@@ -21,15 +21,19 @@ type internal TypeProviderLock =
 type internal TypeProviderError =
     inherit System.Exception
 
-    /// creates new instance of TypeProviderError that represents one error
+    new: (int * RichText) * string * range -> TypeProviderError
     new: (int * string) * string * range -> TypeProviderError
-
-    /// creates new instance of TypeProviderError that represents collection of errors
+    new: int * string * range * seq<RichText> -> TypeProviderError
     new: int * string * range * seq<string> -> TypeProviderError
 
     member Number: int
 
     member Range: range
+
+    /// The message of this error, with the classification of its parts
+    member RichMessage: RichText
+
+    member ContextualErrorRichMessage: RichText
 
     member ContextualErrorMessage: string
 
@@ -37,7 +41,7 @@ type internal TypeProviderError =
     member WithContext: string * string -> TypeProviderError
 
     /// creates new instance of TypeProviderError based on current instance information(message)
-    member MapText: (string -> int * string) * string * range -> TypeProviderError
+    member MapText: (RichText -> int * RichText) * string * range -> TypeProviderError
 
     /// provides uniform way to process aggregated errors
     member Iter: (TypeProviderError -> unit) -> unit
@@ -78,10 +82,10 @@ type internal Tainted<'T> =
     member PApplyWithProvider: ('T * ITypeProvider -> 'U) * range: range -> Tainted<'U>
 
     /// Apply an operation that returns an array. Unwrap array. Any exception will be attributed to the type provider with an error located at the given range.  String is method name of thing-returning-array, to diagnostically attribute if it is null
-    member PApplyArray: ('T -> 'U[] MaybeNull) * string * range: range -> Tainted<'U>[]
+    member PApplyArray: ('T -> ('U[] | null)) * string * range: range -> Tainted<'U>[]
 
     /// Apply an operation that returns an array. Filter the array. Unwrap array. Any exception will be attributed to the type provider with an error located at the given range.  String is method name of thing-returning-array, to diagnostically attribute if it is null
-    member PApplyFilteredArray: ('T -> 'U[] MaybeNull) * ('U -> bool) * string * range: range -> Tainted<'U>[]
+    member PApplyFilteredArray: ('T -> ('U[] | null)) * ('U -> bool) * string * range: range -> Tainted<'U>[]
 
     /// Apply an operation that returns an option. Unwrap option. Any exception will be attributed to the type provider with an error located at the given range
     member PApplyOption: ('T -> 'U option) * range: range -> Tainted<'U> option
@@ -104,7 +108,7 @@ type internal Tainted<'T> =
 module internal Tainted =
 
     /// Test whether the tainted value is null
-    val (|Null|NonNull|): Tainted<'T MaybeNull> -> Choice<unit, Tainted<'T>> when 'T: not null and 'T: not struct
+    val (|Null|NonNull|): Tainted<('T | null)> -> Choice<unit, Tainted<'T>> when 'T: not null and 'T: not struct
 
     /// Test whether the tainted value equals given value.
     /// Failure in call to equality operation will be blamed on type provider of first operand

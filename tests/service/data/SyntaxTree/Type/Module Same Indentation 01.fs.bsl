@@ -7,7 +7,8 @@ ImplFile
           [Types
              ([SynTypeDefn
                  (SynComponentInfo
-                    ([], None, [], [A],
+                    ([], None, [],
+                     Some (LongIdent (SynLongIdent ([A], [], [None]))),
                      PreXmlDoc ((4,0), FSharp.Compiler.Xml.XmlDocCollector),
                      false, None, (4,5--4,6)),
                   Simple
@@ -24,7 +25,8 @@ ImplFile
                                   None, (5,15--5,18), { LeadingKeyword = None
                                                         MutableKeyword = None })],
                             PreXmlDoc ((5,4), FSharp.Compiler.Xml.XmlDocCollector),
-                            None, (5,6--5,18), { BarRange = Some (5,4--5,5) });
+                            None, (5,6--5,18), { BarRange = Some (5,4--5,5)
+                                                 OfKeyword = Some (5,12--5,14) });
                          SynUnionCase
                            ([], SynIdent (CaseB, None),
                             Fields
@@ -36,14 +38,15 @@ ImplFile
                                   None, (6,15--6,21), { LeadingKeyword = None
                                                         MutableKeyword = None })],
                             PreXmlDoc ((6,4), FSharp.Compiler.Xml.XmlDocCollector),
-                            None, (6,6--6,21), { BarRange = Some (6,4--6,5) })],
+                            None, (6,6--6,21), { BarRange = Some (6,4--6,5)
+                                                 OfKeyword = Some (6,12--6,14) })],
                         (5,4--6,21)), (5,4--6,21)), [], None, (4,5--6,21),
                   { LeadingKeyword = Type (4,0--4,4)
                     EqualsRange = Some (4,7--4,8)
                     WithKeyword = None })], (4,0--6,21));
            NestedModule
              (SynComponentInfo
-                ([], None, [], [B],
+                ([], None, [], Some (LongIdent (SynLongIdent ([B], [], []))),
                  PreXmlDoc ((8,0), FSharp.Compiler.Xml.XmlDocCollector), false,
                  None, (8,0--8,8)), false,
               [Let
@@ -59,24 +62,27 @@ ImplFile
                       Yes (9,4--9,14), { LeadingKeyword = Let (9,4--9,7)
                                          InlineKeyword = None
                                          EqualsRange = Some (9,10--9,11) })],
-                  (9,4--9,14))], false, (8,0--9,14),
+                  (9,4--9,14), { InKeyword = None })], false, (8,0--9,14),
               { ModuleKeyword = Some (8,0--8,6)
                 EqualsRange = Some (8,9--8,10) });
            Types
              ([SynTypeDefn
                  (SynComponentInfo
-                    ([], None, [], [C],
+                    ([], None, [],
+                     Some (LongIdent (SynLongIdent ([C], [], [None]))),
                      PreXmlDoc ((11,0), FSharp.Compiler.Xml.XmlDocCollector),
                      false, None, (11,5--11,6)),
                   Simple
                     (Record
                        (None,
-                        [SynField
-                           ([], false, Some Field,
-                            LongIdent (SynLongIdent ([int], [], [None])), false,
-                            PreXmlDoc ((12,6), FSharp.Compiler.Xml.XmlDocCollector),
-                            None, (12,6--12,16), { LeadingKeyword = None
-                                                   MutableKeyword = None })],
+                        [Field
+                           (SynField
+                              ([], false, Some Field,
+                               LongIdent (SynLongIdent ([int], [], [None])),
+                               false,
+                               PreXmlDoc ((12,6), FSharp.Compiler.Xml.XmlDocCollector),
+                               None, (12,6--12,16), { LeadingKeyword = None
+                                                      MutableKeyword = None }))],
                         (12,4--12,18)), (12,4--12,18)), [], None, (11,5--12,18),
                   { LeadingKeyword = Type (11,0--11,4)
                     EqualsRange = Some (11,7--11,8)

@@ -1,5 +1,5 @@
-// #Conformance #PatternMatching #Constants 
-#light
+// #Conformance #PatternMatching #Constants
+
 
 // Match floating point numbers
 type Number = NotPI | SortOfPI | CloseToPI | CloseEnoughToPI

@@ -98,7 +98,7 @@ let mmmm2 : M.CAbbrev = new M.CAbbrev() // note, these don't count as uses of C
 [<Fact>]
 let ``Test project1 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunSynchronouslyImmediate
     wholeProjectResults.Diagnostics.Length |> shouldEqual 2
     wholeProjectResults.Diagnostics[1].Message.Contains("Incomplete pattern matches on this expression") |> shouldEqual true // yes it does
     wholeProjectResults.Diagnostics[1].ErrorNumber |> shouldEqual 25
@@ -108,6 +108,21 @@ let ``Test project1 whole project errors`` () =
     wholeProjectResults.Diagnostics[0].Range.StartColumn |> shouldEqual 43
     wholeProjectResults.Diagnostics[0].Range.EndColumn |> shouldEqual 44
 
+[<Fact>]
+let ``Issue 6036 - project check reports namespace-module collision`` () =
+    let options =
+        createProjectOptions
+            [ "namespace A\nmodule B = begin end"
+              "namespace A.B\ntype DU = X of float | Y of float" ]
+            []
+
+    let results = checker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
+    let diagnostic = results.Diagnostics |> Array.exactlyOne
+
+    diagnostic.ErrorNumber |> shouldEqual 247
+    diagnostic.Message
+    |> shouldEqual "The name 'A.B' is used as both a namespace and a module in this assembly. Rename one of them to avoid the conflict."
+
 [<Collection(nameof NotThreadSafeResourceCollection)>]
 module ClearLanguageServiceRootCachesTest =
     [<Fact>]
@@ -115,9 +130,10 @@ module ClearLanguageServiceRootCachesTest =
 
         // A private checker for this test.
         let checker = FSharpChecker.Create()
-    
+
         let test () =
-            let _, checkFileAnswer = checker.ParseAndCheckFileInProject(Project1.fileName1, 0, Project1.fileSource1, Project1.options) |> Async.RunImmediate
+            let _, checkFileAnswer = checker.ParseAndCheckFileInProject(Project1.fileName1, 0, Project1.fileSource1, Project1.options) |> Async.RunSynchronouslyImmediate
+
             match checkFileAnswer with
             | FSharpCheckFileAnswer.Aborted -> failwith "should not be aborted"
             | FSharpCheckFileAnswer.Succeeded checkFileResults ->
@@ -148,7 +164,7 @@ module ClearLanguageServiceRootCachesTest =
 
 [<Fact>]
 let ``Test Project1 should have protected FullName and TryFullName return same results`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunSynchronouslyImmediate
     let rec getFullNameComparisons (entity: FSharpEntity) =
         #if !NO_TYPEPROVIDERS
         seq { if not entity.IsProvided && entity.Accessibility.IsPublic then
@@ -166,7 +182,7 @@ let ``Test Project1 should have protected FullName and TryFullName return same r
 
 [<Fact(Skip = "SKIPPED: BaseType shouldn't throw exceptions")>]
 let ``Test project1 should not throw exceptions on entities from referenced assemblies`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunSynchronouslyImmediate
     let rec getAllBaseTypes (entity: FSharpEntity) =
         seq { if not entity.IsProvided && entity.Accessibility.IsPublic then
                 if not entity.IsUnresolved then yield entity.BaseType
@@ -183,7 +199,7 @@ let ``Test project1 should not throw exceptions on entities from referenced asse
 let ``Test project1 basic`` () =
 
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunSynchronouslyImmediate
 
     set [ for x in wholeProjectResults.AssemblySignature.Entities -> x.DisplayName ] |> shouldEqual (set ["N"; "M"])
 
@@ -197,7 +213,7 @@ let ``Test project1 basic`` () =
 [<Fact>]
 let ``Test project1 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunSynchronouslyImmediate
     let allSymbols = allSymbolsInEntities true wholeProjectResults.AssemblySignature.Entities
     for s in allSymbols do
         s.DeclarationLocation.IsSome |> shouldEqual true
@@ -323,7 +339,7 @@ let ``Test project1 all symbols`` () =
 [<Fact>]
 let ``Test project1 all symbols excluding compiler generated`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunSynchronouslyImmediate
     let allSymbolsNoCompGen = allSymbolsInEntities false wholeProjectResults.AssemblySignature.Entities
     [ for x in allSymbolsNoCompGen -> x.ToString() ]
       |> shouldEqual
@@ -340,10 +356,10 @@ let ``Test project1 all symbols excluding compiler generated`` () =
 let ``Test project1 xxx symbols`` () =
 
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunSynchronouslyImmediate
     let backgroundParseResults1, backgroundTypedParse1 =
         checker.GetBackgroundCheckResultsForFileInProject(Project1.fileName1, Project1.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
 
     let xSymbolUseOpt = backgroundTypedParse1.GetSymbolUseAtLocation(9,9,"",["xxx"])
     let xSymbolUse = xSymbolUseOpt.Value
@@ -364,7 +380,7 @@ let ``Test project1 xxx symbols`` () =
 [<Fact>]
 let ``Test project1 all uses of all signature symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunSynchronouslyImmediate
     let allSymbols = allSymbolsInEntities true wholeProjectResults.AssemblySignature.Entities
     let allUsesOfAllSymbols =
         [ for s in allSymbols do
@@ -432,7 +448,7 @@ let ``Test project1 all uses of all signature symbols`` () =
 [<Fact>]
 let ``Test project1 all uses of all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunSynchronouslyImmediate
     let allUsesOfAllSymbols =
         [ for s in wholeProjectResults.GetAllUsesOfAllSymbols() ->
               s.Symbol.DisplayName, s.Symbol.FullName, Project1.cleanFileName s.FileName, tupsZ s.Range, attribsOfSymbol s.Symbol ]
@@ -571,18 +587,18 @@ let ``Test project1 all uses of all symbols`` () =
 let ``Test file explicit parse symbols`` () =
 
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunImmediate
-    let parseResults1 = checker.ParseFile(Project1.fileName1, Project1.fileSource1, Project1.parsingOptions)  |> Async.RunImmediate
-    let parseResults2 = checker.ParseFile(Project1.fileName2, Project1.fileSource2, Project1.parsingOptions)  |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunSynchronouslyImmediate
+    let parseResults1 = checker.ParseFile(Project1.fileName1, Project1.fileSource1, Project1.parsingOptions)  |> Async.RunSynchronouslyImmediate
+    let parseResults2 = checker.ParseFile(Project1.fileName2, Project1.fileSource2, Project1.parsingOptions)  |> Async.RunSynchronouslyImmediate
 
     let checkResults1 =
         checker.CheckFileInProject(parseResults1, Project1.fileName1, 0, Project1.fileSource1, Project1.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
         |> function FSharpCheckFileAnswer.Succeeded x ->  x | _ -> failwith "unexpected aborted"
 
     let checkResults2 =
         checker.CheckFileInProject(parseResults2, Project1.fileName2, 0, Project1.fileSource2, Project1.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
         |> function FSharpCheckFileAnswer.Succeeded x ->  x | _ -> failwith "unexpected aborted"
 
     let xSymbolUse2Opt = checkResults1.GetSymbolUseAtLocation(9,9,"",["xxx"])
@@ -617,18 +633,18 @@ let ``Test file explicit parse symbols`` () =
 let ``Test file explicit parse all symbols`` () =
 
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunImmediate
-    let parseResults1 = checker.ParseFile(Project1.fileName1, Project1.fileSource1, Project1.parsingOptions) |> Async.RunImmediate
-    let parseResults2 = checker.ParseFile(Project1.fileName2, Project1.fileSource2, Project1.parsingOptions) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project1.options) |> Async.RunSynchronouslyImmediate
+    let parseResults1 = checker.ParseFile(Project1.fileName1, Project1.fileSource1, Project1.parsingOptions) |> Async.RunSynchronouslyImmediate
+    let parseResults2 = checker.ParseFile(Project1.fileName2, Project1.fileSource2, Project1.parsingOptions) |> Async.RunSynchronouslyImmediate
 
     let checkResults1 =
         checker.CheckFileInProject(parseResults1, Project1.fileName1, 0, Project1.fileSource1, Project1.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
         |> function FSharpCheckFileAnswer.Succeeded x ->  x | _ -> failwith "unexpected aborted"
 
     let checkResults2 =
         checker.CheckFileInProject(parseResults2, Project1.fileName2, 0, Project1.fileSource2, Project1.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
         |> function FSharpCheckFileAnswer.Succeeded x ->  x | _ -> failwith "unexpected aborted"
 
     let usesOfSymbols = checkResults1.GetAllUsesOfAllSymbolsInFile()
@@ -701,7 +717,7 @@ let _ = GenericFunction(3, 4)
 [<Fact>]
 let ``Test project2 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project2.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project2.options) |> Async.RunSynchronouslyImmediate
     wholeProjectResults .Diagnostics.Length |> shouldEqual 0
 
 
@@ -709,7 +725,7 @@ let ``Test project2 whole project errors`` () =
 let ``Test project2 basic`` () =
 
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project2.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project2.options) |> Async.RunSynchronouslyImmediate
 
     set [ for x in wholeProjectResults.AssemblySignature.Entities -> x.DisplayName ] |> shouldEqual (set ["M"])
 
@@ -721,7 +737,7 @@ let ``Test project2 basic`` () =
 [<Fact>]
 let ``Test project2 all symbols in signature`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project2.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project2.options) |> Async.RunSynchronouslyImmediate
     let allSymbols = allSymbolsInEntities true wholeProjectResults.AssemblySignature.Entities
     let r = [ for x in allSymbols -> x.ToString() ] |> List.sort
 
@@ -737,7 +753,7 @@ let ``Test project2 all symbols in signature`` () =
 
 [<Fact>]
 let ``Test project2 all uses of all signature symbols`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project2.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project2.options) |> Async.RunSynchronouslyImmediate
     let allSymbols = allSymbolsInEntities true wholeProjectResults.AssemblySignature.Entities
     let allUsesOfAllSymbols =
         [ for s in allSymbols do
@@ -751,10 +767,10 @@ let ``Test project2 all uses of all signature symbols`` () =
                ("generic parameter T",
                 [("file1", ((22, 23), (22, 25))); ("file1", ((22, 30), (22, 32)));
                  ("file1", ((22, 45), (22, 47))); ("file1", ((22, 50), (22, 52)))]);
-               ("member get_IsD", []);             
+               ("member get_IsD", []);
                ("member get_IsDU1", []);
                ("member get_IsDU2", []);
-               ("property IsD", []);            
+               ("property IsD", []);
                ("property IsDU1", []);
                ("property IsDU2", []);
                ("DUWithNormalFields", [("file1", ((3, 5), (3, 23)))]);
@@ -783,7 +799,7 @@ let ``Test project2 all uses of all signature symbols`` () =
 [<Fact>]
 let ``Test project2 all uses of all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project2.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project2.options) |> Async.RunSynchronouslyImmediate
     let allUsesOfAllSymbols =
         [ for s in wholeProjectResults.GetAllUsesOfAllSymbols() ->
             s.Symbol.DisplayName, (if s.FileName = Project2.fileName1 then "file1" else "???"), tupsZ s.Range, attribsOfSymbol s.Symbol ]
@@ -952,7 +968,7 @@ let getM (foo: IFoo) = foo.InterfaceMethod("d")
 [<Fact>]
 let ``Test project3 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project3.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project3.options) |> Async.RunSynchronouslyImmediate
     wholeProjectResults .Diagnostics.Length |> shouldEqual 0
 
 
@@ -960,7 +976,7 @@ let ``Test project3 whole project errors`` () =
 let ``Test project3 basic`` () =
 
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project3.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project3.options) |> Async.RunSynchronouslyImmediate
 
     set [ for x in wholeProjectResults.AssemblySignature.Entities -> x.DisplayName ] |> shouldEqual (set ["M"])
 
@@ -973,7 +989,7 @@ let ``Test project3 basic`` () =
 [<Fact>]
 let ``Test project3 all symbols in signature`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project3.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project3.options) |> Async.RunSynchronouslyImmediate
     let allSymbols = allSymbolsInEntities false wholeProjectResults.AssemblySignature.Entities
     let results = [ for x in allSymbols -> x.ToString(), attribsOfSymbol x ]
     [("M", ["module"]);
@@ -991,7 +1007,7 @@ let ``Test project3 all symbols in signature`` () =
         ("member set_InterfacePropertySet", ["slot"; "member"; "setter"]);
         ("property InterfacePropertySet", ["slot"; "member"; "prop"]);
         ("property InterfaceProperty", ["slot"; "member"; "prop"]);
-        ("property InterfaceEvent", ["slot"; "member"; "prop"; "clievent"]);
+        ("event InterfaceEvent", ["slot"; "member"; "event"; "clievent"]);
         ("CFoo", ["class"]);
         ("member .ctor", ["member"; "ctor"]);
         ("member AbstractClassMethod", ["slot"; "member"]);
@@ -1002,7 +1018,7 @@ let ``Test project3 all symbols in signature`` () =
         ("member set_AbstractClassPropertySet", ["slot"; "member"; "setter"]);
         ("property AbstractClassPropertySet", ["slot"; "member"; "prop"]);
         ("property AbstractClassProperty", ["slot"; "member"; "prop"]);
-        ("property AbstractClassEvent", ["slot"; "member"; "prop"; "clievent"]);
+        ("event AbstractClassEvent", ["slot"; "member"; "event"; "clievent"]);
         ("CBaseFoo", ["class"]); ("member .ctor", ["member"; "ctor"]);
         ("member BaseClassMethod", ["slot"; "member"]);
         ("member BaseClassMethod", ["member"; "overridemem"]);
@@ -1020,8 +1036,8 @@ let ``Test project3 all symbols in signature`` () =
         ("property BaseClassPropertySet", ["slot"; "member"; "prop"]);
         ("property BaseClassProperty", ["member"; "prop"; "overridemem"]);
         ("property BaseClassProperty", ["slot"; "member"; "prop"]);
-        ("property BaseClassEvent", ["member"; "prop"; "overridemem"]);
-        ("property BaseClassEvent", ["slot"; "member"; "prop"]);
+        ("event BaseClassEvent", ["member"; "event"; "overridemem"]);
+        ("event BaseClassEvent", ["slot"; "member"; "event"]);
         ("IFooImpl", ["class"]); ("member .ctor", ["member"; "ctor"]);
         ("member InterfaceMethod", ["member"; "overridemem"; "intfmem"]);
         ("member add_InterfaceEvent", ["member"; "overridemem"; "intfmem"]);
@@ -1038,7 +1054,7 @@ let ``Test project3 all symbols in signature`` () =
         ("member set_AbstractClassPropertySet", ["member"; "setter"; "overridemem"]);
         ("property AbstractClassPropertySet", ["member"; "prop"; "overridemem"]);
         ("property AbstractClassProperty", ["member"; "prop"; "overridemem"]);
-        ("property AbstractClassEvent", ["member"; "prop"; "clievent"; "overridemem"]);
+        ("event AbstractClassEvent", ["member"; "event"; "clievent"; "overridemem"]);
         ("CBaseFooImpl", ["class"]); ("member .ctor", ["member"; "ctor"]);
         ("member BaseClassMethod", ["member"; "overridemem"]);
         ("member add_BaseClassEvent", ["member"; "add"; "overridemem"]);
@@ -1048,7 +1064,7 @@ let ``Test project3 all symbols in signature`` () =
         ("member set_BaseClassPropertySet", ["member"; "setter"; "overridemem"]);
         ("property BaseClassPropertySet", ["member"; "prop"; "overridemem"]);
         ("property BaseClassProperty", ["member"; "prop"; "overridemem"]);
-        ("property BaseClassEvent", ["member"; "prop"; "clievent"; "overridemem"])]
+        ("event BaseClassEvent", ["member"; "event"; "clievent"; "overridemem"])]
         |> List.iter (fun x ->
             if results |> List.exists (fun y -> x = y) |> not then
                 failwithf "%A does not exist in the collection." x
@@ -1057,7 +1073,7 @@ let ``Test project3 all symbols in signature`` () =
 [<Fact>]
 let ``Test project3 all uses of all signature symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project3.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project3.options) |> Async.RunSynchronouslyImmediate
     let allSymbols = allSymbolsInEntities false wholeProjectResults.AssemblySignature.Entities
 
     let allUsesOfAllSymbols =
@@ -1122,10 +1138,10 @@ let ``Test project3 all uses of all signature symbols`` () =
            ("file1", ((61, 20), (61, 37)), ["override"], ["slot"; "member"; "prop"]);
            ("file1", ((76, 23), (76, 44)), [], ["slot"; "member"; "prop"]);
            ("file1", ((34, 20), (34, 37)), ["override"], ["slot"; "member"; "prop"])]);
-         ("property InterfaceEvent",
-          [("file1", ((8, 13), (8, 27)), ["defn"], ["slot"; "member"; "prop"; "clievent"]);
-           ("file1", ((65, 20), (65, 34)), ["override"], ["slot"; "member"; "prop"; "clievent"]);
-           ("file1", ((38, 20), (38, 34)), ["override"], ["slot"; "member"; "prop"; "clievent"])]);
+         ("event InterfaceEvent",
+          [("file1", ((8, 13), (8, 27)), ["defn"], ["slot"; "member"; "event"; "clievent"]);
+           ("file1", ((65, 20), (65, 34)), ["override"], ["slot"; "member"; "event"; "clievent"]);
+           ("file1", ((38, 20), (38, 34)), ["override"], ["slot"; "member"; "event"; "clievent"])]);
          ("CFoo",
           [("file1", ((11, 5), (11, 9)), ["defn"], ["class"]);
            ("file1", ((41, 12), (41, 16)), ["type"], ["class"]);
@@ -1170,10 +1186,10 @@ let ``Test project3 all uses of all signature symbols`` () =
           [("file1", ((12, 13), (12, 34)), ["defn"], ["slot"; "member"; "prop"]);
            ("file1", ((70, 22), (70, 43)), ["override"], ["slot"; "member"; "prop"]);
            ("file1", ((43, 18), (43, 39)), ["override"], ["slot"; "member"; "prop"])]);
-         ("property AbstractClassEvent",
-          [("file1", ((16, 13), (16, 31)), ["defn"], ["slot"; "member"; "prop"; "clievent"]);
-           ("file1", ((74, 22), (74, 40)), ["override"], ["slot"; "member"; "prop"; "clievent"]);
-           ("file1", ((47, 18), (47, 36)), ["override"], ["slot"; "member"; "prop"; "clievent"])]);
+         ("event AbstractClassEvent",
+          [("file1", ((16, 13), (16, 31)), ["defn"], ["slot"; "member"; "event"; "clievent"]);
+           ("file1", ((74, 22), (74, 40)), ["override"], ["slot"; "member"; "event"; "clievent"]);
+           ("file1", ((47, 18), (47, 36)), ["override"], ["slot"; "member"; "event"; "clievent"])]);
          ("CBaseFoo",
           [("file1", ((18, 5), (18, 13)), ["defn"], ["class"]);
            ("file1", ((50, 12), (50, 20)), ["type"], ["class"]);
@@ -1230,12 +1246,12 @@ let ``Test project3 all uses of all signature symbols`` () =
           [("file1", ((20, 13), (20, 30)), ["defn"], ["slot"; "member"; "prop"]);
            ("file1", ((25, 15), (25, 32)), ["override"], ["slot"; "member"; "prop"]);
            ("file1", ((52, 18), (52, 35)), ["override"], ["slot"; "member"; "prop"])]);
-         ("property BaseClassEvent",
-          [("file1", ((29, 15), (29, 29)), ["defn"], ["member"; "prop"; "overridemem"])]);
-         ("property BaseClassEvent",
-          [("file1", ((24, 13), (24, 27)), ["defn"], ["slot"; "member"; "prop"]);
-           ("file1", ((29, 15), (29, 29)), ["override"], ["slot"; "member"; "prop"]);
-           ("file1", ((56, 18), (56, 32)), ["override"], ["slot"; "member"; "prop"])]);
+         ("event BaseClassEvent",
+          [("file1", ((29, 15), (29, 29)), ["defn"], ["member"; "event"; "overridemem"])]);
+         ("event BaseClassEvent",
+          [("file1", ((24, 13), (24, 27)), ["defn"], ["slot"; "member"; "event"]);
+           ("file1", ((29, 15), (29, 29)), ["override"], ["slot"; "member"; "event"]);
+           ("file1", ((56, 18), (56, 32)), ["override"], ["slot"; "member"; "event"])]);
          ("IFooImpl", [("file1", ((31, 5), (31, 13)), ["defn"], ["class"])]);
          ("member .ctor", [("file1", ((31, 5), (31, 13)), ["defn"], ["member"; "ctor"])]);
          ("member InterfaceMethod",
@@ -1268,8 +1284,8 @@ let ``Test project3 all uses of all signature symbols`` () =
           [("file1", ((44, 18), (44, 42)), ["defn"], ["member"; "prop"; "overridemem"])]);
          ("property AbstractClassProperty",
           [("file1", ((43, 18), (43, 39)), ["defn"], ["member"; "prop"; "overridemem"])]);
-         ("property AbstractClassEvent",
-          [("file1", ((47, 18), (47, 36)), ["defn"], ["member"; "prop"; "clievent"; "overridemem"])]);
+         ("event AbstractClassEvent",
+          [("file1", ((47, 18), (47, 36)), ["defn"], ["member"; "event"; "clievent"; "overridemem"])]);
          ("CBaseFooImpl", [("file1", ((49, 5), (49, 17)), ["defn"], ["class"])]);
          ("member .ctor", [("file1", ((49, 5), (49, 17)), ["defn"], ["member"; "ctor"])]);
          ("member BaseClassMethod",
@@ -1288,8 +1304,8 @@ let ``Test project3 all uses of all signature symbols`` () =
           [("file1", ((53, 18), (53, 38)), ["defn"], ["member"; "prop"; "overridemem"])]);
          ("property BaseClassProperty",
           [("file1", ((52, 18), (52, 35)), ["defn"], ["member"; "prop"; "overridemem"])]);
-         ("property BaseClassEvent",
-          [("file1", ((56, 18), (56, 32)), ["defn"], ["member"; "prop"; "clievent"; "overridemem"])])]
+         ("event BaseClassEvent",
+          [("file1", ((56, 18), (56, 32)), ["defn"], ["member"; "event"; "clievent"; "overridemem"])])]
     set allUsesOfAllSymbols - set expected |> shouldEqual Set.empty
     set expected - set allUsesOfAllSymbols |> shouldEqual Set.empty
     (set expected = set allUsesOfAllSymbols) |> shouldEqual true
@@ -1320,13 +1336,13 @@ let inline twice(x : ^U, y : ^U) = x + y
 
 [<Fact>]
 let ``Test project4 whole project errors`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project4.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project4.options) |> Async.RunSynchronouslyImmediate
     wholeProjectResults .Diagnostics.Length |> shouldEqual 0
 
 
 [<Fact>]
 let ``Test project4 basic`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project4.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project4.options) |> Async.RunSynchronouslyImmediate
 
     set [ for x in wholeProjectResults.AssemblySignature.Entities -> x.DisplayName ] |> shouldEqual (set ["M"])
 
@@ -1339,7 +1355,7 @@ let ``Test project4 basic`` () =
 [<Fact>]
 let ``Test project4 all symbols in signature`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project4.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project4.options) |> Async.RunSynchronouslyImmediate
     let allSymbols = allSymbolsInEntities false wholeProjectResults.AssemblySignature.Entities
     [ for x in allSymbols -> x.ToString() ]
       |> shouldEqual
@@ -1349,7 +1365,7 @@ let ``Test project4 all symbols in signature`` () =
 
 [<Fact>]
 let ``Test project4 all uses of all signature symbols`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project4.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project4.options) |> Async.RunSynchronouslyImmediate
     let allSymbols = allSymbolsInEntities false wholeProjectResults.AssemblySignature.Entities
     let allUsesOfAllSymbols =
         [ for s in allSymbols do
@@ -1374,10 +1390,10 @@ let ``Test project4 all uses of all signature symbols`` () =
 [<Fact>]
 let ``Test project4 T symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project4.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project4.options) |> Async.RunSynchronouslyImmediate
     let backgroundParseResults1, backgroundTypedParse1 =
         checker.GetBackgroundCheckResultsForFileInProject(Project4.fileName1, Project4.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
 
     let tSymbolUse2 = backgroundTypedParse1.GetSymbolUseAtLocation(4,19,"",["T"])
     tSymbolUse2.IsSome |> shouldEqual true
@@ -1493,7 +1509,7 @@ let parseNumeric str =
 [<Fact>]
 let ``Test project5 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project5.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project5.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project5 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -1502,7 +1518,7 @@ let ``Test project5 whole project errors`` () =
 [<Fact>]
 let ``Test project 5 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project5.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project5.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -1570,10 +1586,10 @@ let ``Test project 5 all symbols`` () =
 [<Fact>]
 let ``Test complete active patterns' exact ranges from uses of symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project5.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project5.options) |> Async.RunSynchronouslyImmediate
     let backgroundParseResults1, backgroundTypedParse1 =
         checker.GetBackgroundCheckResultsForFileInProject(Project5.fileName1, Project5.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
 
     let oddSymbolUse = backgroundTypedParse1.GetSymbolUseAtLocation(11,8,"",["Odd"])
     oddSymbolUse.IsSome |> shouldEqual true
@@ -1637,10 +1653,10 @@ let ``Test complete active patterns' exact ranges from uses of symbols`` () =
 [<Fact>]
 let ``Test partial active patterns' exact ranges from uses of symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project5.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project5.options) |> Async.RunSynchronouslyImmediate
     let backgroundParseResults1, backgroundTypedParse1 =
         checker.GetBackgroundCheckResultsForFileInProject(Project5.fileName1, Project5.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
 
     let floatSymbolUse = backgroundTypedParse1.GetSymbolUseAtLocation(22,10,"",["Float"])
     floatSymbolUse.IsSome |> shouldEqual true
@@ -1705,7 +1721,7 @@ let f () =
 [<Fact>]
 let ``Test project6 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project6.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project6.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project6 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -1714,7 +1730,7 @@ let ``Test project6 whole project errors`` () =
 [<Fact>]
 let ``Test project 6 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project6.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project6.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -1761,7 +1777,7 @@ let x2 = C.M(arg1 = 3, arg2 = 4, ?arg3 = Some 5)
 [<Fact>]
 let ``Test project7 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project7.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project7.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project7 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -1770,7 +1786,7 @@ let ``Test project7 whole project errors`` () =
 [<Fact>]
 let ``Test project 7 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project7.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project7.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -1822,7 +1838,7 @@ let x =
 [<Fact>]
 let ``Test project8 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project8.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project8.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project8 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -1831,7 +1847,7 @@ let ``Test project8 whole project errors`` () =
 [<Fact>]
 let ``Test project 8 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project8.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project8.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -1902,7 +1918,7 @@ let inline check< ^T when ^T : (static member IsInfinity : ^T -> bool)> (num: ^T
 [<Fact>]
 let ``Test project9 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project9.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project9.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project9 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -1911,7 +1927,7 @@ let ``Test project9 whole project errors`` () =
 [<Fact>]
 let ``Test project 9 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project9.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project9.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -1981,7 +1997,7 @@ C.M("http://goo", query = 1)
 [<Fact>]
 let ``Test Project10 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project10.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project10.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project10 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -1990,7 +2006,7 @@ let ``Test Project10 whole project errors`` () =
 [<Fact>]
 let ``Test Project10 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project10.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project10.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -2015,7 +2031,7 @@ let ``Test Project10 all symbols`` () =
 
     let backgroundParseResults1, backgroundTypedParse1 =
         checker.GetBackgroundCheckResultsForFileInProject(Project10.fileName1, Project10.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
 
     let querySymbolUseOpt =
         backgroundTypedParse1.GetSymbolUseAtLocation(7,23,"",["query"])
@@ -2061,7 +2077,7 @@ let fff (x:System.Collections.Generic.Dictionary<int,int>.Enumerator) = ()
 [<Fact>]
 let ``Test Project11 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project11.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project11.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project11 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -2070,7 +2086,7 @@ let ``Test Project11 whole project errors`` () =
 [<Fact>]
 let ``Test Project11 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project11.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project11.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -2130,7 +2146,7 @@ let x2 = query { for i in 0 .. 100 do
 [<Fact>]
 let ``Test Project12 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project12.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project12.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project12 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -2139,7 +2155,7 @@ let ``Test Project12 whole project errors`` () =
 [<Fact>]
 let ``Test Project12 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project12.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project12.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -2197,7 +2213,7 @@ let x3 = new System.DateTime()
 [<Fact>]
 let ``Test Project13 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project13.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project13.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project13 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -2206,7 +2222,7 @@ let ``Test Project13 whole project errors`` () =
 [<Fact>]
 let ``Test Project13 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project13.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project13.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -2356,7 +2372,7 @@ let x2  = S(3)
 [<Fact>]
 let ``Test Project14 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project14.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project14.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project14 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -2365,7 +2381,7 @@ let ``Test Project14 whole project errors`` () =
 [<Fact>]
 let ``Test Project14 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project14.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project14.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -2374,8 +2390,6 @@ let ``Test Project14 all symbols`` () =
 
     allUsesOfAllSymbols |> shouldEqual
           [|
-            ("StructAttribute", "StructAttribute", "file1", ((4, 2), (4, 8)), ["attribute"]);
-            ("member .ctor", "StructAttribute", "file1", ((4, 2), (4, 8)), [])
             ("StructAttribute", "StructAttribute", "file1", ((4, 2), (4, 8)), ["attribute"]);
             ("member .ctor", "StructAttribute", "file1", ((4, 2), (4, 8)), []);
             ("int", "int", "file1", ((5, 9), (5, 12)), ["type"]);
@@ -2425,7 +2439,7 @@ let f x =
 [<Fact>]
 let ``Test Project15 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project15.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project15.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project15 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -2434,19 +2448,21 @@ let ``Test Project15 whole project errors`` () =
 [<Fact>]
 let ``Test Project15 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project15.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project15.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
 
         |> Array.map (fun su -> su.Symbol.ToString(), su.Symbol.DisplayName, Project15.cleanFileName su.FileName, tups su.Range, attribsOfSymbolUse su)
 
+    // Note: h on lines 7 and 8 are secondary bindings in Or patterns and are classified
+    // as Use (empty), not Binding (["defn"]), per fix for https://github.com/dotnet/fsharp/issues/5546
     allUsesOfAllSymbols |> shouldEqual
           [|("val x", "x", "file1", ((4, 6), (4, 7)), ["defn"]);
             ("val x", "x", "file1", ((5, 10), (5, 11)), []);
             ("val h", "h", "file1", ((6, 7), (6, 8)), ["defn"]);
-            ("val h", "h", "file1", ((7, 10), (7, 11)), ["defn"]);
-            ("val h", "h", "file1", ((8, 13), (8, 14)), ["defn"]);
+            ("val h", "h", "file1", ((7, 10), (7, 11)), []);    // Or pattern secondary binding -> Use
+            ("val h", "h", "file1", ((8, 13), (8, 14)), []);    // Or pattern secondary binding -> Use
             ("val h", "h", "file1", ((8, 19), (8, 20)), []);
             ("val f", "f", "file1", ((4, 4), (4, 5)), ["defn"]);
             ("UnionPatterns", "UnionPatterns", "file1", ((2, 7), (2, 20)), ["defn"])|]
@@ -2512,7 +2528,7 @@ and G = Case1 | Case2 of int
 [<Fact>]
 let ``Test Project16 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project16.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project16.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project16 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -2521,7 +2537,7 @@ let ``Test Project16 whole project errors`` () =
 [<Fact>]
 let ``Test Project16 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project16.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project16.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -2531,10 +2547,6 @@ let ``Test Project16 all symbols`` () =
     allUsesOfAllSymbols |> shouldEqual
           [|("ClassAttribute", "ClassAttribute", "sig1", ((8, 6), (8, 11)), ["attribute"], ["class"]);
             ("member .ctor", "ClassAttribute", "sig1", ((8, 6), (8, 11)), [], ["member"]);
-            ("ClassAttribute", "ClassAttribute", "sig1", ((8, 6), (8, 11)), ["attribute"], ["class"]);
-            ("member .ctor", "ClassAttribute", "sig1", ((8, 6), (8, 11)), [], ["member"]);
-            ("ClassAttribute", "ClassAttribute", "sig1", ((12, 6), (12, 11)), ["attribute"], ["class"]);
-            ("member .ctor", "ClassAttribute", "sig1", ((12, 6), (12, 11)), [], ["member"]);
             ("ClassAttribute", "ClassAttribute", "sig1", ((12, 6), (12, 11)), ["attribute"], ["class"]);
             ("member .ctor", "ClassAttribute", "sig1", ((12, 6), (12, 11)), [], ["member"]);
             ("int", "int", "sig1", ((16, 19), (16, 22)), ["type"], ["abbrev"]);
@@ -2614,13 +2626,13 @@ let ``Test Project16 all symbols`` () =
 let ``Test Project16 sig symbols are equal to impl symbols`` () =
 
     let checkResultsSig =
-        checker.ParseAndCheckFileInProject(Project16.sigFileName1, 0, Project16.sigFileSource1, Project16.options)  |> Async.RunImmediate
+        checker.ParseAndCheckFileInProject(Project16.sigFileName1, 0, Project16.sigFileSource1, Project16.options)  |> Async.RunSynchronouslyImmediate
         |> function
             | _, FSharpCheckFileAnswer.Succeeded(res) -> res
             | _ -> failwithf "Parsing aborted unexpectedly..."
 
     let checkResultsImpl =
-        checker.ParseAndCheckFileInProject(Project16.fileName1, 0, Project16.fileSource1, Project16.options)  |> Async.RunImmediate
+        checker.ParseAndCheckFileInProject(Project16.fileName1, 0, Project16.fileSource1, Project16.options)  |> Async.RunSynchronouslyImmediate
         |> function
             | _, FSharpCheckFileAnswer.Succeeded(res) -> res
             | _ -> failwithf "Parsing aborted unexpectedly..."
@@ -2663,7 +2675,7 @@ let ``Test Project16 sig symbols are equal to impl symbols`` () =
 [<Fact>]
 let ``Test Project16 sym locations`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project16.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project16.options) |> Async.RunSynchronouslyImmediate
 
     let fmtLoc (mOpt: range option) =
         match mOpt with
@@ -2725,7 +2737,8 @@ let ``Test Project16 sym locations`` () =
 let ``Test project16 DeclaringEntity`` () =
     let wholeProjectResults =
         checker.ParseAndCheckProject(Project16.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
+
     let allSymbolsUses = wholeProjectResults.GetAllUsesOfAllSymbols()
     for sym in allSymbolsUses do
        match sym.Symbol with
@@ -2778,7 +2791,7 @@ let f3 (x: System.Exception) = x.HelpLink <- "" // check use of .NET setter prop
 [<Fact>]
 let ``Test Project17 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project17.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project17.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project17 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -2787,7 +2800,7 @@ let ``Test Project17 whole project errors`` () =
 [<Fact>]
 let ``Test Project17 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project17.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project17.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -2865,7 +2878,7 @@ let _ = list<_>.Empty
 [<Fact>]
 let ``Test Project18 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project18.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project18.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project18 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -2874,7 +2887,7 @@ let ``Test Project18 whole project errors`` () =
 [<Fact>]
 let ``Test Project18 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project18.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project18.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -2921,7 +2934,7 @@ let s = System.DayOfWeek.Monday
 [<Fact>]
 let ``Test Project19 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project19.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project19.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project19 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -2930,7 +2943,7 @@ let ``Test Project19 whole project errors`` () =
 [<Fact>]
 let ``Test Project19 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project19.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project19.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -2996,7 +3009,7 @@ type A<'T>() =
 [<Fact>]
 let ``Test Project20 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project20.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project20.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project20 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -3005,7 +3018,7 @@ let ``Test Project20 whole project errors`` () =
 [<Fact>]
 let ``Test Project20 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project20.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project20.options) |> Async.RunSynchronouslyImmediate
 
     let tSymbolUse = wholeProjectResults.GetAllUsesOfAllSymbols() |> Array.find (fun su -> su.Range.StartLine = 5 && su.Symbol.ToString() = "generic parameter T")
     let tSymbol = tSymbolUse.Symbol
@@ -3057,7 +3070,7 @@ let _ = { new IMyInterface<int> with
 [<Fact>]
 let ``Test Project21 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project21.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project21.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project21 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 2
@@ -3066,7 +3079,7 @@ let ``Test Project21 whole project errors`` () =
 [<Fact>]
 let ``Test Project21 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project21.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project21.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -3132,7 +3145,7 @@ let f5 (x: int[,,]) = () // test a multi-dimensional array
 [<Fact>]
 let ``Test Project22 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project22.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project22.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project22 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -3141,7 +3154,7 @@ let ``Test Project22 whole project errors`` () =
 [<Fact>]
 let ``Test Project22 IList contents`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project22.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project22.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -3223,7 +3236,7 @@ let ``Test Project22 IList contents`` () =
 [<Fact>]
 let ``Test Project22 IList properties`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project22.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project22.options) |> Async.RunSynchronouslyImmediate
 
     let ilistTypeUse =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -3277,7 +3290,7 @@ module Setter =
 [<Fact>]
 let ``Test Project23 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project23.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project23.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project23 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -3285,7 +3298,7 @@ let ``Test Project23 whole project errors`` () =
 [<Fact>]
 let ``Test Project23 property`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project23.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project23.options) |> Async.RunSynchronouslyImmediate
     let allSymbolsUses = wholeProjectResults.GetAllUsesOfAllSymbols()
 
     let classTypeUse = allSymbolsUses |> Array.find (fun su -> su.Symbol.DisplayName = "Class")
@@ -3351,7 +3364,7 @@ let ``Test Project23 property`` () =
 [<Fact>]
 let ``Test Project23 extension properties' getters/setters should refer to the correct declaring entities`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project23.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project23.options) |> Async.RunSynchronouslyImmediate
     let allSymbolsUses = wholeProjectResults.GetAllUsesOfAllSymbols()
 
     let extensionMembers = allSymbolsUses |> Array.rev |> Array.filter (fun su -> su.Symbol.DisplayName = "Value")
@@ -3447,17 +3460,17 @@ TypeWithProperties.StaticAutoPropGetSet  <- 3
 
 [<Fact>]
 let ``Test Project24 whole project errors`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project24.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project24.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project24 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
 
 [<Fact>]
 let ``Test Project24 all symbols`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project24.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project24.options) |> Async.RunSynchronouslyImmediate
     let backgroundParseResults1, backgroundTypedParse1 =
         checker.GetBackgroundCheckResultsForFileInProject(Project24.fileName1, Project24.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
 
     let allUses  =
         backgroundTypedParse1.GetAllUsesOfAllSymbolsInFile()
@@ -3516,12 +3529,6 @@ let ``Test Project24 all symbols`` () =
             ("v", "file1", ((22, 17), (22, 18)), ["defn"], []);
             ("int", "file1", ((25, 21), (25, 24)), ["type"], ["abbrev"]);
             ("v", "file1", ((25, 18), (25, 19)), ["defn"], []);
-            ("``AutoPropGet@``", "file1", ((27, 15), (27, 26)), [], ["compgen"]);
-            ("``AutoPropGetSet@``", "file1", ((28, 15), (28, 29)), [], ["compgen"; "mutable"])
-            ("v", "file1", ((28, 15), (28, 29)), ["defn"], []);
-            ("``StaticAutoPropGet@``", "file1", ((30, 22), (30, 39)), [], ["compgen"]);
-            ("``StaticAutoPropGetSet@``", "file1", ((31, 22), (31, 42)), [],
-             ["compgen"; "mutable"]); ("v", "file1", ((31, 22), (31, 42)), ["defn"], []);
             ("``.cctor``", "file1", ((4, 5), (4, 23)), ["defn"], ["member"]);
             ("TypeWithProperties", "file1", ((33, 9), (33, 27)), [], ["member"; "ctor"]);
             ("NameGetSet", "file1", ((33, 9), (33, 40)), [], ["member"; "prop"]);
@@ -3563,10 +3570,10 @@ let ``Test Project24 all symbols`` () =
 
 [<Fact>]
 let ``Test symbol uses of properties with both getters and setters`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project24.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project24.options) |> Async.RunSynchronouslyImmediate
     let backgroundParseResults1, backgroundTypedParse1 =
         checker.GetBackgroundCheckResultsForFileInProject(Project24.fileName1, Project24.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
 
     let getAllSymbolUses =
         backgroundTypedParse1.GetAllUsesOfAllSymbolsInFile()
@@ -3618,12 +3625,6 @@ let ``Test symbol uses of properties with both getters and setters`` () =
             ("v", "file1", ((22, 17), (22, 18)), []);
             ("int", "file1", ((25, 21), (25, 24)), ["abbrev"]);
             ("v", "file1", ((25, 18), (25, 19)), []);
-            ("``AutoPropGet@``", "file1", ((27, 15), (27, 26)), ["compgen"]);
-            ("``AutoPropGetSet@``", "file1", ((28, 15), (28, 29)), ["compgen"; "mutable"]);
-            ("v", "file1", ((28, 15), (28, 29)), []);
-            ("``StaticAutoPropGet@``", "file1", ((30, 22), (30, 39)), ["compgen"]);
-            ("``StaticAutoPropGetSet@``", "file1", ((31, 22), (31, 42)),
-             ["compgen"; "mutable"]); ("v", "file1", ((31, 22), (31, 42)), []);
             ("``.cctor``", "file1", ((4, 5), (4, 23)), ["member"]);
             ("TypeWithProperties", "file1", ((33, 9), (33, 27)), ["member"; "ctor"]);
             ("NameGetSet", "file1", ((33, 9), (33, 40)), ["member"; "prop"]);
@@ -3680,136 +3681,249 @@ let ``Test symbol uses of properties with both getters and setters`` () =
 // Misc - type provider symbols
 module internal Project25 =
 
+    // Dedicated checker to isolate type-provider tests from shared state races.
+    let checker = FSharpChecker.Create(useTransparentCompiler = FSharp.Test.CompilerAssertHelpers.UseTransparentCompiler)
+
     let fileName1 = Path.ChangeExtension(getTemporaryFileName (), ".fs")
     let base2 = getTemporaryFileName ()
     let dllName = Path.ChangeExtension(base2, ".dll")
     let projFileName = Path.ChangeExtension(base2, ".fsproj")
-    let fileSource1 = """
+
+    let fileSource1 =
+        //         line 1 (empty)
+        """
 module TypeProviderTests
-open FSharp.Data
-type Project = XmlProvider<"<root><value>1</value><value>3</value></root>">
-let _ = Project.GetSample()
+open ErasedWithConstructor.Provided
+type T = MyType
+let _ = T().DoNothing()
 
 type Record = { Field: int }
 let r = { Record.Field = 1 }
 
-let _ = XmlProvider<"<root><value>1</value><value>3</value></root>">.GetSample()
+let _ = MyType().DoNothing()
 """
+        //         line 11 (empty) + line 12 (empty)
+
     FileSystem.OpenFileForWriteShim(fileName1).Write(fileSource1)
     let cleanFileName a = if a = fileName1 then "file1" else "??"
 
-    let fileNames = [|fileName1|]
-    let args =
-        [| yield! mkProjectCommandLineArgs (dllName, [])
-           yield @"-r:" + (__SOURCE_DIRECTORY__ ++ ".." ++ "service" ++ "data" ++ "FSharp.Data.dll")
-           yield @"-r:" + sysLib "System.Xml.Linq" |]
-    let options = { checker.GetProjectOptionsFromCommandLineArgs (projFileName, args) with SourceFiles = fileNames }
+    let fileNames = [| fileName1 |]
 
-// ".NET Core SKIPPED: Disabled until FSharp.Data.dll is build for dotnet core."
-[<FactForDESKTOP; RunTestCasesInSequence>]
+    // TestTP is built as part of the solution — no NuGet restore needed.
+    let tpDLL =
+        __SOURCE_DIRECTORY__
+        + $"/../../artifacts/bin/TestTP/{testBuildConfiguration}/netstandard2.0/TestTP.dll"
+
+    let csDLL =
+        __SOURCE_DIRECTORY__
+        + $"/../../artifacts/bin/TestTP/{testBuildConfiguration}/netstandard2.0/CSharp_Analysis.dll"
+
+    let options =
+        lazy
+            (if not (File.Exists tpDLL) then
+                 failwith $"expect {tpDLL} to exist"
+
+             if not (File.Exists csDLL) then
+                 failwith $"expect {csDLL} to exist"
+
+             let args =
+                 [| yield! mkProjectCommandLineArgs (dllName, [])
+                    yield "-r:" + tpDLL
+                    yield "-r:" + csDLL |]
+
+             { checker.GetProjectOptionsFromCommandLineArgs(projFileName, args) with SourceFiles = fileNames })
+
+// Uses TestTP (built locally) — no NuGet needed, deterministic.
+[<Fact4(DisableParallelization = true)>] // Inhibit shared usage of Project25.checker module state
 let ``Test Project25 whole project errors`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project25.options) |> Async.RunImmediate
+    let wholeProjectResults = Project25.checker.ParseAndCheckProject(Project25.options.Value) |> Async.RunSynchronouslyImmediate
+
     for e in wholeProjectResults.Diagnostics do
         printfn "Project25 error: <<<%s>>>" e.Message
+
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
 
-// ".NET Core SKIPPED: Disabled until FSharp.Data.dll is build for dotnet core."
-[<FactForDESKTOP; RunTestCasesInSequence>]
+[<Fact4(DisableParallelization = true)>] // Inhibit shared usage of Project25.checker module state
 let ``Test Project25 symbol uses of type-provided members`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project25.options) |> Async.RunImmediate
-    let backgroundParseResults1, backgroundTypedParse1 =
-        checker.GetBackgroundCheckResultsForFileInProject(Project25.fileName1, Project25.options)
-        |> Async.RunImmediate
+    let wholeProjectResults = Project25.checker.ParseAndCheckProject(Project25.options.Value) |> Async.RunSynchronouslyImmediate
 
-    let allUses  =
+    let _, backgroundTypedParse1 =
+        Project25.checker.GetBackgroundCheckResultsForFileInProject(Project25.fileName1, Project25.options.Value)
+        |> Async.RunSynchronouslyImmediate
+
+    let allUses =
         backgroundTypedParse1.GetAllUsesOfAllSymbolsInFile()
         |> Array.ofSeq
-        |> Array.map (fun s -> (s.Symbol.FullName, Project25.cleanFileName s.FileName, tups s.Range, attribsOfSymbol s.Symbol))
+        |> Array.map (fun s ->
+            (s.Symbol.FullName, Project25.cleanFileName s.FileName, tups s.Range, attribsOfSymbol s.Symbol))
 
-    allUses |> shouldEqual
+    //  Source:                                         line 2: module TypeProviderTests
+    //                                                  line 3: open ErasedWithConstructor.Provided
+    //                                                  line 4: type T = MyType
+    //                                                  line 5: let _ = T().DoNothing()
+    //                                                  line 7: type Record = { Field: int }
+    //                                                  line 8: let r = { Record.Field = 1 }
+    //                                                  line 10: let _ = MyType().DoNothing()
+    let expected =
+        [| ("ErasedWithConstructor", "file1", ((3, 5), (3, 26)), [ "namespace" ]) // line 3: open >ErasedWithConstructor<.Provided
+           ("ErasedWithConstructor.Provided", "file1", ((3, 27), (3, 35)), [ "namespace"; "provided" ]) // line 3: open ErasedWithConstructor.>Provided<
+           ("ErasedWithConstructor.Provided.MyType", "file1", ((4, 9), (4, 15)), [ "class"; "provided"; "erased" ]) // line 4: type T = >MyType<
+           ("ErasedWithConstructor.Provided.MyType", "file1", ((4, 9), (4, 15)), [ "class"; "provided"; "erased" ]) // (repeated — TP internals)
+           ("ErasedWithConstructor.Provided.MyType", "file1", ((4, 9), (4, 15)), [ "class"; "provided"; "erased" ])
+           ("ErasedWithConstructor.Provided.MyType", "file1", ((4, 9), (4, 15)), [ "class"; "provided"; "erased" ])
+           ("TypeProviderTests.T", "file1", ((4, 5), (4, 6)), [ "abbrev" ]) // line 4: type >T< = MyType
+           ("ErasedWithConstructor.Provided.MyType", "file1", ((5, 8), (5, 9)), [ "member" ]) // line 5: let _ = >T<()  (ctor)
+           ("ErasedWithConstructor.Provided.MyType.DoNothing", "file1", ((5, 8), (5, 21)), [ "member" ]) // line 5: let _ = >T().DoNothing<()
+           ("Microsoft.FSharp.Core.int", "file1", ((7, 23), (7, 26)), [ "abbrev" ]) // line 7: type Record = { Field: >int< }
+           ("Microsoft.FSharp.Core.int", "file1", ((7, 23), (7, 26)), [ "abbrev" ]) // (repeated)
+           ("TypeProviderTests.Record.Field", "file1", ((7, 16), (7, 21)), [ "field" ]) // line 7: type Record = { >Field<: int }
+           ("TypeProviderTests.Record", "file1", ((7, 5), (7, 11)), [ "record" ]) // line 7: type >Record< = ...
+           ("TypeProviderTests.Record", "file1", ((8, 10), (8, 16)), [ "record" ]) // line 8: let r = { >Record<.Field = 1 }
+           ("TypeProviderTests.Record.Field", "file1", ((8, 17), (8, 22)), [ "field" ]) // line 8: let r = { Record.>Field< = 1 }
+           ("TypeProviderTests.r", "file1", ((8, 4), (8, 5)), [ "val" ]) // line 8: let >r< = ...
+           ("ErasedWithConstructor.Provided.MyType", "file1", ((10, 8), (10, 14)), [ "member" ]) // line 10: let _ = >MyType<()  (ctor)
+           ("ErasedWithConstructor.Provided.MyType.DoNothing", "file1", ((10, 8), (10, 26)), [ "member" ]) // line 10: let _ = >MyType().DoNothing<()
+           ("TypeProviderTests", "file1", ((2, 7), (2, 24)), [ "module" ]) |] // line 2: module >TypeProviderTests<
 
-         [|("FSharp", "file1", ((3, 5), (3, 11)), ["namespace"]);
-           ("FSharp.Data", "file1", ((3, 12), (3, 16)), ["namespace"; "provided"]);
-           ("Microsoft.FSharp", "file1", ((3, 5), (3, 11)), ["namespace"]);
-           ("Microsoft.FSharp.Data", "file1", ((3, 12), (3, 16)), ["namespace"]);
-           ("FSharp.Data.XmlProvider", "file1", ((4, 15), (4, 26)),
-            ["class"; "provided"; "erased"]);
-           ("FSharp.Data.XmlProvider", "file1", ((4, 15), (4, 26)),
-            ["class"; "provided"; "erased"]);
-           ("FSharp.Data.XmlProvider", "file1", ((4, 15), (4, 26)),
-            ["class"; "provided"; "erased"]);
-           ("FSharp.Data.XmlProvider", "file1", ((4, 15), (4, 26)),
-            ["class"; "provided"; "erased"]);
-           ("TypeProviderTests.Project", "file1", ((4, 5), (4, 12)), ["abbrev"]);
-           ("TypeProviderTests.Project", "file1", ((5, 8), (5, 15)), ["abbrev"]);
-           ("FSharp.Data.XmlProvider<...>.GetSample", "file1", ((5, 8), (5, 25)),
-            ["member"]);
-           ("Microsoft.FSharp.Core.int", "file1", ((7, 23), (7, 26)), ["abbrev"]);
-           ("Microsoft.FSharp.Core.int", "file1", ((7, 23), (7, 26)), ["abbrev"]);
-           ("TypeProviderTests.Record.Field", "file1", ((7, 16), (7, 21)), ["field"]);
-           ("TypeProviderTests.Record", "file1", ((7, 5), (7, 11)), ["record"]);
-           ("TypeProviderTests.Record", "file1", ((8, 10), (8, 16)), ["record"]);
-           ("TypeProviderTests.Record.Field", "file1", ((8, 17), (8, 22)), ["field"]);
-           ("TypeProviderTests.r", "file1", ((8, 4), (8, 5)), ["val"]);
-           ("FSharp.Data.XmlProvider", "file1", ((10, 8), (10, 19)),
-            ["class"; "provided"; "erased"]);
-           ("FSharp.Data.XmlProvider<...>", "file1", ((10, 8), (10, 68)),
-            ["class"; "provided"; "staticinst"; "erased"]);
-           ("FSharp.Data.XmlProvider<...>.GetSample", "file1", ((10, 8), (10, 78)),
-            ["member"]); ("TypeProviderTests", "file1", ((2, 7), (2, 24)), ["module"])|]
-    let getSampleSymbolUseOpt =
-        backgroundTypedParse1.GetSymbolUseAtLocation(5,25,"",["GetSample"])
+    allUses |> shouldBeEqualCollections expected
 
+    // Verify the DoNothing method can be found and its uses tracked
+    let doNothingSymbolUseOpt =
+        backgroundTypedParse1.GetSymbolUseAtLocation(5, 21, "", [ "DoNothing" ]) // line 5, end of "DoNothing"
 
-    let getSampleSymbol = getSampleSymbolUseOpt.Value.Symbol
+    let doNothingSymbol = doNothingSymbolUseOpt.Value.Symbol
 
-    let usesOfGetSampleSymbol =
-        backgroundTypedParse1.GetUsesOfSymbolInFile(getSampleSymbol)
-
+    let usesOfDoNothing =
+        backgroundTypedParse1.GetUsesOfSymbolInFile(doNothingSymbol)
         |> Array.map (fun s -> (Project25.cleanFileName s.FileName, tups s.Range))
 
-    usesOfGetSampleSymbol |> shouldEqual [|("file1", ((5, 8), (5, 25))); ("file1", ((10, 8), (10, 78)))|]
+    usesOfDoNothing
+    |> shouldEqual
+        [| ("file1", ((5, 8), (5, 21))) // line 5: T().DoNothing
+           ("file1", ((10, 8), (10, 26))) |] // line 10: MyType().DoNothing
 
-// ".NET Core SKIPPED: Disabled until FSharp.Data.dll is build for dotnet core.")>]
-[<FactForDESKTOP; RunTestCasesInSequence>]
+[<Fact4(DisableParallelization = true)>] // Inhibit shared usage of Project25.checker module state
+let ``GetDeclarationLocation on a provided-ctor without DefinitionLocationAttribute returns DeclFound (regression #5538)`` () =
+    let wholeProjectResults =
+        Project25.checker.ParseAndCheckProject(Project25.options.Value)
+        |> Async.RunSynchronouslyImmediate
+
+    wholeProjectResults.Diagnostics.Length |> shouldEqual 0
+
+    let parseResults, checkAnswer =
+        Project25.checker.ParseAndCheckFileInProject(
+            Project25.fileName1,
+            0,
+            SourceText.ofString (FileSystem.OpenFileForReadShim(Project25.fileName1).ReadAllText()),
+            Project25.options.Value)
+        |> Async.RunSynchronouslyImmediate
+
+    let checkResults =
+        match checkAnswer with
+        | FSharpCheckFileAnswer.Succeeded r -> r
+        | _ -> failwith "type-check did not finish"
+
+    ignore parseResults
+
+    // line 5: `let _ = T().DoNothing()`
+    //   col-index 8 is `T`, end of identifier is col 9.
+    // `T` at this position resolves to Item.CtorGroup(ProvidedMeth :: _),
+    // which is the broken case in issue #5538.
+    let declLocation =
+        checkResults.GetDeclarationLocation(
+            line = 5,
+            colAtEndOfNames = 9,
+            lineText = "let _ = T().DoNothing()",
+            names = [ "T" ])
+
+    match declLocation with
+    | FindDeclResult.DeclFound _ -> ()
+    | FindDeclResult.DeclNotFound reason ->
+        failwithf "expected DeclFound for provided-ctor `T()`, got DeclNotFound %A" reason
+    | FindDeclResult.ExternalDecl _ ->
+        failwith "expected DeclFound for provided-ctor `T()`, got ExternalDecl"
+
+[<Fact4(DisableParallelization = true)>] // Inhibit shared usage of Project25.checker module state
+let ``GetDeclarationLocation on a provided-ctor invoked through the original provided name returns DeclFound (regression #5538)`` () =
+    let wholeProjectResults =
+        Project25.checker.ParseAndCheckProject(Project25.options.Value)
+        |> Async.RunSynchronouslyImmediate
+
+    wholeProjectResults.Diagnostics.Length |> shouldEqual 0
+
+    let _, checkAnswer =
+        Project25.checker.ParseAndCheckFileInProject(
+            Project25.fileName1,
+            0,
+            SourceText.ofString (FileSystem.OpenFileForReadShim(Project25.fileName1).ReadAllText()),
+            Project25.options.Value)
+        |> Async.RunSynchronouslyImmediate
+
+    let checkResults =
+        match checkAnswer with
+        | FSharpCheckFileAnswer.Succeeded r -> r
+        | _ -> failwith "type-check did not finish"
+
+    // line 10: `let _ = MyType().DoNothing()`
+    //   col-index 8 is `M`, end of identifier `MyType` is col 14.
+    let declLocation =
+        checkResults.GetDeclarationLocation(
+            line = 10,
+            colAtEndOfNames = 14,
+            lineText = "let _ = MyType().DoNothing()",
+            names = [ "MyType" ])
+
+    match declLocation with
+    | FindDeclResult.DeclFound _ -> ()
+    | FindDeclResult.DeclNotFound reason ->
+        failwithf "expected DeclFound for provided-ctor `MyType()`, got DeclNotFound %A" reason
+    | FindDeclResult.ExternalDecl _ ->
+        failwith "expected DeclFound for provided-ctor `MyType()`, got ExternalDecl"
+
+[<Fact4(DisableParallelization = true)>] // Inhibit shared usage of Project25.checker module state
 let ``Test Project25 symbol uses of type-provided types`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project25.options) |> Async.RunImmediate
-    let backgroundParseResults1, backgroundTypedParse1 =
-        checker.GetBackgroundCheckResultsForFileInProject(Project25.fileName1, Project25.options)
-        |> Async.RunImmediate
+    let wholeProjectResults = Project25.checker.ParseAndCheckProject(Project25.options.Value) |> Async.RunSynchronouslyImmediate
 
-    let getSampleSymbolUseOpt =
-        backgroundTypedParse1.GetSymbolUseAtLocation(4,26,"",["XmlProvider"])
+    let _, backgroundTypedParse1 =
+        Project25.checker.GetBackgroundCheckResultsForFileInProject(Project25.fileName1, Project25.options.Value)
+        |> Async.RunSynchronouslyImmediate
 
+    let myTypeSymbolUseOpt =
+        backgroundTypedParse1.GetSymbolUseAtLocation(4, 15, "", [ "MyType" ]) // line 4, end of "MyType"
 
-    let getSampleSymbol = getSampleSymbolUseOpt.Value.Symbol
+    let myTypeSymbol = myTypeSymbolUseOpt.Value.Symbol
 
-    let usesOfGetSampleSymbol =
-        backgroundTypedParse1.GetUsesOfSymbolInFile(getSampleSymbol)
-
+    let usesOfMyType =
+        backgroundTypedParse1.GetUsesOfSymbolInFile(myTypeSymbol)
         |> Array.map (fun s -> (Project25.cleanFileName s.FileName, tups s.Range))
 
-    usesOfGetSampleSymbol |> shouldEqual [|("file1", ((4, 15), (4, 26))); ("file1", ((10, 8), (10, 19)))|]
+    usesOfMyType
+    |> shouldEqual
+        [| ("file1", ((4, 9), (4, 15))) // line 4: type T = >MyType<
+           ("file1", ((5, 8), (5, 9))) // line 5: let _ = >T<()  (T resolves to MyType)
+           ("file1", ((10, 8), (10, 14))) |] // line 10: let _ = >MyType<()
 
-[<Fact; RunTestCasesInSequence>]
+[<Fact4(DisableParallelization = true)>] // Inhibit shared usage of Project25.checker module state
 let ``Test Project25 symbol uses of fully-qualified records`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project25.options) |> Async.RunImmediate
-    let backgroundParseResults1, backgroundTypedParse1 =
-        checker.GetBackgroundCheckResultsForFileInProject(Project25.fileName1, Project25.options)
-        |> Async.RunImmediate
+    let wholeProjectResults = Project25.checker.ParseAndCheckProject(Project25.options.Value) |> Async.RunSynchronouslyImmediate
 
-    let getSampleSymbolUseOpt =
-        backgroundTypedParse1.GetSymbolUseAtLocation(7,11,"",["Record"])
+    let _, backgroundTypedParse1 =
+        Project25.checker.GetBackgroundCheckResultsForFileInProject(Project25.fileName1, Project25.options.Value)
+        |> Async.RunSynchronouslyImmediate
 
+    let recordSymbolUseOpt =
+        backgroundTypedParse1.GetSymbolUseAtLocation(7, 11, "", [ "Record" ]) // line 7, end of "Record"
 
-    let getSampleSymbol = getSampleSymbolUseOpt.Value.Symbol
+    let recordSymbol = recordSymbolUseOpt.Value.Symbol
 
-    let usesOfGetSampleSymbol =
-        backgroundTypedParse1.GetUsesOfSymbolInFile(getSampleSymbol)
-
+    let usesOfRecord =
+        backgroundTypedParse1.GetUsesOfSymbolInFile(recordSymbol)
         |> Array.map (fun s -> (Project25.cleanFileName s.FileName, tups s.Range))
 
-    usesOfGetSampleSymbol |> shouldEqual [|("file1", ((7, 5), (7, 11))); ("file1", ((8, 10), (8, 16)))|]
+    usesOfRecord
+    |> shouldEqual
+        [| ("file1", ((7, 5), (7, 11))) // line 7: type >Record< = { Field: int }
+           ("file1", ((8, 10), (8, 16))) |] // line 8: let r = { >Record<.Field = 1 }
 
 
 module internal Project26 =
@@ -3840,7 +3954,7 @@ type Class() =
 [<Fact>]
 let ``Test Project26 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project26.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project26.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project26 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -3848,7 +3962,7 @@ let ``Test Project26 whole project errors`` () =
 
 [<Fact>]
 let ``Test Project26 parameter symbols`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project26.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project26.options) |> Async.RunSynchronouslyImmediate
 
     let allUsesOfAllSymbols =
         wholeProjectResults.GetAllUsesOfAllSymbols()
@@ -3929,13 +4043,13 @@ type CFooImpl() =
 [<Fact>]
 let ``Test project27 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project27.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project27.options) |> Async.RunSynchronouslyImmediate
     wholeProjectResults .Diagnostics.Length |> shouldEqual 0
 
 [<Fact>]
 let ``Test project27 all symbols in signature`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project27.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project27.options) |> Async.RunSynchronouslyImmediate
     let allSymbols = allSymbolsInEntities true wholeProjectResults.AssemblySignature.Entities
     [ for x in allSymbols -> x.ToString(), attribsOfSymbol x ]
       |> shouldEqual
@@ -3993,7 +4107,7 @@ type Use() =
 #if !NO_TYPEPROVIDERS
 [<Fact>]
 let ``Test project28 all symbols in signature`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project28.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project28.options) |> Async.RunSynchronouslyImmediate
     let allSymbols = allSymbolsInEntities true wholeProjectResults.AssemblySignature.Entities
     let xmlDocSigs =
         allSymbols
@@ -4031,13 +4145,13 @@ let ``Test project28 all symbols in signature`` () =
         ("FSharpMemberOrFunctionOrValue", "TestEvent2", "M:M.XmlDocSigTest.TestEvent2(System.Object)");
         ("FSharpMemberOrFunctionOrValue", "add_AnEvent", "M:M.XmlDocSigTest.add_AnEvent(Microsoft.FSharp.Control.FSharpHandler{System.Tuple{M.XmlDocSigTest,System.Object}})");
         ("FSharpMemberOrFunctionOrValue", "AProperty", "P:M.XmlDocSigTest.AProperty");
-        ("FSharpMemberOrFunctionOrValue", "AnEvent", "P:M.XmlDocSigTest.AnEvent");
+        ("FSharpMemberOrFunctionOrValue", "AnEvent", "E:M.XmlDocSigTest.AnEvent");
         ("FSharpMemberOrFunctionOrValue", "AnotherEvent", "P:M.XmlDocSigTest.AnotherEvent");
         ("FSharpMemberOrFunctionOrValue", "AnotherProperty", "P:M.XmlDocSigTest.AnotherProperty");
         ("FSharpMemberOrFunctionOrValue", "remove_AnEvent", "M:M.XmlDocSigTest.remove_AnEvent(Microsoft.FSharp.Control.FSharpHandler{System.Tuple{M.XmlDocSigTest,System.Object}})");
         ("FSharpMemberOrFunctionOrValue", "AnotherProperty", "P:M.XmlDocSigTest.AnotherProperty");
         ("FSharpMemberOrFunctionOrValue", "AnotherEvent", "P:M.XmlDocSigTest.AnotherEvent");
-        ("FSharpMemberOrFunctionOrValue", "AnEvent", "P:M.XmlDocSigTest.AnEvent");
+        ("FSharpMemberOrFunctionOrValue", "AnEvent", "E:M.XmlDocSigTest.AnEvent");
         ("FSharpMemberOrFunctionOrValue", "AProperty", "P:M.XmlDocSigTest.AProperty");
         ("FSharpField", "event1", "P:M.XmlDocSigTest.event1");
         ("FSharpField", "event2", "P:M.XmlDocSigTest.event2");
@@ -4073,7 +4187,7 @@ let f (x: INotifyPropertyChanged) = failwith ""
 [<Fact>]
 let ``Test project29 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project29.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project29.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project29 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -4081,7 +4195,7 @@ let ``Test project29 whole project errors`` () =
 [<Fact>]
 let ``Test project29 event symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project29.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project29.options) |> Async.RunSynchronouslyImmediate
 
     let objSymbol = wholeProjectResults.GetAllUsesOfAllSymbols()  |> Array.find (fun su -> su.Symbol.DisplayName = "INotifyPropertyChanged")
     let objEntity = objSymbol.Symbol :?> FSharpEntity
@@ -4130,7 +4244,7 @@ type T() =
 
 let ``Test project30 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project30.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project30.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project30 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -4138,7 +4252,7 @@ let ``Test project30 whole project errors`` () =
 [<Fact>]
 let ``Test project30 Format attributes`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project30.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project30.options) |> Async.RunSynchronouslyImmediate
 
     let moduleSymbol = wholeProjectResults.GetAllUsesOfAllSymbols()  |> Array.find (fun su -> su.Symbol.DisplayName = "Module")
     let moduleEntity = moduleSymbol.Symbol :?> FSharpEntity
@@ -4189,7 +4303,7 @@ let g = Console.ReadKey()
     let options = { checker.GetProjectOptionsFromCommandLineArgs (projFileName, args) with SourceFiles = fileNames }
 
 let ``Test project31 whole project errors`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project31.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project31.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project31 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -4198,7 +4312,7 @@ let ``Test project31 whole project errors`` () =
 [<FactForDESKTOP>]
 let ``Test project31 C# type attributes`` () =
     if not runningOnMono then
-        let wholeProjectResults = checker.ParseAndCheckProject(Project31.options) |> Async.RunImmediate
+        let wholeProjectResults = checker.ParseAndCheckProject(Project31.options) |> Async.RunSynchronouslyImmediate
 
         let objSymbol = wholeProjectResults.GetAllUsesOfAllSymbols()  |> Array.find (fun su -> su.Symbol.DisplayName = "List")
         let objEntity = objSymbol.Symbol :?> FSharpEntity
@@ -4220,7 +4334,7 @@ let ``Test project31 C# type attributes`` () =
 [<Fact>]
 let ``Test project31 C# method attributes`` () =
     if not runningOnMono then
-        let wholeProjectResults = checker.ParseAndCheckProject(Project31.options) |> Async.RunImmediate
+        let wholeProjectResults = checker.ParseAndCheckProject(Project31.options) |> Async.RunSynchronouslyImmediate
 
         let objSymbol = wholeProjectResults.GetAllUsesOfAllSymbols()  |> Array.find (fun su -> su.Symbol.DisplayName = "Console")
         let objEntity = objSymbol.Symbol :?> FSharpEntity
@@ -4255,7 +4369,7 @@ let ``Test project31 C# method attributes`` () =
 [<FactForDESKTOP>]
 let ``Test project31 Format C# type attributes`` () =
     if not runningOnMono then
-        let wholeProjectResults = checker.ParseAndCheckProject(Project31.options) |> Async.RunImmediate
+        let wholeProjectResults = checker.ParseAndCheckProject(Project31.options) |> Async.RunSynchronouslyImmediate
 
         let objSymbol = wholeProjectResults.GetAllUsesOfAllSymbols()  |> Array.find (fun su -> su.Symbol.DisplayName = "List")
         let objEntity = objSymbol.Symbol :?> FSharpEntity
@@ -4272,7 +4386,7 @@ let ``Test project31 Format C# type attributes`` () =
 [<Fact>]
 let ``Test project31 Format C# method attributes`` () =
     if not runningOnMono then
-        let wholeProjectResults = checker.ParseAndCheckProject(Project31.options) |> Async.RunImmediate
+        let wholeProjectResults = checker.ParseAndCheckProject(Project31.options) |> Async.RunSynchronouslyImmediate
 
         let objSymbol = wholeProjectResults.GetAllUsesOfAllSymbols()  |> Array.find (fun su -> su.Symbol.DisplayName = "Console")
         let objEntity = objSymbol.Symbol :?> FSharpEntity
@@ -4330,7 +4444,7 @@ val func : int -> int
 [<Fact>]
 let ``Test Project32 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project32.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project32.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project32 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -4338,10 +4452,10 @@ let ``Test Project32 whole project errors`` () =
 [<Fact>]
 let ``Test Project32 should be able to find sig symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project32.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project32.options) |> Async.RunSynchronouslyImmediate
     let _sigBackgroundParseResults1, sigBackgroundTypedParse1 =
         checker.GetBackgroundCheckResultsForFileInProject(Project32.sigFileName1, Project32.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
 
     let sigSymbolUseOpt = sigBackgroundTypedParse1.GetSymbolUseAtLocation(4,5,"",["func"])
     let sigSymbol = sigSymbolUseOpt.Value.Symbol
@@ -4357,10 +4471,10 @@ let ``Test Project32 should be able to find sig symbols`` () =
 [<Fact>]
 let ``Test Project32 should be able to find impl symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project32.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project32.options) |> Async.RunSynchronouslyImmediate
     let _implBackgroundParseResults1, implBackgroundTypedParse1 =
         checker.GetBackgroundCheckResultsForFileInProject(Project32.fileName1, Project32.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
 
     let implSymbolUseOpt = implBackgroundTypedParse1.GetSymbolUseAtLocation(3,5,"let func x = x + 1",["func"])
     let implSymbol = implSymbolUseOpt.Value.Symbol
@@ -4397,7 +4511,7 @@ type System.Int32 with
 [<Fact>]
 let ``Test Project33 whole project errors`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project33.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project33.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project33 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -4405,7 +4519,7 @@ let ``Test Project33 whole project errors`` () =
 [<Fact>]
 let ``Test Project33 extension methods`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project33.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project33.options) |> Async.RunSynchronouslyImmediate
     let allSymbolsUses = wholeProjectResults.GetAllUsesOfAllSymbols()
 
     let implModuleUse = allSymbolsUses |> Array.find (fun su -> su.Symbol.DisplayName = "Impl")
@@ -4443,7 +4557,7 @@ module internal Project34 =
 
 [<Fact>]
 let ``Test Project34 whole project errors`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project34.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project34.options) |> Async.RunSynchronouslyImmediate
     for e in wholeProjectResults.Diagnostics do
         printfn "Project34 error: <<<%s>>>" e.Message
     wholeProjectResults.Diagnostics.Length |> shouldEqual 0
@@ -4452,7 +4566,7 @@ let ``Test Project34 whole project errors`` () =
 [<FactForDESKTOP>]
 let ``Test project34 should report correct accessibility for System.Data.Listeners`` () =
     let options = Project34.options
-    let wholeProjectResults = checker.ParseAndCheckProject(options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
     let rec getNestedEntities (entity: FSharpEntity) =
         seq { yield entity
               for e in entity.NestedEntities do
@@ -4512,7 +4626,7 @@ type Test =
 
 [<Fact>]
 let ``Test project35 CurriedParameterGroups should be available for nested functions`` () =
-    let wholeProjectResults = checker.ParseAndCheckProject(Project35.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project35.options) |> Async.RunSynchronouslyImmediate
     let allSymbolUses = wholeProjectResults.GetAllUsesOfAllSymbols()
     let findByDisplayName name =
         Array.find (fun (su:FSharpSymbolUse) -> su.Symbol.DisplayName = name)
@@ -4585,13 +4699,13 @@ module internal Project35b =
     let args2 = Array.append args [| "-r:notexist.dll" |]
     let options = { checker.GetProjectOptionsFromCommandLineArgs (projPath, args2) with SourceFiles = fileNames }
 #else
-    let options =  checker.GetProjectOptionsFromScript(fileName1, fileSource1) |> Async.RunImmediate |> fst
+    let options =  checker.GetProjectOptionsFromScript(fileName1, fileSource1) |> Async.RunSynchronouslyImmediate |> fst
 #endif
 
 [<Fact(Skip = "Flaky, reenable when stable")>]
 let ``Test project35b Dependency files for ParseAndCheckFileInProject`` () =
     let checkFileResults =
-        checker.ParseAndCheckFileInProject(Project35b.fileName1, 0, Project35b.fileSource1, Project35b.options) |> Async.RunImmediate
+        checker.ParseAndCheckFileInProject(Project35b.fileName1, 0, Project35b.fileSource1, Project35b.options) |> Async.RunSynchronouslyImmediate
         |> function
             | _, FSharpCheckFileAnswer.Succeeded(res) -> res
             | _ -> failwithf "Parsing aborted unexpectedly..."
@@ -4608,7 +4722,8 @@ let ``Test project35b Dependency files for ParseAndCheckFileInProject`` () =
 
 [<Fact(Skip = "Flaky, reenable when stable")>]
 let ``Test project35b Dependency files for GetBackgroundCheckResultsForFileInProject`` () =
-    let _,checkFileResults = checker.GetBackgroundCheckResultsForFileInProject(Project35b.fileName1, Project35b.options) |> Async.RunImmediate
+    let _,checkFileResults = checker.GetBackgroundCheckResultsForFileInProject(Project35b.fileName1, Project35b.options) |> Async.RunSynchronouslyImmediate
+
     for d in checkFileResults.DependencyFiles do
         printfn "GetBackgroundCheckResultsForFileInProject dependency: %s" d
     checkFileResults.DependencyFiles |> Array.exists (fun s -> s.Contains "notexist.dll") |> shouldEqual true
@@ -4622,7 +4737,7 @@ let ``Test project35b Dependency files for GetBackgroundCheckResultsForFileInPro
 
 [<Fact(Skip = "Flaky, reenable when stable")>]
 let ``Test project35b Dependency files for check of project`` () =
-    let checkResults = checker.ParseAndCheckProject(Project35b.options) |> Async.RunImmediate
+    let checkResults = checker.ParseAndCheckProject(Project35b.options) |> Async.RunSynchronouslyImmediate
     for d in checkResults.DependencyFiles do
         printfn "ParseAndCheckProject dependency: %s" d
     checkResults.DependencyFiles |> Array.exists (fun s -> s.Contains "notexist.dll") |> shouldEqual true
@@ -4663,7 +4778,7 @@ let ``Test project36 FSharpMemberOrFunctionOrValue.IsBaseValue`` () =
     let options = { keepAssemblyContentsChecker.GetProjectOptionsFromCommandLineArgs (Project36.projFileName, Project36.args) with SourceFiles = Project36.fileNames }
     let wholeProjectResults =
         keepAssemblyContentsChecker.ParseAndCheckProject(options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
 
     wholeProjectResults.GetAllUsesOfAllSymbols()
     |> Array.pick (fun (su:FSharpSymbolUse) ->
@@ -4676,7 +4791,7 @@ let ``Test project36 FSharpMemberOrFunctionOrValue.IsBaseValue`` () =
 let ``Test project36 FSharpMemberOrFunctionOrValue.IsConstructorThisValue & IsMemberThisValue`` () =
     let keepAssemblyContentsChecker = FSharpChecker.Create(keepAssemblyContents=true, useTransparentCompiler=CompilerAssertHelpers.UseTransparentCompiler)
     let options = { keepAssemblyContentsChecker.GetProjectOptionsFromCommandLineArgs (Project36.projFileName, Project36.args) with SourceFiles = Project36.fileNames }
-    let wholeProjectResults = keepAssemblyContentsChecker.ParseAndCheckProject(options) |> Async.RunImmediate
+    let wholeProjectResults = keepAssemblyContentsChecker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
     let declarations =
         let checkedFile = wholeProjectResults.AssemblyContents.ImplementationFiles[0]
         match checkedFile.Declarations[0] with
@@ -4713,7 +4828,7 @@ let ``Test project36 FSharpMemberOrFunctionOrValue.IsConstructorThisValue & IsMe
 let ``Test project36 FSharpMemberOrFunctionOrValue.LiteralValue`` () =
     let keepAssemblyContentsChecker = FSharpChecker.Create(keepAssemblyContents=true, useTransparentCompiler=CompilerAssertHelpers.UseTransparentCompiler)
     let options = { keepAssemblyContentsChecker.GetProjectOptionsFromCommandLineArgs (Project36.projFileName, Project36.args) with SourceFiles = Project36.fileNames }
-    let wholeProjectResults = keepAssemblyContentsChecker.ParseAndCheckProject(options) |> Async.RunImmediate
+    let wholeProjectResults = keepAssemblyContentsChecker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
     let project36Module = wholeProjectResults.AssemblySignature.Entities[0]
     let lit = project36Module.MembersFunctionsAndValues[0]
     shouldEqual true (lit.LiteralValue.Value |> unbox |> (=) 1.)
@@ -4781,7 +4896,7 @@ do ()
 let ``Test project37 typeof and arrays in attribute constructor arguments`` () =
     let wholeProjectResults =
         checker.ParseAndCheckProject(Project37.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
     let allSymbolsUses = wholeProjectResults.GetAllUsesOfAllSymbols()
     for su in allSymbolsUses do
         match su.Symbol with
@@ -4835,7 +4950,7 @@ let ``Test project37 typeof and arrays in attribute constructor arguments`` () =
 let ``Test project37 DeclaringEntity`` () =
     let wholeProjectResults =
         checker.ParseAndCheckProject(Project37.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
     let allSymbolsUses = wholeProjectResults.GetAllUsesOfAllSymbols()
     for sym in allSymbolsUses do
        match sym.Symbol with
@@ -4923,7 +5038,7 @@ type A<'XX, 'YY>() =
 let ``Test project38 abstract slot information`` () =
     let wholeProjectResults =
         checker.ParseAndCheckProject(Project38.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
     let printAbstractSignature (s: FSharpAbstractSignature) =
         let printType (t: FSharpType) =
             hash t  |> ignore // smoke test to check hash code doesn't loop
@@ -5009,7 +5124,7 @@ let uses () =
 [<Fact>]
 let ``Test project39 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project39.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project39.options) |> Async.RunSynchronouslyImmediate
     let allSymbolUses = wholeProjectResults.GetAllUsesOfAllSymbols()
     let typeTextOfAllSymbolUses =
         [ for s in allSymbolUses do
@@ -5084,7 +5199,7 @@ let g (x: C) = x.IsItAnA,x.IsItAnAMethod()
 [<Fact>]
 let ``Test Project40 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project40.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project40.options) |> Async.RunSynchronouslyImmediate
     let allSymbolUses = wholeProjectResults.GetAllUsesOfAllSymbols()
     let allSymbolUsesInfo =  [ for s in allSymbolUses -> s.Symbol.DisplayName, tups s.Range, attribsOfSymbol s.Symbol ]
     allSymbolUsesInfo |> shouldEqual
@@ -5094,10 +5209,6 @@ let ``Test Project40 all symbols`` () =
             ("x", ((4, 33), (4, 34)), []);
             ("IsNone", ((4, 33), (4, 41)), ["member"; "prop"; "funky"]);
             ("f", ((4, 4), (4, 5)), ["val"]);
-            ("CompilationRepresentationAttribute", ((6, 2), (6, 27)), ["class"]);
-            ("CompilationRepresentationAttribute", ((6, 2), (6, 27)), ["member"]);
-            ("CompilationRepresentationFlags", ((6, 28), (6, 58)), ["enum"; "valuetype"]);
-            ("UseNullAsTrueValue", ((6, 28), (6, 77)), ["field"; "static"; "8"]);
             ("CompilationRepresentationAttribute", ((6, 2), (6, 27)), ["class"]);
             ("CompilationRepresentationAttribute", ((6, 2), (6, 27)), ["member"]);
             ("CompilationRepresentationFlags", ((6, 28), (6, 58)), ["enum"; "valuetype"]);
@@ -5158,7 +5269,7 @@ module M
 [<Fact>]
 let ``Test project41 all symbols`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(Project41.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(Project41.options) |> Async.RunSynchronouslyImmediate
     let allSymbolUses = wholeProjectResults.GetAllUsesOfAllSymbols()
     let allSymbolUsesInfo =
         [ for s in allSymbolUses do
@@ -5249,13 +5360,14 @@ let test2() = test()
 [<Fact>]
 let ``Test project42 to ensure cached checked results are invalidated`` () =
     let text2 = SourceText.ofString(FileSystem.OpenFileForReadShim(Project42.fileName2).ReadAllText())
-    let checkedFile2 = checker.ParseAndCheckFileInProject(Project42.fileName2, text2.GetHashCode(), text2, Project42.options) |> Async.RunImmediate
+    let checkedFile2 = checker.ParseAndCheckFileInProject(Project42.fileName2, text2.GetHashCode(), text2, Project42.options) |> Async.RunSynchronouslyImmediate
+
     match checkedFile2 with
     | _, FSharpCheckFileAnswer.Succeeded(checkedFile2Results) ->
         Assert.Empty(checkedFile2Results.Diagnostics)
         FileSystem.OpenFileForWriteShim(Project42.fileName1).Write("""module File1""")
         try
-            let checkedFile2Again = checker.ParseAndCheckFileInProject(Project42.fileName2, text2.GetHashCode(), text2, Project42.options) |> Async.RunImmediate
+            let checkedFile2Again = checker.ParseAndCheckFileInProject(Project42.fileName2, text2.GetHashCode(), text2, Project42.options) |> Async.RunSynchronouslyImmediate
             match checkedFile2Again with
             | _, FSharpCheckFileAnswer.Succeeded(checkedFile2AgainResults) ->
                 Assert.NotEmpty(checkedFile2AgainResults.Diagnostics) // this should contain errors as File1 does not contain the function `test()`
@@ -5292,7 +5404,7 @@ let ``add files with same name from different folders`` () =
     let projFileName = __SOURCE_DIRECTORY__ ++ "../service/data/samename/tempet.fsproj"
     let args = mkProjectCommandLineArgs ("test.dll", fileNames)
     let options = { checker.GetProjectOptionsFromCommandLineArgs (projFileName, args) with SourceFiles = fileNames }
-    let wholeProjectResults = checker.ParseAndCheckProject(options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
     let errors =
         wholeProjectResults.Diagnostics
         |> Array.filter (fun x -> x.Severity = FSharpDiagnosticSeverity.Error)
@@ -5331,7 +5443,7 @@ let foo (a: Foo): bool =
 [<Fact>]
 let ``Test typed AST for struct unions`` () = // See https://github.com/fsharp/FSharp.Compiler.Service/issues/756
     let keepAssemblyContentsChecker = FSharpChecker.Create(keepAssemblyContents=true, useTransparentCompiler=CompilerAssertHelpers.UseTransparentCompiler)
-    let wholeProjectResults = keepAssemblyContentsChecker.ParseAndCheckProject(ProjectStructUnions.options) |> Async.RunImmediate
+    let wholeProjectResults = keepAssemblyContentsChecker.ParseAndCheckProject(ProjectStructUnions.options) |> Async.RunSynchronouslyImmediate
 
     let declarations =
         let checkedFile = wholeProjectResults.AssemblyContents.ImplementationFiles[0]
@@ -5370,10 +5482,10 @@ let x = (1 = 3.0)
     let args = mkProjectCommandLineArgs (dllName, [])
     let options = { checker.GetProjectOptionsFromCommandLineArgs (projFileName, args) with SourceFiles = fileNames }
 
-[<Fact; RunTestCasesInSequence>]
+[<Fact4(DisableParallelization = true)>] // Avoid concurrent use of checker
 let ``Test diagnostics with line directives active`` () =
 
-    let wholeProjectResults = checker.ParseAndCheckProject(ProjectLineDirectives.options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(ProjectLineDirectives.options) |> Async.RunSynchronouslyImmediate
 
     [ for e in wholeProjectResults.Diagnostics ->
         let m = e.Range in m.StartLine, m.EndLine, m.FileName ]
@@ -5381,28 +5493,28 @@ let ``Test diagnostics with line directives active`` () =
 
     let checkResults =
         checker.ParseAndCheckFileInProject(ProjectLineDirectives.fileName1, 0, ProjectLineDirectives.fileSource1, ProjectLineDirectives.options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
         |> function _,FSharpCheckFileAnswer.Succeeded x ->  x | _ -> failwith "unexpected aborted"
 
     [ for e in checkResults.Diagnostics ->
         let m = e.Range in m.StartLine, m.EndLine, m.FileName ]
     |> shouldEqual [10, 10, "Test.fsy"]
 
-[<Fact; RunTestCasesInSequence>]
+[<Fact4(DisableParallelization = true)>] // Avoid concurrent use of checker
 let ``Test diagnostics with line directives ignored`` () =
 
     // If you pass hidden IDE flag --ignorelinedirectives, the diagnostics are reported w.r.t. the source
     // file, not the files referred to by line directives.
     let options = { ProjectLineDirectives.options with OtherOptions = (Array.append ProjectLineDirectives.options.OtherOptions [| "--ignorelinedirectives" |]) }
 
-    let wholeProjectResults = checker.ParseAndCheckProject(options) |> Async.RunImmediate
+    let wholeProjectResults = checker.ParseAndCheckProject(options) |> Async.RunSynchronouslyImmediate
     [ for e in wholeProjectResults.Diagnostics ->
         let m = e.Range in m.StartLine, m.EndLine, m.FileName ]
     |> shouldEqual [(5, 5, ProjectLineDirectives.fileName1)]
 
     let checkResults =
         checker.ParseAndCheckFileInProject(ProjectLineDirectives.fileName1, 0, ProjectLineDirectives.fileSource1, options)
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
         |> function _,FSharpCheckFileAnswer.Succeeded x ->  x | _ -> failwith "unexpected aborted"
 
     for e in checkResults.Diagnostics do
@@ -5434,7 +5546,7 @@ type A(i:int) =
     let options = { keepAssemblyContentsChecker.GetProjectOptionsFromCommandLineArgs (projFileName, args) with SourceFiles = fileNames }
 
     let fileCheckResults =
-        keepAssemblyContentsChecker.ParseAndCheckFileInProject(fileName1, 0, fileSource1, options)  |> Async.RunImmediate
+        keepAssemblyContentsChecker.ParseAndCheckFileInProject(fileName1, 0, fileSource1, options)  |> Async.RunSynchronouslyImmediate
         |> function
             | _, FSharpCheckFileAnswer.Succeeded(res) -> res
             | _ -> failwithf "Parsing aborted unexpectedly..."
@@ -5551,17 +5663,17 @@ type UseTheThings(i:int) =
     let options = { keepAssemblyContentsChecker.GetProjectOptionsFromCommandLineArgs (projFileName, args) with SourceFiles = fileNames }
 
     let fileCheckResults =
-        keepAssemblyContentsChecker.ParseAndCheckFileInProject(fileName1, 0, fileSource1, options)  |> Async.RunImmediate
+        keepAssemblyContentsChecker.ParseAndCheckFileInProject(fileName1, 0, fileSource1, options)  |> Async.RunSynchronouslyImmediate
         |> function
             | _, FSharpCheckFileAnswer.Succeeded(res) -> res
             | _ -> failwithf "Parsing aborted unexpectedly..."
-    //let symbolUses = fileCheckResults.GetAllUsesOfAllSymbolsInFile() |> Async.RunImmediate |> Array.indexed
+    //let symbolUses = fileCheckResults.GetAllUsesOfAllSymbolsInFile() |> Async.RunSynchronouslyImmediate |> Array.indexed
     // Fragments used to check hash codes:
     //(snd symbolUses.[42]).Symbol.IsEffectivelySameAs((snd symbolUses.[37]).Symbol)
     //(snd symbolUses.[42]).Symbol.GetEffectivelySameAsHash()
     //(snd symbolUses.[37]).Symbol.GetEffectivelySameAsHash()
     let lines = FileSystem.OpenFileForReadShim(fileName1).ReadAllLines()
-    let unusedOpens = UnusedOpens.getUnusedOpens (fileCheckResults, (fun i -> lines[i-1])) |> Async.RunImmediate
+    let unusedOpens = UnusedOpens.getUnusedOpens (fileCheckResults, (fun i -> lines[i-1])) |> Async.RunSynchronouslyImmediate
     let unusedOpensData = [ for uo in unusedOpens -> tups uo, lines[uo.StartLine-1] ]
     let expected =
           [(((4, 5), (4, 23)), "open System.Collections // unused");
@@ -5636,17 +5748,17 @@ type UseTheThings(i:int) =
     let options = { keepAssemblyContentsChecker.GetProjectOptionsFromCommandLineArgs (projFileName, args) with SourceFiles = fileNames }
 
     let fileCheckResults =
-        keepAssemblyContentsChecker.ParseAndCheckFileInProject(fileName1, 0, fileSource1, options)  |> Async.RunImmediate
+        keepAssemblyContentsChecker.ParseAndCheckFileInProject(fileName1, 0, fileSource1, options)  |> Async.RunSynchronouslyImmediate
         |> function
             | _, FSharpCheckFileAnswer.Succeeded(res) -> res
             | _ -> failwithf "Parsing aborted unexpectedly..."
-    //let symbolUses = fileCheckResults.GetAllUsesOfAllSymbolsInFile() |> Async.RunImmediate |> Array.indexed
+    //let symbolUses = fileCheckResults.GetAllUsesOfAllSymbolsInFile() |> Async.RunSynchronouslyImmediate |> Array.indexed
     // Fragments used to check hash codes:
     //(snd symbolUses.[42]).Symbol.IsEffectivelySameAs((snd symbolUses.[37]).Symbol)
     //(snd symbolUses.[42]).Symbol.GetEffectivelySameAsHash()
     //(snd symbolUses.[37]).Symbol.GetEffectivelySameAsHash()
     let lines = FileSystem.OpenFileForReadShim(fileName1).ReadAllLines()
-    let unusedOpens = UnusedOpens.getUnusedOpens (fileCheckResults, (fun i -> lines[i-1])) |> Async.RunImmediate
+    let unusedOpens = UnusedOpens.getUnusedOpens (fileCheckResults, (fun i -> lines[i-1])) |> Async.RunSynchronouslyImmediate
     let unusedOpensData = [ for uo in unusedOpens -> tups uo, lines[uo.StartLine-1] ]
     let expected =
           [(((4, 5), (4, 23)), "open System.Collections // unused");
@@ -5719,12 +5831,12 @@ module M2 =
     let options = { keepAssemblyContentsChecker.GetProjectOptionsFromCommandLineArgs (projFileName, args) with SourceFiles = fileNames }
 
     let fileCheckResults =
-        keepAssemblyContentsChecker.ParseAndCheckFileInProject(fileName1, 0, fileSource1, options)  |> Async.RunImmediate
+        keepAssemblyContentsChecker.ParseAndCheckFileInProject(fileName1, 0, fileSource1, options)  |> Async.RunSynchronouslyImmediate
         |> function
             | _, FSharpCheckFileAnswer.Succeeded(res) -> res
             | _ -> failwithf "Parsing aborted unexpectedly..."
     let lines = FileSystem.OpenFileForReadShim(fileName1).ReadAllLines()
-    let unusedOpens = UnusedOpens.getUnusedOpens (fileCheckResults, (fun i -> lines[i-1])) |> Async.RunImmediate
+    let unusedOpens = UnusedOpens.getUnusedOpens (fileCheckResults, (fun i -> lines[i-1])) |> Async.RunSynchronouslyImmediate
     let unusedOpensData = [ for uo in unusedOpens -> tups uo, lines[uo.StartLine-1] ]
     let expected =
           [(((2, 5), (2, 23)), "open System.Collections // unused");
@@ -5796,18 +5908,19 @@ let checkContentAsScript content =
     let tempDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location)
     let scriptFullPath = Path.Combine(tempDir, scriptName)
     let sourceText = SourceText.ofString content
-    let projectOptions, _ = checker.GetProjectOptionsFromScript(scriptFullPath, sourceText, useSdkRefs = true, assumeDotNetFramework = false) |>    Async.RunImmediate
+    let projectOptions, _ = checker.GetProjectOptionsFromScript(scriptFullPath, sourceText, useSdkRefs = true, assumeDotNetFramework = false) |> Async.RunSynchronouslyImmediate
     let parseOptions, _ = checker.GetParsingOptionsFromProjectOptions projectOptions
-    let parseResults = checker.ParseFile(scriptFullPath, sourceText, parseOptions) |> Async.RunImmediate
-    let checkResults = checker.CheckFileInProject(parseResults, scriptFullPath, 0, sourceText, projectOptions) |> Async.RunImmediate
+    let parseResults = checker.ParseFile(scriptFullPath, sourceText, parseOptions) |> Async.RunSynchronouslyImmediate
+    let checkResults = checker.CheckFileInProject(parseResults, scriptFullPath, 0, sourceText, projectOptions) |> Async.RunSynchronouslyImmediate
+
     match checkResults with
     | FSharpCheckFileAnswer.Aborted -> failwith "no check results"
     | FSharpCheckFileAnswer.Succeeded r -> r
 
 [<Collection(nameof NotThreadSafeResourceCollection)>]
-module ScriptClosureCacheUse =    
+module ScriptClosureCacheUse =
 
-    [<Fact>]
+    [<FSharp.Test.FactSkipOnSignedBuild>]
     let ``References from #r nuget are included in script project options`` () =
         let checkResults = checkContentAsScript """
     #i "nuget:https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-tools/nuget/v3/index.json"
@@ -5831,6 +5944,109 @@ module internal EmptyProject =
 
 [<Fact>]
 let ``Empty source list produces error FS0207`` () =
-    let results = checker.ParseAndCheckProject(EmptyProject.options) |> Async.RunImmediate
+    let results = checker.ParseAndCheckProject(EmptyProject.options) |> Async.RunSynchronouslyImmediate
     results.Diagnostics.Length |> shouldEqual 1
     results.Diagnostics[0].ErrorNumber |> shouldEqual 207
+
+// https://github.com/dotnet/fsharp/issues/14969
+module internal ProjectActivePatternInSig =
+
+    // Dedicated checker to isolate from shared state races with parallel tests.
+    let checker = FSharpChecker.Create(useTransparentCompiler = FSharp.Test.CompilerAssertHelpers.UseTransparentCompiler)
+
+    let fileName1 = Path.ChangeExtension(getTemporaryFileName (), ".fs")
+    let sigFileName1 = Path.ChangeExtension(fileName1, ".fsi")
+    let base2 = getTemporaryFileName ()
+    let fileName2 = Path.ChangeExtension(base2, ".fs")
+    let dllName = Path.ChangeExtension(base2, ".dll")
+    let projFileName = Path.ChangeExtension(base2, ".fsproj")
+
+    let fileSource1 =
+        """
+module PatternDefs
+
+let (|Even|Odd|) v = if v % 2 = 0 then Even else Odd
+    """
+
+    FileSystem.OpenFileForWriteShim(fileName1).Write(fileSource1)
+
+    let sigFileSource1 =
+        """
+module PatternDefs
+
+val (|Even|Odd|) : int -> Choice<unit, unit>
+    """
+
+    FileSystem.OpenFileForWriteShim(sigFileName1).Write(sigFileSource1)
+
+    let fileSource2 =
+        """
+module PatternUser
+
+open PatternDefs
+
+let describe x =
+    match x with
+    | Even -> "even"
+    | Odd -> "odd"
+    """
+
+    FileSystem.OpenFileForWriteShim(fileName2).Write(fileSource2)
+
+    let cleanFileName a =
+        if a = fileName1 then "file1"
+        elif a = sigFileName1 then "sig1"
+        elif a = fileName2 then "file2"
+        else "??"
+
+    let fileNames = [| sigFileName1; fileName1; fileName2 |]
+    let args = mkProjectCommandLineArgs (dllName, [])
+
+    let options =
+        { checker.GetProjectOptionsFromCommandLineArgs(projFileName, args) with
+            SourceFiles = fileNames }
+
+[<Fact>]
+let ``FindReferences for active patterns in fsi - project has no errors`` () =
+    let wholeProjectResults =
+        ProjectActivePatternInSig.checker.ParseAndCheckProject(ProjectActivePatternInSig.options)
+        |> Async.RunSynchronouslyImmediate
+
+    for e in wholeProjectResults.Diagnostics do
+        printfn "ProjectActivePatternInSig error: <<<%s>>>" e.Message
+
+    wholeProjectResults.Diagnostics.Length |> shouldEqual 0
+
+[<Fact>]
+let ``FindReferences for active patterns in fsi - finds Even in sig and impl`` () =
+    let wholeProjectResults =
+        ProjectActivePatternInSig.checker.ParseAndCheckProject(ProjectActivePatternInSig.options)
+        |> Async.RunSynchronouslyImmediate
+
+    let _, typedParse2 =
+        ProjectActivePatternInSig.checker.GetBackgroundCheckResultsForFileInProject(
+            ProjectActivePatternInSig.fileName2,
+            ProjectActivePatternInSig.options
+        )
+        |> Async.RunSynchronouslyImmediate
+
+    let evenSymbolOpt =
+        typedParse2.GetSymbolUseAtLocation(8, 11, "    | Even -> \"even\"", [ "Even" ])
+
+    Assert.True(evenSymbolOpt.IsSome, "Expected to find symbol 'Even' in consumer file")
+
+    let evenSymbol = evenSymbolOpt.Value.Symbol
+
+    let usesOfEven =
+        [ for su in wholeProjectResults.GetUsesOfSymbol(evenSymbol) do
+              yield
+                  ProjectActivePatternInSig.cleanFileName su.FileName,
+                  tups su.Range,
+                  attribsOfSymbol su.Symbol ]
+
+    // Should find Even in: sig file, impl file definition, and consumer file usage
+    let fileNames = usesOfEven |> List.map (fun (f, _, _) -> f)
+
+    Assert.Contains("sig1", fileNames)
+    Assert.Contains("file1", fileNames)
+    Assert.Contains("file2", fileNames)

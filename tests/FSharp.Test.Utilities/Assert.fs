@@ -45,20 +45,20 @@ module Assert =
     let shouldBeSameMultilineStringSets expectedText actualText =
         let getLines text =
             use reader = new StringReader(text)
-            Seq.initInfinite (fun _ -> reader.ReadLine()) 
+            Seq.initInfinite (fun _ -> reader.ReadLine())
             |> Seq.takeWhile (not << isNull)
             |> set
-        let actual   = getLines actualText  
+        let actual   = getLines actualText
         let expected = getLines expectedText
-       
-        let unexpectedlyMissing = Set.difference expected actual       
+
+        let unexpectedlyMissing = Set.difference expected actual
         let unexpectedlyPresent = Set.difference actual expected
 
         // If both sets are empty, the surface areas match so allow the test to pass.
         if Set.isEmpty unexpectedlyMissing
           && Set.isEmpty unexpectedlyPresent then
             None
-        else           
+        else
             let msg =
                 let inline newLine (sb : System.Text.StringBuilder) = sb.AppendLine () |> ignore
                 let sb = System.Text.StringBuilder ()
@@ -78,3 +78,39 @@ module Assert =
                 sb.ToString ()
 
             Some msg
+
+    let shouldBeEqualCollections (expected: seq<'T>) (actual: seq<'T>) =
+        let expectedList = Seq.toList expected
+        let actualList = Seq.toList actual
+        if expectedList = actualList then
+            ()
+        else
+            let unexpectedlyMissing = List.except actualList expectedList
+            let unexpectedlyPresent = List.except expectedList actualList
+            let inline newLine (sb: System.Text.StringBuilder) = sb.AppendLine() |> ignore
+            let sb = System.Text.StringBuilder()
+            if not unexpectedlyMissing.IsEmpty then
+                sb.Append "Unexpectedly missing (expected, not actual):" |> ignore
+                for item in unexpectedlyMissing do
+                    newLine sb
+                    sb.Append "    " |> ignore
+                    sb.Append(sprintf "%A" item) |> ignore
+                newLine sb
+                newLine sb
+            if not unexpectedlyPresent.IsEmpty then
+                sb.Append "Unexpectedly present (actual, not expected):" |> ignore
+                for item in unexpectedlyPresent do
+                    newLine sb
+                    sb.Append "    " |> ignore
+                    sb.Append(sprintf "%A" item) |> ignore
+                newLine sb
+                newLine sb
+            if unexpectedlyMissing.IsEmpty && unexpectedlyPresent.IsEmpty then
+                sb.Append "Same elements but in different order. Positional differences:" |> ignore
+                for i in 0 .. expectedList.Length - 1 do
+                    if expectedList[i] <> actualList[i] then
+                        newLine sb
+                        sb.Append(sprintf "    [%d] expected %A but was %A" i expectedList[i] actualList[i]) |> ignore
+                newLine sb
+            Assert.True(false, sb.ToString())
+

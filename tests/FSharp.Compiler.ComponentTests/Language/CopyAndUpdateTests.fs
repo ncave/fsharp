@@ -1,4 +1,4 @@
-﻿module Language.CopyAndUpdateTests
+module Language.CopyAndUpdateTests
 
 open Xunit
 open FSharp.Test.Compiler
@@ -17,9 +17,9 @@ let t2 x = { x with D.B = "a"; D.B = "b" }
     |> typecheck
     |> shouldFail
     |> withDiagnostics [
-        (Error 668, Line 6, Col 23, Line 6, Col 24, "The field 'B' appears multiple times in this record expression or pattern")
+        Error 668, Line 6, Col 34, Line 6, Col 41, "The field 'B' appears multiple times in this record expression or pattern"
     ]
-    
+
 [<Fact>]
 let ``Cannot update the same field appears multiple times in nested copy-and-update``() =
     FSharp """
@@ -32,10 +32,10 @@ let t2 x = { x with D.B = "a"; D.B = "b"; D.B = "c" }
     |> typecheck
     |> shouldFail
     |> withDiagnostics [
-        (Error 668, Line 6, Col 23, Line 6, Col 24, "The field 'B' appears multiple times in this record expression or pattern")
-        (Error 668, Line 6, Col 34, Line 6, Col 35, "The field 'B' appears multiple times in this record expression or pattern")
+        Error 668, Line 6, Col 34, Line 6, Col 41, "The field 'B' appears multiple times in this record expression or pattern"
+        Error 668, Line 6, Col 45, Line 6, Col 52, "The field 'B' appears multiple times in this record expression or pattern"
     ]
-    
+
 [<Fact>]
 let ``Cannot update the same field appears multiple times in nested copy-and-update 2``() =
     FSharp """
@@ -48,24 +48,8 @@ let t2 x = { x with D.B = "a"; D.C = ""; D.B = "c" ; D.C = "d" }
     |> typecheck
     |> shouldFail
     |> withDiagnostics [
-        (Error 668, Line 6, Col 34, Line 6, Col 35, "The field 'C' appears multiple times in this record expression or pattern")
-        (Error 668, Line 6, Col 23, Line 6, Col 24, "The field 'B' appears multiple times in this record expression or pattern")
-    ]
-
-[<Fact>]
-let ``Cannot use nested copy-and-update in lang version70``() =
-    FSharp """
-type NestedRecTy = { B: string }
-
-type RecTy = { D: NestedRecTy; E: string option }
-
-let t2 x = { x with D.B = "a" }
-    """
-    |> withLangVersion70
-    |> typecheck
-    |> shouldFail
-    |> withDiagnostics [
-        (Error 3350, Line 6, Col 21, Line 6, Col 24, "Feature 'Nested record field copy-and-update' is not available in F# 7.0. Please use language version 8.0 or greater.")
+        Error 668, Line 6, Col 44, Line 6, Col 51, "The field 'B' appears multiple times in this record expression or pattern"
+        Error 668, Line 6, Col 56, Line 6, Col 63, "The field 'C' appears multiple times in this record expression or pattern"
     ]
 
 [<Fact>]

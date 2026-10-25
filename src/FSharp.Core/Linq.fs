@@ -34,9 +34,18 @@ module LeafExpressionConverter =
         {   varEnv : Map<Var, Expression> }
     let asExpr x = (x :> Expression)
 
-    let instanceBindingFlags = BindingFlags.Instance ||| BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.DeclaredOnly
-
     let isNamedType(typ:Type) = not (typ.IsArray || typ.IsByRef || typ.IsPointer)
+
+    /// Determines if a property access on a derived union case type needs to be coerced to the declaring type.
+    /// This handles the case where a property is defined on a specific union case type that inherits from the union type.
+    let getUnionCaseCoercionType (objOpt: Expr option) (declaringType: Type) =
+        if objOpt.IsSome &&
+           FSharpType.IsUnion declaringType &&
+           not (isNull declaringType.BaseType) &&
+           FSharpType.IsUnion declaringType.BaseType then
+            Some declaringType
+        else
+            None
 
     let equivHeadTypes (ty1:Type) (ty2:Type) =
         isNamedType(ty1) &&
@@ -66,11 +75,11 @@ module LeafExpressionConverter =
 
     let showAll =
         BindingFlags.Public ||| BindingFlags.NonPublic
-    
+
     let getNonNullableType typ = match Nullable.GetUnderlyingType typ with null -> typ | t -> t
 
     // https://github.com/dotnet/runtime/blob/fa779e8cb2b5868a0ac2fd4215f39ffb91f0dab0/src/libraries/System.Linq.Expressions/src/System/Dynamic/Utils/TypeUtils.cs#L72
-    /// Can LINQ Expressions' BinaryExpression's (Left/Right)Shift construct a SimpleBinaryExpression from the type in question? Otherwise, use the F# operator as the user-defined method. 
+    /// Can LINQ Expressions' BinaryExpression's (Left/Right)Shift construct a SimpleBinaryExpression from the type in question? Otherwise, use the F# operator as the user-defined method.
     let isLinqExpressionsInteger typ =
         let typ = getNonNullableType typ
         not typ.IsEnum &&
@@ -86,12 +95,12 @@ module LeafExpressionConverter =
         | _ -> false
 
     // https://github.com/dotnet/runtime/blob/fa779e8cb2b5868a0ac2fd4215f39ffb91f0dab0/src/libraries/System.Linq.Expressions/src/System/Linq/Expressions/BinaryExpression.cs#L2226
-    /// Can LINQ Expressions' BinaryExpression's (Left/Right)Shift construct a SimpleBinaryExpression from the type in question? Otherwise, use the F# operator as the user-defined method. 
+    /// Can LINQ Expressions' BinaryExpression's (Left/Right)Shift construct a SimpleBinaryExpression from the type in question? Otherwise, use the F# operator as the user-defined method.
     let isLinqExpressionsSimpleShift left right =
         isLinqExpressionsInteger left && getNonNullableType right = typeof<int>
 
     // https://github.com/dotnet/runtime/blob/cf7e7a46f8a4a6225a8f1e059a846ccdebf0454c/src/libraries/System.Linq.Expressions/src/System/Dynamic/Utils/TypeUtils.cs#L110
-    /// Can LINQ Expressions' (UnaryExpression/BinaryExpression)'s arithmetic operations construct a (SimpleBinaryExpression/UnaryExpression) from the type in question? Otherwise, use the F# operator as the user-defined method. 
+    /// Can LINQ Expressions' (UnaryExpression/BinaryExpression)'s arithmetic operations construct a (SimpleBinaryExpression/UnaryExpression) from the type in question? Otherwise, use the F# operator as the user-defined method.
     let isLinqExpressionsArithmeticType typ =
         let typ = getNonNullableType typ
         not typ.IsEnum &&
@@ -107,7 +116,7 @@ module LeafExpressionConverter =
         | _ -> false
 
     // https://github.com/dotnet/runtime/blob/7bd472498e690e9421df86d5a9d728faa939742c/src/libraries/System.Linq.Expressions/src/System/Dynamic/Utils/TypeUtils.cs#L132
-    /// Can LINQ Expressions' UnaryExpression.(Checked)Negate construct a UnaryExpression from the type in question? Otherwise, use the F# operator as the user-defined method. 
+    /// Can LINQ Expressions' UnaryExpression.(Checked)Negate construct a UnaryExpression from the type in question? Otherwise, use the F# operator as the user-defined method.
     let isLinqExpressionsArithmeticTypeButNotUnsignedInt typ =
         isLinqExpressionsArithmeticType typ &&
         let typ = getNonNullableType typ
@@ -119,7 +128,7 @@ module LeafExpressionConverter =
         | _ -> true
 
     // https://github.com/dotnet/runtime/blob/7bd472498e690e9421df86d5a9d728faa939742c/src/libraries/System.Linq.Expressions/src/System/Dynamic/Utils/TypeUtils.cs#L149
-    /// Can LINQ Expressions' (UnaryExpression.Not/BinaryExpression.Binary(And/Or/ExclusiveOr)) construct a (UnaryExpression/SimpleBinaryExpression) from the type in question? Otherwise, use the F# operator as the user-defined method. 
+    /// Can LINQ Expressions' (UnaryExpression.Not/BinaryExpression.Binary(And/Or/ExclusiveOr)) construct a (UnaryExpression/SimpleBinaryExpression) from the type in question? Otherwise, use the F# operator as the user-defined method.
     let isLinqExpressionsIntegerOrBool typ =
         let typ = getNonNullableType typ
         not typ.IsEnum &&
@@ -136,7 +145,7 @@ module LeafExpressionConverter =
         | _ -> false
 
     // https://github.com/dotnet/runtime/blob/7bd472498e690e9421df86d5a9d728faa939742c/src/libraries/System.Linq.Expressions/src/System/Dynamic/Utils/TypeUtils.cs#L47
-    /// Can LINQ Expressions' BinaryExpression's comparison operations construct a (SimpleBinaryExpression/LogicalBinaryExpression) from the type in question? Otherwise, use the F# operator as the user-defined method. 
+    /// Can LINQ Expressions' BinaryExpression's comparison operations construct a (SimpleBinaryExpression/LogicalBinaryExpression) from the type in question? Otherwise, use the F# operator as the user-defined method.
     let isLinqExpressionsNumeric typ =
         let typ = getNonNullableType typ
         not typ.IsEnum &&
@@ -155,24 +164,24 @@ module LeafExpressionConverter =
         | _ -> false
 
     // https://github.com/dotnet/runtime/blob/afaf666eff08435123eb649ac138419f4c9b9344/src/libraries/System.Linq.Expressions/src/System/Linq/Expressions/BinaryExpression.cs#L1047
-    /// Can LINQ Expressions' BinaryExpression's equality operations provide built-in structural equality from the type in question? Otherwise, use the F# operator as the user-defined method. 
+    /// Can LINQ Expressions' BinaryExpression's equality operations provide built-in structural equality from the type in question? Otherwise, use the F# operator as the user-defined method.
     let isLinqExpressionsStructurallyEquatable typ =
         isLinqExpressionsNumeric typ || typ = typeof<bool> || getNonNullableType(typ).IsEnum
 
     // https://github.com/dotnet/runtime/blob/4c92aef2b08f9c4374c520e7e664a44f1ad8ce56/src/libraries/System.Linq.Expressions/src/System/Linq/Expressions/BinaryExpression.cs#L1221
-    /// Can LINQ Expressions' BinaryExpression's comparison operations provide built-in comparison from the type in question? Otherwise, use the F# operator as the user-defined method. 
+    /// Can LINQ Expressions' BinaryExpression's comparison operations provide built-in comparison from the type in question? Otherwise, use the F# operator as the user-defined method.
     let isLinqExpressionsComparable = isLinqExpressionsNumeric
 
-    /// Can LINQ Expressions' BinaryExpression's equality operations provide built-in equality from the type in question? Otherwise, use the F# operator as the user-defined method. 
+    /// Can LINQ Expressions' BinaryExpression's equality operations provide built-in equality from the type in question? Otherwise, use the F# operator as the user-defined method.
     let isLinqExpressionsEquatable typ =
         isLinqExpressionsStructurallyEquatable typ || typ = typeof<obj>
 
-    /// Can LINQ Expressions' BinaryExpression's conversion operations provide built-in conversion from source to dest? Otherwise, use the F# operator as the user-defined method. 
+    /// Can LINQ Expressions' BinaryExpression's conversion operations provide built-in conversion from source to dest? Otherwise, use the F# operator as the user-defined method.
     let isLinqExpressionsConvertible source dest =
         // https://github.com/dotnet/runtime/blob/4c92aef2b08f9c4374c520e7e664a44f1ad8ce56/src/libraries/System.Linq.Expressions/src/System/Linq/Expressions/UnaryExpression.cs#L757
         // expression.Type.HasIdentityPrimitiveOrNullableConversionTo(type) || expression.Type.HasReferenceConversionTo(type))
         // In other words, source.HasIdentityPrimitiveOrNullableConversionTo dest || source.HasReferenceConversionTo dest
-        
+
         // https://github.com/dotnet/runtime/blob/4c92aef2b08f9c4374c520e7e664a44f1ad8ce56/src/libraries/System.Linq.Expressions/src/System/Dynamic/Utils/TypeUtils.cs#L532
         let isConvertible typ =
             let typ = getNonNullableType typ
@@ -204,7 +213,7 @@ module LeafExpressionConverter =
         // https://github.com/dotnet/runtime/blob/4c92aef2b08f9c4374c520e7e664a44f1ad8ce56/src/libraries/System.Linq.Expressions/src/System/Dynamic/Utils/TypeUtils.cs#L260
         // HasReferenceConversionTo
         let rec hasReferenceConversionTo source dest =
-        
+
             // { if (source == typeof(void) || dest == typeof(void)) return false; } invalidates an identity conversion. This is handled by the IsEquivalentTo check above.
             let nnSourceType, nnDestType = getNonNullableType source, getNonNullableType dest
 
@@ -212,12 +221,12 @@ module LeafExpressionConverter =
             nnSourceType.IsAssignableFrom nnDestType
             // Up conversion
             || nnDestType.IsAssignableFrom nnSourceType
- 
+
             // Interface conversion
             || source.IsInterface || dest.IsInterface
 
             // The following part shouldn't be needed for our usage of isLinqExpressionsConvertible here because we only use this for potentially nullable built-in numeric types
-(*          
+(*
             // Variant delegate conversion
             if (IsLegalExplicitVariantDelegateConversion(source, dest))
             {
@@ -475,11 +484,7 @@ module LeafExpressionConverter =
              build arg.Type argP n
 
         | PropertyGet(objOpt, propInfo, args) ->
-            let coerceTo =
-                if objOpt.IsSome && FSharpType.IsUnion propInfo.DeclaringType && FSharpType.IsUnion propInfo.DeclaringType.BaseType then
-                    Some propInfo.DeclaringType
-                else
-                    None
+            let coerceTo = getUnionCaseCoercionType objOpt propInfo.DeclaringType
             match args with
             | [] ->
                 Expression.Property(ConvObjArg env objOpt coerceTo, propInfo) |> asExpr
@@ -558,7 +563,7 @@ module LeafExpressionConverter =
             | NullableGreaterEqNullableQ (_, m, [x1; x2]) -> transBoolOpNoWitness isLinqExpressionsComparable env false x1 x2 false Expression.GreaterThanOrEqual m
             | NullableLessNullableQ (_, m, [x1; x2]) -> transBoolOpNoWitness isLinqExpressionsComparable env false x1 x2 false Expression.LessThan m
             | NullableLessEqNullableQ (_, m, [x1; x2]) -> transBoolOpNoWitness isLinqExpressionsComparable env false x1 x2 false Expression.LessThanOrEqual m
-            
+
             // Detect the F# quotation encoding of decimal literals
             | MakeDecimalQ (_, _, [Int32 lo; Int32 med; Int32 hi; Bool isNegative; Byte scale]) ->
                 Expression.Constant (System.Decimal(lo, med, hi, isNegative, scale)) |> asExpr
@@ -580,28 +585,28 @@ module LeafExpressionConverter =
             | BitwiseNotQ (_, _, [x]) -> transUnaryOp isLinqExpressionsIntegerOrBool inp env x Expression.Not (methodhandleof
                                                                                                                    LanguagePrimitives.LogicalNotDynamic
                                              )
-            
+
             | CheckedNeg (_, _, [x]) -> transUnaryOp isLinqExpressionsArithmeticTypeButNotUnsignedInt inp env x Expression.NegateChecked (methodhandleof (fun x -> LanguagePrimitives.CheckedUnaryNegationDynamic x))
             | CheckedPlusQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env false x1 x2 false Expression.AddChecked (methodhandleof (fun (x, y) -> LanguagePrimitives.CheckedAdditionDynamic x y))
             | CheckedMinusQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env false x1 x2 false Expression.SubtractChecked (methodhandleof (fun (x, y) -> LanguagePrimitives.CheckedSubtractionDynamic x y))
             | CheckedMultiplyQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env false x1 x2 false Expression.MultiplyChecked (methodhandleof (fun (x, y) -> LanguagePrimitives.CheckedMultiplyDynamic x y))
-            
+
             | NullablePlusQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env false x1 x2 true Expression.Add (methodhandleof (fun (x, y) -> LanguagePrimitives.AdditionDynamic x y))
             | PlusNullableQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env true x1 x2 false Expression.Add (methodhandleof (fun (x, y) -> LanguagePrimitives.AdditionDynamic x y))
             | NullablePlusNullableQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env false x1 x2 false Expression.Add (methodhandleof (fun (x, y) -> LanguagePrimitives.AdditionDynamic x y))
-            
+
             | NullableMinusQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env false x1 x2 true Expression.Subtract (methodhandleof (fun (x, y) -> LanguagePrimitives.SubtractionDynamic x y))
             | MinusNullableQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env true x1 x2 false Expression.Subtract (methodhandleof (fun (x, y) -> LanguagePrimitives.SubtractionDynamic x y))
             | NullableMinusNullableQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env false x1 x2 false Expression.Subtract (methodhandleof (fun (x, y) -> LanguagePrimitives.SubtractionDynamic x y))
-            
+
             | NullableMultiplyQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env false x1 x2 true Expression.Multiply (methodhandleof (fun (x, y) -> LanguagePrimitives.MultiplyDynamic x y))
             | MultiplyNullableQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env true x1 x2 false Expression.Multiply (methodhandleof (fun (x, y) -> LanguagePrimitives.MultiplyDynamic x y))
             | NullableMultiplyNullableQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env false x1 x2 false Expression.Multiply (methodhandleof (fun (x, y) -> LanguagePrimitives.MultiplyDynamic x y))
-            
+
             | NullableDivideQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env false x1 x2 true Expression.Divide (methodhandleof (fun (x, y) -> LanguagePrimitives.DivisionDynamic x y))
             | DivideNullableQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env true x1 x2 false Expression.Divide (methodhandleof (fun (x, y) -> LanguagePrimitives.DivisionDynamic x y))
             | NullableDivideNullableQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env false x1 x2 false Expression.Divide (methodhandleof (fun (x, y) -> LanguagePrimitives.DivisionDynamic x y))
-            
+
             | NullableModuloQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env false x1 x2 true Expression.Modulo (methodhandleof (fun (x, y) -> LanguagePrimitives.ModulusDynamic x y))
             | ModuloNullableQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env true x1 x2 false Expression.Modulo (methodhandleof (fun (x, y) -> LanguagePrimitives.ModulusDynamic x y))
             | NullableModuloNullableQ (_, _, [x1; x2]) -> transBinOp isLinqExpressionsArithmeticType inp env false x1 x2 false Expression.Modulo (methodhandleof (fun (x, y) -> LanguagePrimitives.ModulusDynamic x y))
@@ -623,15 +628,18 @@ module LeafExpressionConverter =
             | CheckedConvUInt16Q (_, _, [x]) | CheckedConvUInt32Q (_, _, [x]) | CheckedConvUInt64Q (_, _, [x]) | CheckedConvIntPtrQ (_, _, [x]) -> transConv inp env true x
             | CheckedConvUIntPtrQ (_, _, [x]) -> transConv inp env true x
 
-            | ArrayLookupQ (_, GenericArgs [|_; _; _|], [x1; x2]) ->
+            // Issue #16918: ArrayLookupQ pattern expects GenericArgs [|_|] (1 type param) not [|_; _; _|] (3 params)
+            // because GetArray only has 1 type parameter. This enables proper Expression.ArrayIndex generation
+            // that LINQ providers can translate, instead of falling through to method call handling.
+            | ArrayLookupQ (_, GenericArgs [|_|], [x1; x2]) ->
                 Expression.ArrayIndex(ConvExprToLinqInContext env x1, ConvExprToLinqInContext env x2) |> asExpr
 
             // Throw away markers inserted to satisfy C#'s design where they pass an argument
             // or type T to an argument expecting Expression<T>.
             | ImplicitExpressionConversionHelperQ (_, GenericArgs [|_|], [x1]) -> ConvExprToLinqInContext env x1
-             
+
             // Use witnesses if they are available
-            | CallWithWitnesses (objArgOpt, _, minfo2, witnessArgs, args) -> 
+            | CallWithWitnesses (objArgOpt, _, minfo2, witnessArgs, args) ->
                 let fullArgs = witnessArgs @ args
                 let replacementExpr =
                     match objArgOpt with
@@ -639,9 +647,9 @@ module LeafExpressionConverter =
                     | Some objArg -> Expr.Call(objArg, minfo2, fullArgs)
                 ConvExprToLinqInContext env replacementExpr
 
-            | _ -> 
-                let argsP = ConvExprsToLinq env args 
-                Expression.Call(ConvObjArg env objOpt None, minfo, argsP) |> asExpr  
+            | _ ->
+                let argsP = ConvExprsToLinq env args
+                Expression.Call(ConvObjArg env objOpt None, minfo, argsP) |> asExpr
 
 #if !NO_CURRIED_FUNCTION_OPTIMIZATIONS
         // f x1 x2 x3 x4 --> InvokeFast4
@@ -733,9 +741,9 @@ module LeafExpressionConverter =
             Expression.Lambda(delegateTy, bodyP, vsP) |> asExpr
 
         | NewTuple args ->
-             let tupTy = 
+             let tupTy =
                 let argTypes = args |> List.map (fun arg -> arg.Type) |> Array.ofList
-                if inp.Type.IsValueType then 
+                if inp.Type.IsValueType then
                     FSharpType.MakeStructTupleType(inp.Type.Assembly, argTypes)
                 else
                     FSharpType.MakeTupleType(argTypes)
@@ -770,13 +778,16 @@ module LeafExpressionConverter =
                     |> asExpr
 
         | Let (v, e, b) ->
+            // Use Expression.Block to properly scope the variable. This:
+            // 1. Evaluates the expression exactly once (preserving reference semantics)
+            // 2. Avoids Lambda.Invoke which EF Core cannot translate
+            // 3. Works for both mutable and immutable variables
             let vP = ConvVarToLinq v
+            let eP = ConvExprToLinqInContext env e
             let envinner = { varEnv = Map.add v (vP |> asExpr) env.varEnv }
             let bodyP = ConvExprToLinqInContext envinner b
-            let eP = ConvExprToLinqInContext env e
-            let ty = Expression.GetFuncType [| v.Type; b.Type |]
-            let lam = Expression.Lambda(ty, bodyP, [| vP |]) |> asExpr
-            Expression.Call(lam, ty.GetMethod("Invoke", instanceBindingFlags), [| eP |]) |> asExpr
+            // Create a block with the variable declaration, initial assignment, and body
+            Expression.Block([| vP |], Expression.Assign(vP, eP), bodyP) |> asExpr
 
         | Lambda(v, body) ->
             let vP = ConvVarToLinq v
@@ -792,6 +803,41 @@ module LeafExpressionConverter =
             let convType = lambdaTy.MakeGenericType tyargs
             let convDelegate = Expression.Lambda(convType, bodyP, [| vP |]) |> asExpr
             Expression.Call(typeof<FuncConvert>, "ToFSharpFunc", tyargs, [| convDelegate |]) |> asExpr
+
+        // Issue #19099: Handle Sequential (e1; e2) expressions
+        | Sequential(e1, e2) ->
+            let e1P = ConvExprToLinqInContext env e1
+            let e2P = ConvExprToLinqInContext env e2
+            Expression.Block(e1P, e2P) |> asExpr
+
+        // Issue #19099: Handle VarSet (v <- value) expressions
+        | VarSet(v, value) ->
+            let vP =
+                try Map.find v env.varEnv
+                with :? KeyNotFoundException -> invalidOp ("The variable '"+ v.Name + "' was not found in the translation context'")
+            let valueP = ConvExprToLinqInContext env value
+            Expression.Assign(vP, valueP) |> asExpr
+
+        // Issue #19099: Handle FieldSet (obj.field <- value) expressions
+        | FieldSet(objOpt, fieldInfo, value) ->
+            let objP = ConvObjArg env objOpt None
+            let valueP = ConvExprToLinqInContext env value
+            Expression.Assign(Expression.Field(objP, fieldInfo), valueP) |> asExpr
+
+        // Issue #19099: Handle PropertySet (obj.prop <- value) expressions
+        | PropertySet(objOpt, propInfo, args, value) ->
+            let coerceTo = getUnionCaseCoercionType objOpt propInfo.DeclaringType
+            let valueP = ConvExprToLinqInContext env value
+            match args with
+            | [] ->
+                let propExpr = Expression.Property(ConvObjArg env objOpt coerceTo, propInfo)
+                Expression.Assign(propExpr, valueP) |> asExpr
+            | _ ->
+                // For indexed property sets, use the setter method directly
+                let argsP = ConvExprsToLinq env args
+                let allArgsP = Array.append argsP [| valueP |]
+                Expression.Call(ConvObjArg env objOpt coerceTo, propInfo.GetSetMethod(true), allArgsP) |> asExpr
+
         | _ ->
             failConvert inp
 
@@ -910,11 +956,23 @@ module LeafExpressionConverter =
        | Value (obj, _) -> obj
        | _ ->
        let ty = e.Type
-       let e = Expr.NewDelegate (Expression.GetFuncType([|typeof<unit>; ty |]), [new Var("unit", typeof<unit>)], e)
-       let linqExpr = (ConvExprToLinq e:?> LambdaExpression)
-       let d = linqExpr.Compile ()
-       try
-           d.DynamicInvoke [| box () |]
-       with :? TargetInvocationException as exn ->
-           raise exn.InnerException
+       // Helper to compile and invoke a delegate, re-raising inner exceptions
+       let compileAndInvoke (delegateExpr: Expr) =
+           let linqExpr = ConvExprToLinq delegateExpr :?> LambdaExpression
+           let d = linqExpr.Compile()
+           try
+               d.DynamicInvoke [| box () |]
+           with :? TargetInvocationException as exn ->
+               raise exn.InnerException
+
+       // Issue #19099: Handle unit/void return types by wrapping in an Action instead of Func
+       // When the expression returns unit, the LINQ expression will have type System.Void which cannot
+       // be a return type of Func<unit, unit>. We use Action<unit> instead and return box().
+       if ty = typeof<unit> then
+           let unitVar = new Var("unit", typeof<unit>)
+           compileAndInvoke (Expr.NewDelegate(typeof<Action<unit>>, [unitVar], e)) |> ignore
+           box ()
+       else
+           let unitVar = new Var("unit", typeof<unit>)
+           compileAndInvoke (Expr.NewDelegate(Expression.GetFuncType([|typeof<unit>; ty|]), [unitVar], e))
 #endif

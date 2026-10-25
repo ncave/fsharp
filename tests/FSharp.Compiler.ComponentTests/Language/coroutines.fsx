@@ -8,7 +8,7 @@
 //    coroutine {
 //       printfn "in t1"
 //       yield ()
-//       printfn "hey"
+//       printn "hey"
 //    }
 //
 
@@ -73,7 +73,7 @@ and [<NoEquality; NoComparison>]
 
     override cr.MoveNext() = 
         match cr.TailcallTarget with 
-        | None -> //if verbose then printfn $"[{cr.Id}] move"
+        | None -> //if verbose then printn $"[{cr.Id}] move"
             MoveNext(&cr.Machine)
         | Some tg -> 
             match tg.TailcallTarget with 
@@ -219,10 +219,10 @@ let dumpCoroutine (t: Coroutine) =
     yieldFromFinalCallCount <- 0
     yieldFromCount <- 0
     printfn "-----"
-    while ( //if verbose then printfn $"[{t.Id}] calling t.MoveNext, will resume at {t.ResumptionPoint}"; 
+    while ( //if verbose then printn $"[{t.Id}] calling t.MoveNext, will resume at {t.ResumptionPoint}"; 
             t.MoveNext()
             not t.IsCompleted) do 
-        () // printfn "yield"
+        () // printn "yield"
     printfn $"YieldFromFinal called {yieldFromFinalCallCount} times, YieldFrom called {yieldFromCount} times"
 
 let expect final standard t =
@@ -266,14 +266,6 @@ let testTailcallTiny () =
     }
 
 testTailcallTiny() |> expect 2 0
-
-let testTailcallTinyDoBang () = 
-    coroutine {
-        printfn "in testTailcallTinyDoBang, desugaring do!"
-        do! t1() // this should desugr to YieldFromFinal, because ReturnFromFinal is not provided.
-    }
-
-testTailcallTinyDoBang() |> expect 2 0
 
 let rec testTailcall (n: int) = 
     coroutine {
@@ -399,4 +391,35 @@ let mostlyNegativeTestReturnFrom () =
 
 mostlyNegativeTestReturnFrom () |> expect 1 12
 
+// Test that yield! in try/with handler in tail position calls YieldFromFinal
+let testHandlerTailCall () = 
+    coroutine {
+        printfn "in testHandlerTailCall"
+        try
+            failwith "crash"
+        with
+        | _ ->
+            printfn "in handler, this yield! should be YieldFromFinal"
+            yield! t1()
+    }
+
+testHandlerTailCall () |> expect 2 0
+
+// Test that yield! in try/with handler in non-tail position calls YieldFrom
+let testHandlerNonTailCall () = 
+    coroutine {
+        printfn "in testHandlerNonTailCall"
+        try
+            failwith "crash"
+        with
+        | _ ->
+            printfn "in handler, this yield! should be YieldFrom"
+            yield! t0()
+
+        printfn "more code after try/with"
+        yield! t0()
+        printfn "done"
+    }
+
+testHandlerNonTailCall () |> expect 0 2
 

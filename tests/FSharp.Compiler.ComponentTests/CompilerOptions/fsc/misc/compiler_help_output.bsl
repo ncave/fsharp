@@ -80,10 +80,10 @@ Copyright (c) Microsoft Corporation. All Rights Reserved.
                 - LANGUAGE -
 --langversion:?                          Display the allowed values for language version.
 --langversion:{version|latest|preview}   Specify language version such as 'latest' or 'preview'.
+--disableLanguageFeature:<string>        Disable a specific language feature by name.
 --checked[+|-]                           Generate overflow checks (off by default)
 --define:<string>                        Define conditional compilation symbols (Short form: -d)
---mlcompatibility                        Ignore ML compatibility warnings
---strict-indentation[+|-]                Override indentation rules implied by the language version (off by default)
+--always-inline[+|-]                     Always inline 'inline' functions
 
 
                 - MISCELLANEOUS -

@@ -1,5 +1,5 @@
-// #Regression #Conformance #PatternMatching 
-#light
+// #Regression #Conformance #PatternMatching
+
 
 // Verify error when trying to match type against null if it doesn't support that
 

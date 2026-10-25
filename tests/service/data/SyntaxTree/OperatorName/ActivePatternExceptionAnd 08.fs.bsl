@@ -10,9 +10,11 @@ ImplFile
                    ([],
                     SynUnionCase
                       ([], SynIdent (MyExn, None), Fields [], PreXmlDocEmpty,
-                       None, (1,10--1,15), { BarRange = None }), None,
+                       None, (1,10--1,15), { BarRange = None
+                                             OfKeyword = None }), None,
                     PreXmlDoc ((1,0), FSharp.Compiler.Xml.XmlDocCollector), None,
-                    (1,0--1,15)), None, [], (1,0--1,15)), (1,0--1,15));
+                    (1,0--1,15), { ExceptionKeyword = (1,0--1,9) }), None, [],
+                 (1,0--1,15)), (1,0--1,15));
            Let
              (false,
               [SynBinding
@@ -38,10 +40,11 @@ ImplFile
                      (3,32--3,38)), (3,4--3,29), Yes (3,0--3,38),
                   { LeadingKeyword = Let (3,0--3,3)
                     InlineKeyword = None
-                    EqualsRange = Some (3,30--3,31) })], (3,0--3,38))],
-          PreXmlDocEmpty, [], None, (1,0--3,38), { LeadingKeyword = None })],
-      (true, true), { ConditionalDirectives = []
-                      WarnDirectives = []
-                      CodeComments = [] }, set []))
+                    EqualsRange = Some (3,30--3,31) })], (3,0--3,38),
+              { InKeyword = None })], PreXmlDocEmpty, [], None, (1,0--3,38),
+          { LeadingKeyword = None })], (true, true),
+      { ConditionalDirectives = []
+        WarnDirectives = []
+        CodeComments = [] }, set []))
 
 (1,0)-(2,0) parse warning The declarations in this file will be placed in an implicit module 'ActivePatternExceptionAnd 08' based on the file name 'ActivePatternExceptionAnd 08.fs'. However this is not a valid F# identifier, so the contents will not be accessible from other files. Consider renaming the file or adding a 'module' or 'namespace' declaration at the top of the file.

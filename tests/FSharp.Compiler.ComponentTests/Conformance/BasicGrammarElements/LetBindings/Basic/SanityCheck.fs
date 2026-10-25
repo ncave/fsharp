@@ -1,5 +1,5 @@
-// #Conformance #DeclarationElements #LetBindings 
-#light
+// #Conformance #DeclarationElements #LetBindings
+
 
 let f x y = x * y
 

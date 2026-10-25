@@ -1,5 +1,5 @@
-// #Conformance #PatternMatching #ActivePatterns 
-#light
+// #Conformance #PatternMatching #ActivePatterns
+
 
 // Verify ability to use wildcards when matching discriminated unions
 

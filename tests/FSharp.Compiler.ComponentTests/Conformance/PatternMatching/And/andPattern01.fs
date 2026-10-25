@@ -1,5 +1,5 @@
-// #Conformance #PatternMatching #PatternMatchingGuards 
-#light
+// #Conformance #PatternMatching #PatternMatchingGuards
+
 
 // Verify that and patterns must match both sides
 

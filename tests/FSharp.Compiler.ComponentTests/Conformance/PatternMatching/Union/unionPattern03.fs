@@ -1,5 +1,5 @@
-// #Conformance #PatternMatching #Unions 
-#light
+// #Conformance #PatternMatching #Unions
+
 
 // Test that when there are two potential matches, they are matched in the order they are defined.
 type Foo = A | B | C | D
@@ -23,11 +23,11 @@ let test2 x =
 if test1 A <> 1 then exit 1
 if test1 B <> 1 then exit 1
 if test1 C <> 2 then exit 1
-if test1 D <> 3 then exit 1   
+if test1 D <> 3 then exit 1
 
 if test2 A <> 1 then exit 1
 if test2 B <> 1 then exit 1
 if test2 C <> 2 then exit 1
-if test2 D <> 3 then exit 1   
+if test2 D <> 3 then exit 1
 
 exit 0

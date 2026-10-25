@@ -1,5 +1,5 @@
-// #Regression #Conformance #TypesAndModules #Records 
-#light
+// #Regression #Conformance #TypesAndModules #Records
+
 
 // Verify records cannot have null as a proper value
 

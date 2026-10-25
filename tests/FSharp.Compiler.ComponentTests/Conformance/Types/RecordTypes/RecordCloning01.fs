@@ -1,5 +1,5 @@
-// #Conformance #TypesAndModules #Records 
-#light
+// #Conformance #TypesAndModules #Records
+
 
 // Verify the ability to clone records using a simplified syntax
 

@@ -102,7 +102,7 @@ type FSharpParseFileResults(diagnostics: FSharpDiagnostic[], input: ParsedInput,
                 else
                     walkBinding expr2 workingRange
 
-            | SynExpr.LetOrUse(bindings = bindings; body = bodyExpr) ->
+            | SynExpr.LetOrUse({ Bindings = bindings; Body = bodyExpr }) ->
                 let potentialNestedRange =
                     bindings
                     |> List.tryFind (fun binding -> rangeContainsPos binding.RangeOfBindingWithRhs pos)
@@ -568,7 +568,7 @@ type FSharpParseFileResults(diagnostics: FSharpDiagnostic[], input: ParsedInput,
                                             | SynInterpolatedStringPart.FillExpr(fillExpr, _) -> yield fillExpr
                                     ]
 
-                        | SynExpr.DebugPoint(DebugPointAtLeafExpr.Yes m, isControlFlow, innerExpr) ->
+                        | SynExpr.DebugPoint(DebugPointAtLeafExpr.Yes(_, m), isControlFlow, innerExpr) ->
                             yield! checkRange m
                             yield! walkExpr isControlFlow innerExpr
 
@@ -633,14 +633,26 @@ type FSharpParseFileResults(diagnostics: FSharpDiagnostic[], input: ParsedInput,
                             | Some(e, _) -> yield! walkExpr true e
                             | None -> ()
 
-                            yield! walkExprs (fs |> List.choose (fun (SynExprRecordField(expr = e)) -> e))
+                            yield!
+                                walkExprs (
+                                    fs
+                                    |> List.choose (function
+                                        | SynExprRecordFieldOrSpread.Field(SynExprRecordField(expr = e), _) -> e
+                                        | SynExprRecordFieldOrSpread.Spread(spread = SynExprSpread(expr = e)) -> Some e)
+                                )
 
                         | SynExpr.AnonRecd(copyInfo = copyExprOpt; recordFields = fs) ->
                             match copyExprOpt with
                             | Some(e, _) -> yield! walkExpr true e
                             | None -> ()
 
-                            yield! walkExprs (fs |> List.map (fun (_, _, e) -> e))
+                            yield!
+                                walkExprs (
+                                    fs
+                                    |> List.map (function
+                                        | SynExprAnonRecordFieldOrSpread.Field(SynExprAnonRecordField(_, _, e, _), _)
+                                        | SynExprAnonRecordFieldOrSpread.Spread(spread = SynExprSpread(expr = e)) -> e)
+                                )
 
                         | SynExpr.ObjExpr(argOptions = args; bindings = bs; members = ms; extraImpls = is) ->
                             let bs = unionBindingAndMembers bs ms
@@ -696,7 +708,7 @@ type FSharpParseFileResults(diagnostics: FSharpDiagnostic[], input: ParsedInput,
                                 yield! walkExprOpt true whenExpr
                                 yield! walkExpr true tgtExpr
 
-                        | SynExpr.LetOrUse(bindings = binds; body = bodyExpr) ->
+                        | SynExpr.LetOrUse({ Bindings = binds; Body = bodyExpr }) ->
                             yield! walkBinds binds
                             yield! walkExpr true bodyExpr
 
@@ -791,7 +803,7 @@ type FSharpParseFileResults(diagnostics: FSharpDiagnostic[], input: ParsedInput,
                 else
                     [
                         match memb with
-                        | SynMemberDefn.LetBindings(binds, _, _, _) -> yield! walkBinds binds
+                        | SynMemberDefn.LetBindings(bindings = binds) -> yield! walkBinds binds
                         | SynMemberDefn.AutoProperty(synExpr = synExpr) -> yield! walkExpr true synExpr
                         | SynMemberDefn.ImplicitCtor(range = m) -> yield! checkRange m
                         | SynMemberDefn.Member(bind, _) -> yield! walkBind bind
@@ -821,7 +833,7 @@ type FSharpParseFileResults(diagnostics: FSharpDiagnostic[], input: ParsedInput,
             let rec walkDecl decl =
                 [
                     match decl with
-                    | SynModuleDecl.Let(_, binds, m) when isMatchRange m -> yield! walkBinds binds
+                    | SynModuleDecl.Let(bindings = binds; range = m) when isMatchRange m -> yield! walkBinds binds
                     | SynModuleDecl.Expr(expr, m) when isMatchRange m -> yield! walkExpr true expr
                     | SynModuleDecl.ModuleAbbrev _ -> ()
                     | SynModuleDecl.NestedModule(decls = decls; range = m) when isMatchRange m ->

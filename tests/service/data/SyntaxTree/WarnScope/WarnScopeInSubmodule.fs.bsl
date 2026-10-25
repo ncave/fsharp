@@ -6,7 +6,7 @@ ImplFile
          ([M], false, NamedModule,
           [NestedModule
              (SynComponentInfo
-                ([], None, [], [N],
+                ([], None, [], Some (LongIdent (SynLongIdent ([N], [], []))),
                  PreXmlDoc ((2,0), FSharp.Compiler.Xml.XmlDocCollector), false,
                  None, (2,0--2,8)), false,
               [Expr (Const (Unit, (4,4--4,6)), (4,4--4,6));
@@ -17,5 +17,5 @@ ImplFile
           PreXmlDoc ((1,0), FSharp.Compiler.Xml.XmlDocCollector), [], None,
           (1,0--7,2), { LeadingKeyword = Module (1,0--1,6) })], (true, true),
       { ConditionalDirectives = []
-        WarnDirectives = [Nowarn (3,0--3,17); Warnon (5,0--5,30)]
+        WarnDirectives = [Nowarn (3,4--3,17); Warnon (5,4--5,30)]
         CodeComments = [] }, set []))

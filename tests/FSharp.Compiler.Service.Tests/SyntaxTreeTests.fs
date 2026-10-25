@@ -7,6 +7,7 @@ open FSharp.Compiler.Service.Tests.Common
 open FSharp.Compiler.Syntax
 open FSharp.Compiler.Text
 open FSharp.Test
+open FSharp.Test.Compiler
 open Xunit
 
 let testCasesDir = __SOURCE_DIRECTORY__ ++ ".." ++ "service" ++ "data" ++ "SyntaxTree"
@@ -124,6 +125,7 @@ let private sanitizeAST (sourceDirectoryValue: string) (ast: ParsedInput) : Pars
 
 let parseSourceCode (name: string, code: string) =
     let location = Path.Combine(RootDirectory, name).Replace("\\", "/")
+    Range.setTestSource location code
 
     let parseResults =
         checker.ParseFile(
@@ -134,7 +136,7 @@ let parseSourceCode (name: string, code: string) =
                 IsExe = true
                 LangVersionText = "preview" }
         )
-        |> Async.RunImmediate
+        |> Async.RunSynchronouslyImmediate
 
     let tree = parseResults.ParseTree
     let sourceDirectoryValue = $"{RootDirectory}/{FileInfo(location).Directory.Name}"
@@ -143,9 +145,9 @@ let parseSourceCode (name: string, code: string) =
 /// Asserts the parsed untyped tree matches the expected baseline.
 ///
 /// To update a baseline:
-///     CMD: set TEST_UPDATE_BSL=1 & dotnet test --filter "ParseFile"
-///     PowerShell: $env:TEST_UPDATE_BSL = "1" ; dotnet test --filter "ParseFile"
-///     Linux/macOS: export TEST_UPDATE_BSL=1 & dotnet test --filter "ParseFile"
+///     CMD: set TEST_UPDATE_BSL=1 & dotnet test -- --filter-method "*ParseFile*"
+///     PowerShell: $env:TEST_UPDATE_BSL = "1" ; dotnet test -- --filter-method "*ParseFile*"
+///     Linux/macOS: export TEST_UPDATE_BSL=1 & dotnet test -- --filter-method "*ParseFile*"
 ///
 /// Assuming your current directory is tests/FSharp.Compiler.Service.Tests
 [<Theory>]
@@ -176,26 +178,7 @@ let ParseFile fileName =
         |> normalize
         |> sprintf "%s\n"
 
-    let bslPath = $"{fullPath}.bsl"
-    let actualPath = $"{fullPath}.actual"
-
-    let expected =
-        if File.Exists bslPath then
-            File.ReadAllText bslPath |> normalize
-        else
-            "No baseline was found"
-
-    let equals = expected = actual
-    let testUpdateBSLEnv = System.Environment.GetEnvironmentVariable("TEST_UPDATE_BSL")
-
-    if not (isNull testUpdateBSLEnv) && testUpdateBSLEnv.Trim() = "1" && not equals then
-        File.WriteAllText(bslPath, actual)
-    elif not equals then
-        File.WriteAllText(actualPath, actual)
-    else
-        File.Delete(actualPath)
-
-    Assert.Equal(expected, actual)
+    checkBaseline actual $"{fullPath}.bsl"
 
     // Run type checker to assert that it doesn't fail with the tree produced by the parser
     CompilerAssert.ParseAndTypeCheck([|"--langversion:preview"|], fileName, contents) |> ignore

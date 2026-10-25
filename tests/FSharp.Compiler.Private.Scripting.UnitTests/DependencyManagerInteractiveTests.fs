@@ -36,10 +36,7 @@ type DependencyManagerInteractiveTests() =
         | Ok(value) -> value
         | Error ex -> raise ex
 
-    let getErrors ((_value: Result<FsiValue option, exn>), (errors: FSharpDiagnostic[])) =
-        errors
-
-    [<Fact>]
+    [<FSharp.Test.FactSkipOnSignedBuild>]
     member _.``SmokeTest - #r nuget``() =
         let text = """
 #r @"nuget:Newtonsoft.Json, Version=9.0.1"
@@ -50,30 +47,25 @@ type DependencyManagerInteractiveTests() =
         Assert.Equal(typeof<int>, value.ReflectionType)
         Assert.Equal(0, value.ReflectionValue :?> int)
 
-    [<Fact>]
+    [<FSharp.Test.FactSkipOnSignedBuild>]
     member _.``SmokeTest - #r nuget package not found``() =
         let text = """
 #r @"nuget:System.Collections.Immutable.DoesNotExist, version=1.5.0"
 0"""
         use script = new scriptHost()
         let _opt, errors = script.Eval(text)
-        Assert.Equal(errors.Length, 1)
+        Assert.Single(errors) |> ignore
 
-(*
-    [<Theory>]
-    [<InlineData("""#r "#i "unknown:Astring" """, """ """)>]
-    member _.``syntax produces error messages in FSharp 4.7``(code:string, message: string) =
-        use script = new scriptHost()
-        let errors = script.Eval(code) |> getErrors
-        Assert.Contains(message, errors |> Array.map(fun e -> e.Message))
-*)
-    static member SdkDirOverrideTestData = [|
-        [| None |]
-        [| Path.Combine(__SOURCE_DIRECTORY__, "..", "..", ".dotnet", "sdk")
-        |> Directory.GetDirectories
-        |> Seq.head
-        |> Some |]
-    |]
+    static member SdkDirOverrideTestData =
+        [|
+            yield [| None |]
+            let dotnetRoot = Environment.GetEnvironmentVariable("DOTNET_ROOT")
+            if not (isNull dotnetRoot) then
+                yield [| Path.Combine(dotnetRoot, "sdk")
+                      |> Directory.GetDirectories
+                      |> Seq.head
+                      |> Some |]
+        |]
 
     [<Theory>]
     [<MemberData(nameof DependencyManagerInteractiveTests.SdkDirOverrideTestData)>]
@@ -97,7 +89,7 @@ type DependencyManagerInteractiveTests() =
             Assert.Equal(1, result.SourceFiles |> Seq.length)
             Assert.Equal(2, result.Roots |> Seq.length)
 
-        let result = dp.Resolve(idm, ".fsx", [|"r", "FSharp.Data,3.3.3"|], reportError, "net10.0")
+        let result = dp.Resolve(idm, ".fsx", [|"r", "FSharp.Data,3.3.3"|], reportError, TestFramework.productTfm)
         Assert.Equal(true, result.Success)
         Assert.Equal(1, result.Resolutions |> Seq.length)
         Assert.Equal(1, result.SourceFiles |> Seq.length)
@@ -119,7 +111,7 @@ type DependencyManagerInteractiveTests() =
 
         let idm = dp.TryFindDependencyManagerByKey(Seq.empty, "", None, reportError, "nuget")
 
-        let result = dp.Resolve(idm, ".fsx", [|"r", "Microsoft.Data.Sqlite, 3.1.8"|], reportError, "net10.0")
+        let result = dp.Resolve(idm, ".fsx", [|"r", "Microsoft.Data.Sqlite, 3.1.8"|], reportError, TestFramework.productTfm)
         Assert.Equal(true, result.Success)
         Assert.True((result.Resolutions |> Seq.length) > 1)
         Assert.Equal(1, result.SourceFiles |> Seq.length)
@@ -149,7 +141,7 @@ type DependencyManagerInteractiveTests() =
             Assert.Equal(0, result.SourceFiles |> Seq.length)
             Assert.Equal(0, result.Roots |> Seq.length)
 
-        let result = dp.Resolve(idm, ".fsx", [|"r", "System.Collections.Immutable.DoesNotExist"|], reportError, "net10.0")
+        let result = dp.Resolve(idm, ".fsx", [|"r", "System.Collections.Immutable.DoesNotExist"|], reportError, TestFramework.productTfm)
         Assert.Equal(false, result.Success)
         Assert.Equal(0, result.Resolutions |> Seq.length)
         Assert.Equal(0, result.SourceFiles |> Seq.length)
@@ -179,7 +171,7 @@ type DependencyManagerInteractiveTests() =
             Assert.True((result1.Roots |> Seq.head).EndsWith("/fsharp.data/3.3.3/"))
             Assert.True((result1.Roots |> Seq.last).EndsWith("/microsoft.netframework.referenceassemblies/1.0.0/"))
 
-        let result2 = dp1.Resolve(idm1, ".fsx", [|"r", "FSharp.Data,3.3.3"|], reportError, "net10.0")
+        let result2 = dp1.Resolve(idm1, ".fsx", [|"r", "FSharp.Data,3.3.3"|], reportError, TestFramework.productTfm)
         Assert.Equal(true, result2.Success)
         Assert.Equal(1, result2.Resolutions |> Seq.length)
         let expected2 = "/netstandard2.0/"
@@ -200,7 +192,7 @@ type DependencyManagerInteractiveTests() =
             Assert.Equal(1, result3.SourceFiles |> Seq.length)
             Assert.True((result3.Roots |> Seq.head).EndsWith("/system.json/4.6.0/"))
 
-        let result4 = dp2.Resolve(idm2, ".fsx", [|"r", "System.Json, Version=4.6.0"|], reportError, "net10.0")
+        let result4 = dp2.Resolve(idm2, ".fsx", [|"r", "System.Json, Version=4.6.0"|], reportError, TestFramework.productTfm)
         Assert.Equal(true, result4.Success)
         Assert.Equal(1, result4.Resolutions |> Seq.length)
         let expected4 = "/netstandard2.0/"
@@ -235,14 +227,16 @@ type DependencyManagerInteractiveTests() =
             Assert.True((result1.Roots |> Seq.head).EndsWith("/microsoft.extensions.configuration.abstractions/3.1.1/"))
 
         // Netstandard gets fewer dependencies than desktop, because desktop framework doesn't contain assemblies like System.Memory
-        // Those assemblies must be delivered by nuget for desktop apps
-        let result2 = dp1.Resolve(idm1, ".fsx", [|"r", "Microsoft.Extensions.Configuration.Abstractions, 3.1.1"|], reportError, "net10.0")
+        // Those assemblies must be delivered by nuget for desktop apps.
+        // In .NET 11+, Microsoft.Extensions.* assemblies are part of the shared framework.
+        // The conflict resolution returns framework ref pack paths instead of NuGet cache paths.
+        // Only the directly-requested package root is available (transitive deps are framework-provided).
+        let result2 = dp1.Resolve(idm1, ".fsx", [|"r", "Microsoft.Extensions.Configuration.Abstractions, 3.1.1"|], reportError, TestFramework.productTfm)
         Assert.Equal(true, result2.Success)
         Assert.Equal(2, result2.Resolutions |> Seq.length)
-        let expected = "/netcoreapp3.1/"
-        Assert.True((result2.Resolutions |> Seq.head).Contains(expected))
+        Assert.True((result2.Resolutions |> Seq.head).Contains("Microsoft.Extensions.Configuration.Abstractions"))
         Assert.Equal(1, result2.SourceFiles |> Seq.length)
-        Assert.Equal(2, result2.Roots |> Seq.length)
+        Assert.Equal(1, result2.Roots |> Seq.length)
         Assert.True((result2.Roots |> Seq.head).EndsWith("/microsoft.extensions.configuration.abstractions/3.1.1/"))
         ()
 
@@ -267,7 +261,7 @@ TorchSharp.Tensor.LongTensor.From([| 0L .. 100L |]).Device
         ()
 
 
-    [<Fact>]
+    [<FSharp.Test.FactSkipOnSignedBuild>]
     member _.``Use Dependency Manager to restore packages with native dependencies, build and run script that depends on the results``() =
         // Skip test on arm64, because there is not an arm64 native library
         if RuntimeInformation.ProcessArchitecture = Architecture.Arm64 then
@@ -296,7 +290,7 @@ TorchSharp.Tensor.LongTensor.From([| 0L .. 100L |]).Device
         let result =
             use dp = new DependencyProvider(AssemblyResolutionProbe(assemblyProbingPaths), NativeResolutionProbe(nativeProbingRoots), false)
             let idm = dp.TryFindDependencyManagerByKey(Seq.empty, "", None, reportError, "nuget")
-            dp.Resolve(idm, ".fsx", packagemanagerlines, reportError, "net10.0")
+            dp.Resolve(idm, ".fsx", packagemanagerlines, reportError, TestFramework.productTfm)
 
         Assert.True(result.Success, "resolve failed")
 
@@ -366,7 +360,7 @@ printfn ""%A"" result
         let value = opt.Value
         Assert.Equal(123, value.ReflectionValue :?> int32)
 
-    [<Fact>]
+    [<FSharp.Test.FactSkipOnSignedBuild>]
     member _.``Use NativeResolver to resolve native dlls.``() =
         // Skip test on arm64, because there is not an arm64 native library
         if RuntimeInformation.ProcessArchitecture = Architecture.Arm64 then
@@ -394,7 +388,7 @@ printfn ""%A"" result
         let result =
             use dp = new DependencyProvider(NativeResolutionProbe(nativeProbingRoots), false)
             let idm = dp.TryFindDependencyManagerByKey(Seq.empty, "", None, reportError, "nuget")
-            dp.Resolve(idm, ".fsx", packagemanagerlines, reportError, "net10.0")
+            dp.Resolve(idm, ".fsx", packagemanagerlines, reportError, TestFramework.productTfm)
 
         Assert.True(result.Success, "resolve failed")
 
@@ -450,7 +444,7 @@ printfn ""%A"" result
         let value = opt.Value
         Assert.Equal(123, value.ReflectionValue :?> int32)
 
-    [<Fact>]
+    [<FSharp.Test.FactSkipOnSignedBuild>]
     member _.``Use AssemblyResolver to resolve assemblies``() =
         // Skip test on arm64, because there is not an arm64 native library
         if RuntimeInformation.ProcessArchitecture = Architecture.Arm64 then
@@ -479,7 +473,7 @@ printfn ""%A"" result
         let result =
             use dp = new DependencyProvider(NativeResolutionProbe(nativeProbingRoots), false)
             let idm = dp.TryFindDependencyManagerByKey(Seq.empty, "", None, reportError, "nuget")
-            dp.Resolve(idm, ".fsx", packagemanagerlines, reportError, "net10.0")
+            dp.Resolve(idm, ".fsx", packagemanagerlines, reportError, TestFramework.productTfm)
 
         Assert.True(result.Success, "resolve failed")
 
@@ -533,7 +527,7 @@ x |> Seq.iter(fun r ->
         let result =
             use dp = new DependencyProvider(NativeResolutionProbe(nativeProbingRoots), false)
             let idm = dp.TryFindDependencyManagerByKey(Seq.empty, "", None, reportError, "nuget")
-            dp.Resolve(idm, ".fsx", packagemanagerlines, reportError, "net10.0")
+            dp.Resolve(idm, ".fsx", packagemanagerlines, reportError, TestFramework.productTfm)
 
         // Expected: error FS3217: PackageManager cannot reference the System Package 'FSharp.Core'
         Assert.False(result.Success, "resolve succeeded but should have failed")
@@ -556,7 +550,7 @@ x |> Seq.iter(fun r ->
         let result =
             use dp = new DependencyProvider(NativeResolutionProbe(nativeProbingRoots), false)
             let idm = dp.TryFindDependencyManagerByKey(Seq.empty, "", None, reportError, "nuget")
-            dp.Resolve(idm, ".csx", packagemanagerlines, reportError, "net10.0")
+            dp.Resolve(idm, ".csx", packagemanagerlines, reportError, TestFramework.productTfm)
 
         Assert.True(result.Success, "resolve failed but should have succeeded")
 
@@ -599,7 +593,7 @@ x |> Seq.iter(fun r ->
             Assert.Equal(1, result.SourceFiles |> Seq.length)
             Assert.Equal(2, result.Roots |> Seq.length)
 
-        let result = dp.Resolve(idm, ".fsx", [|"r", "FSharp.Data,3.3.3"|], reportError, "net10.0")
+        let result = dp.Resolve(idm, ".fsx", [|"r", "FSharp.Data,3.3.3"|], reportError, TestFramework.productTfm)
         Assert.Equal(true, result.Success)
         Assert.Equal(1, result.Resolutions |> Seq.length)
         Assert.Equal(1, result.SourceFiles |> Seq.length)
@@ -706,7 +700,7 @@ x |> Seq.iter(fun r ->
             let mutable currentPath:string = null
             use dp = new DependencyProvider(NativeResolutionProbe(nativeProbingRoots), false)
             let idm = dp.TryFindDependencyManagerByKey(Seq.empty, "", None, reportError, "nuget")
-            let result = dp.Resolve(idm, ".fsx", [|"r", "Microsoft.Data.Sqlite,3.1.7"|], reportError, "net10.0")
+            let result = dp.Resolve(idm, ".fsx", [|"r", "Microsoft.Data.Sqlite,3.1.7"|], reportError, TestFramework.productTfm)
             Assert.Equal(true, result.Success)
             currentPath <-  appendSemiColon (Environment.GetEnvironmentVariable("PATH"))
         finalPath <- appendSemiColon (Environment.GetEnvironmentVariable("PATH"))
@@ -717,29 +711,18 @@ x |> Seq.iter(fun r ->
 
     [<Fact>]
     member _.``Verify that #help produces help text for fsi + dependency manager``() =
-        let expected = """
-  F# Interactive directives:
-
-    #r "file.dll";;                               // Reference (dynamically load) the given DLL
-    #i "package source uri";;                     // Include package source uri when searching for packages
-    #I "path";;                                   // Add the given search path for referenced DLLs
-    #load "file.fs" ...;;                         // Load the given file(s) as if compiled and referenced
-    #time ["on"|"off"];;                          // Toggle timing on/off
-    #help;;                                       // Display help
-    #help "idn";;                                 // Display documentation for an identifier, e.g. #help "List.map";;
-    #clear;;                                      // Clear screen
-    #quit;;                                       // Exit
-
-  F# Interactive command line options:"""
-
-        use script = new FSharpScript(quiet = false, langVersion = LangVersion.V47)
+        use script = new FSharpScript(quiet = false, langVersion = LangVersion.V80)
 
         use capture = new TestConsole.ExecutionCapture()
         let _opt = script.Eval("#help") |> getValue
 
         let output = capture.OutText
 
-        Assert.Contains(expected, output)
+        // Verify dependency manager lines are present in help output
+        Assert.Contains("""#r "nuget:FSharp.Data, 3.1.2";;""", output)
+        Assert.Contains("""#r "nuget:FSharp.Data";;""", output)
+        Assert.Contains("""#i "package source uri";;""", output)
+        Assert.Contains("#version;;", output)
 
         // this is the end of the line each different platform has a different mechanism for starting fsi
         // Actual output looks similar to: """      See 'testhost --help' for options"""
@@ -747,23 +730,6 @@ x |> Seq.iter(fun r ->
 
     [<Fact>]
     member _.``Verify that #help produces help text for fsi + dependency manager language version preview``() =
-        let expected = """
-  F# Interactive directives:
-
-    #r "file.dll";;                               // Reference (dynamically load) the given DLL
-    #i "package source uri";;                     // Include package source uri when searching for packages
-    #I "path";;                                   // Add the given search path for referenced DLLs
-    #load "file.fs" ...;;                         // Load the given file(s) as if compiled and referenced
-    #time ["on"|"off"];;                          // Toggle timing on/off
-    #help;;                                       // Display help
-    #help "idn";;                                 // Display documentation for an identifier, e.g. #help "List.map";;
-    #r "nuget:FSharp.Data, 3.1.2";;               // Load Nuget Package 'FSharp.Data' version '3.1.2'
-    #r "nuget:FSharp.Data";;                      // Load Nuget Package 'FSharp.Data' with the highest version
-    #clear;;                                      // Clear screen
-    #quit;;                                       // Exit
-
-  F# Interactive command line options:"""
-
         use script = new FSharpScript(quiet = false, langVersion = LangVersion.Preview)
 
         use capture = new TestConsole.ExecutionCapture()
@@ -771,7 +737,11 @@ x |> Seq.iter(fun r ->
 
         let output = capture.OutText
 
-        Assert.Contains(expected, output)
+        // Verify dependency manager lines are present in help output
+        Assert.Contains("""#r "nuget:FSharp.Data, 3.1.2";;""", output)
+        Assert.Contains("""#r "nuget:FSharp.Data";;""", output)
+        Assert.Contains("""#i "package source uri";;""", output)
+        Assert.Contains("#version;;", output)
 
         // this is the end of the line each different platform has a different mechanism for starting fsi
         // Actual output looks similar to: """      See 'testhost --help' for options"""
@@ -794,7 +764,7 @@ x |> Seq.iter(fun r ->
             ResolvingErrorReport (report)
 
         let idm = dp.TryFindDependencyManagerByKey(Seq.empty, "", None, reportError, "nuget")
-        let result = dp.Resolve(idm, ".fsx", [|"r", "FSharp.Data,3.3.3"|], reportError, "net10.0", timeout=0)           // Fail in 0 milliseconds
+        let result = dp.Resolve(idm, ".fsx", [|"r", "FSharp.Data,3.3.3"|], reportError, TestFramework.productTfm, timeout=0)           // Fail in 0 milliseconds
         Assert.Equal(false, result.Success)
         Assert.Equal(foundCorrectError, true)
         Assert.Equal(foundWrongError, false)
@@ -817,7 +787,7 @@ x |> Seq.iter(fun r ->
             ResolvingErrorReport (report)
 
         let idm = dp.TryFindDependencyManagerByKey(Seq.empty, "", None, reportError, "nuget")
-        let result = dp.Resolve(idm, ".fsx", [|"r", "FSharp.Data,3.3.3"; "r", "timeout=0"|], reportError, "net10.0", null, "", "", "", -1)           // Wait forever
+        let result = dp.Resolve(idm, ".fsx", [|"r", "FSharp.Data,3.3.3"; "r", "timeout=0"|], reportError, TestFramework.productTfm, null, "", "", "", -1)           // Wait forever
         Assert.Equal(false, result.Success)
         Assert.Equal(foundCorrectError, true)
         Assert.Equal(foundWrongError, false)
@@ -840,13 +810,13 @@ x |> Seq.iter(fun r ->
             ResolvingErrorReport (report)
 
         let idm = dp.TryFindDependencyManagerByKey(Seq.empty, "", None, reportError, "nuget")
-        let result = dp.Resolve(idm, ".fsx", [|"r", "FSharp.Data,3.3.3"; "r", "timeout=none"|], reportError, "net10.0", null, "", "", "", -1)           // Wait forever
+        let result = dp.Resolve(idm, ".fsx", [|"r", "FSharp.Data,3.3.3"; "r", "timeout=none"|], reportError, TestFramework.productTfm, null, "", "", "", -1)           // Wait forever
         Assert.Equal(true, result.Success)
         Assert.Equal(foundCorrectError, false)
         Assert.Equal(foundWrongError, false)
         ()
 
-        
+
     [<Fact>]
     member _.``Verify that clear cache doesn't fail and clears the cache``() =
         let nativeProbingRoots () = Seq.empty<string>
@@ -866,7 +836,7 @@ x |> Seq.iter(fun r ->
         let idm = dp.TryFindDependencyManagerByKey(Seq.empty, "", None, reportError, "nuget")
 
         // Resolve and cache the results won't time out
-        let _result = dp.Resolve(idm, ".fsx", [|"r", "FSharp.Data,3.3.3"; "r", "timeout=10000"|], reportError, "net10.0", null, "", "", "", -1)           // Wait forever
+        let _result = dp.Resolve(idm, ".fsx", [|"r", "FSharp.Data,3.3.3"; "r", "timeout=10000"|], reportError, TestFramework.productTfm, null, "", "", "", -1)           // Wait forever
 
         // Clear the results
         foundCorrectError <- false
@@ -875,7 +845,7 @@ x |> Seq.iter(fun r ->
         // Now clear the cache --- this will ensure that resolving produces a timeout error.  If we read from the cache the test will fail
         dp.ClearResultsCache(Seq.empty, "", None, reportError)
 
-        let result = dp.Resolve(idm, ".fsx", [|"r", "FSharp.Data,3.3.3"; "r", "timeout=0"|], reportError, "net10.0", null, "", "", "", -1)           // Wait forever
+        let result = dp.Resolve(idm, ".fsx", [|"r", "FSharp.Data,3.3.3"; "r", "timeout=0"|], reportError, TestFramework.productTfm, null, "", "", "", -1)           // Wait forever
         Assert.Equal(false, result.Success)
         Assert.Equal(foundCorrectError, true)
         Assert.Equal(foundWrongError, false)

@@ -46,7 +46,6 @@ module internal Bytes =
     let stringAsUnicodeNullTerminated (s: string) =
         Array.append (Encoding.Unicode.GetBytes s) (ofInt32Array [| 0x0; 0x0 |])
 
-[<Experimental("This FCS API/Type is experimental and subject to change.")>]
 [<AbstractClass>]
 type ByteMemory() =
     abstract Item: int -> byte with get, set
@@ -200,13 +199,10 @@ type internal MemoryMappedStream(mmf: MemoryMappedFile, length: int64) =
     override x.Write(buffer, offset, count) = viewStream.Write(buffer, offset, count)
     override x.Read(buffer, offset, count) = viewStream.Read(buffer, offset, count)
 
-    override x.Finalize() = x.Dispose()
-
-    interface IDisposable with
-        override x.Dispose() =
-            GC.SuppressFinalize x
-            mmf.Dispose()
-            viewStream.Dispose()
+    override _.Dispose disposing =
+        base.Dispose disposing
+        viewStream.Dispose()
+        mmf.Dispose()
 
 [<Experimental("This FCS API/Type is experimental and subject to change.")>]
 type RawByteMemory(addr: nativeptr<byte>, length: int, holder: obj) =
@@ -391,9 +387,9 @@ module MemoryMappedFileExtensions =
             let length = int64 bytes.Length
 
             trymmf length (fun stream ->
-                let span = Span<byte>(stream.PositionPointer |> NativePtr.toVoidPtr, int length)
-                bytes.Span.CopyTo(span)
-                stream.Position <- stream.Position + length)
+                match MemoryMarshal.TryGetArray(bytes) with
+                | true, segment -> stream.Write(!!segment.Array, segment.Offset, segment.Count)
+                | false, _ -> stream.Write(bytes.ToArray(), 0, bytes.Length))
 
 [<RequireQualifiedAccess>]
 module internal FileSystemUtils =
@@ -446,14 +442,12 @@ module internal FileSystemUtils =
 
     let isDll fileName = checkSuffix fileName ".dll"
 
-[<Experimental("This FCS API/Type is experimental and subject to change.")>]
 type IAssemblyLoader =
 
     abstract AssemblyLoadFrom: fileName: string -> Assembly
 
     abstract AssemblyLoad: assemblyName: AssemblyName -> Assembly
 
-[<Experimental("This FCS API/Type is experimental and subject to change.")>]
 type DefaultAssemblyLoader() =
 
     interface IAssemblyLoader with
@@ -462,7 +456,6 @@ type DefaultAssemblyLoader() =
 
         member _.AssemblyLoad(assemblyName: AssemblyName) = Assembly.Load assemblyName
 
-[<Experimental("This FCS API/Type is experimental and subject to change.")>]
 type IFileSystem =
     // note: do not add members if you can put generic implementation under StreamExtensions below.
 
@@ -512,7 +505,6 @@ type IFileSystem =
 
 // note: do not add members if you can put generic implementation under StreamExtensions below.
 
-[<Experimental("This FCS API/Type is experimental and subject to change.")>]
 type DefaultFileSystem() as this =
     abstract AssemblyLoader: IAssemblyLoader
     default _.AssemblyLoader = DefaultAssemblyLoader() :> IAssemblyLoader
@@ -534,37 +526,41 @@ type DefaultFileSystem() as this =
         if not useMemoryMappedFile then
             fileStream :> Stream
         else
-            let mmf =
-                if shouldShadowCopy then
-                    let mmf =
-                        MemoryMappedFile.CreateNew(
+            try
+                let mmf =
+                    if shouldShadowCopy then
+                        let mmf =
+                            MemoryMappedFile.CreateNew(
+                                null,
+                                length,
+                                MemoryMappedFileAccess.ReadWrite,
+                                MemoryMappedFileOptions.None,
+                                HandleInheritability.None
+                            )
+
+                        use stream = mmf.CreateViewStream(0L, length, MemoryMappedFileAccess.ReadWrite)
+                        fileStream.CopyTo(stream)
+                        fileStream.Dispose()
+                        mmf
+                    else
+                        MemoryMappedFile.CreateFromFile(
+                            fileStream,
                             null,
                             length,
-                            MemoryMappedFileAccess.ReadWrite,
-                            MemoryMappedFileOptions.None,
-                            HandleInheritability.None
+                            MemoryMappedFileAccess.Read,
+                            HandleInheritability.None,
+                            leaveOpen = false
                         )
 
-                    use stream = mmf.CreateViewStream(0L, length, MemoryMappedFileAccess.ReadWrite)
-                    fileStream.CopyTo(stream)
-                    fileStream.Dispose()
-                    mmf
-                else
-                    MemoryMappedFile.CreateFromFile(
-                        fileStream,
-                        null,
-                        length,
-                        MemoryMappedFileAccess.Read,
-                        HandleInheritability.None,
-                        leaveOpen = false
-                    )
+                let stream = new MemoryMappedStream(mmf, length)
 
-            let stream = new MemoryMappedStream(mmf, length)
+                if not stream.CanRead then
+                    invalidOp "Cannot read file"
 
-            if not stream.CanRead then
-                invalidOp "Cannot read file"
-
-            stream :> Stream
+                stream :> Stream
+            with _ ->
+                fileStream.Dispose()
+                reraise ()
 
     abstract OpenFileForWriteShim: filePath: string * ?fileMode: FileMode * ?fileAccess: FileAccess * ?fileShare: FileShare -> Stream
 
@@ -615,19 +611,25 @@ type DefaultFileSystem() as this =
     abstract IsInvalidPathShim: path: string -> bool
 
     default _.IsInvalidPathShim(path: string) =
-        let isInvalidPath (p: string MaybeNull) =
-            if String.IsNullOrEmpty(p) then
-                true
-            else
-                p.IndexOfAny(Path.GetInvalidPathChars()) <> -1
+        let isInvalidPath (p: (string | null)) =
+            match p with
+            | Null -> true
+            | NonNull p ->
+                if String.IsNullOrEmpty(p) then
+                    true
+                else
+                    p.IndexOfAny(Path.GetInvalidPathChars()) <> -1
 
-        let isInvalidFilename (p: string MaybeNull) =
-            if String.IsNullOrEmpty(p) then
-                true
-            else
-                p.IndexOfAny(Path.GetInvalidFileNameChars()) <> -1
+        let isInvalidFilename (p: (string | null)) =
+            match p with
+            | Null -> true
+            | NonNull p ->
+                if String.IsNullOrEmpty(p) then
+                    true
+                else
+                    p.IndexOfAny(Path.GetInvalidFileNameChars()) <> -1
 
-        let isInvalidDirectory (d: string MaybeNull) =
+        let isInvalidDirectory (d: (string | null)) =
             match d with
             | Null -> true
             | NonNull d -> d.IndexOfAny(Path.GetInvalidPathChars()) <> -1
@@ -1091,9 +1093,11 @@ type ByteStorage(getByteMemory: unit -> ReadOnlyByteMemory) =
     static member FromByteMemory(bytes: ReadOnlyByteMemory) = ByteStorage(fun () -> bytes)
 
     static member FromByteMemoryAndCopy(bytes: ReadOnlyByteMemory, useBackingMemoryMappedFile: bool) =
+        let length = bytes.Length
+
         if useBackingMemoryMappedFile then
             match MemoryMappedFile.TryFromByteMemory(bytes) with
-            | Some mmf -> ByteStorage(fun () -> ByteMemory.FromMemoryMappedFile(mmf).AsReadOnly())
+            | Some mmf -> ByteStorage(fun () -> ByteMemory.FromMemoryMappedFile(mmf).Slice(0, length).AsReadOnly())
             | _ ->
                 let copiedBytes = ByteMemory.FromArray(bytes.ToArray()).AsReadOnly()
                 ByteStorage.FromByteMemory(copiedBytes)

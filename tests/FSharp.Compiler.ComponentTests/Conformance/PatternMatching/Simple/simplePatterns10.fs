@@ -1,12 +1,12 @@
-// #Conformance #PatternMatching 
-#light 
+// #Conformance #PatternMatching
+
 
 let f x y =
     match x, y with
     | (0), (0) -> false
     | (1), (0) -> true
     | _, _ -> false
-    
+
 let r1 = f 0 0
 let r2 = f 1 0
 let r3 = f 0 1

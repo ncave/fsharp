@@ -98,6 +98,7 @@ module internal RoslynHelpers =
         | TextTag.Punctuation -> TextTags.Punctuation
         | TextTag.Text
         | TextTag.ModuleBinding // why no 'Identifier'? Does it matter?
+        | TextTag.UnresolvedName
         | TextTag.UnknownEntity -> TextTags.Text
 
     let CollectTaggedText (list: List<_>) (t: TaggedText) =
@@ -134,7 +135,9 @@ module internal RoslynHelpers =
                     return! computation
                 }
 
-        let tcs = new TaskCompletionSource<_>(TaskCreationOptions.None)
+        let tcs =
+            new TaskCompletionSource<_>(TaskCreationOptions.RunContinuationsAsynchronously)
+
         let barrier = VolatileBarrier()
 
         let reg =
@@ -228,6 +231,13 @@ module internal RoslynHelpers =
         Async.Start(computation, cancellationToken)
 
 module internal OpenDeclarationHelper =
+    let getInsertionPosition (getLineStr: int -> string) (ctx: InsertionContext) =
+        match ctx.ScopeKind with
+        | ScopeKind.Namespace when (getLineStr (ctx.Pos.Line - 1)).StartsWith("namespace", StringComparison.Ordinal) ->
+            Position.mkPos (ctx.Pos.Line + 1) ctx.Pos.Column
+        | ScopeKind.Namespace -> ctx.Pos
+        | _ -> ParsedInput.AdjustInsertionPoint getLineStr ctx
+
     /// <summary>
     /// Inserts open declaration into `SourceText`.
     /// </summary>
@@ -256,7 +266,8 @@ module internal OpenDeclarationHelper =
         let getLineStr line =
             sourceText.Lines.[line].ToString().Trim()
 
-        let pos = ParsedInput.AdjustInsertionPoint getLineStr ctx
+        let pos = getInsertionPosition getLineStr ctx
+
         let docLine = Line.toZ pos.Line
         let lineStr = (String.replicate pos.Column " ") + "open " + ns
 
@@ -286,11 +297,6 @@ module internal OpenDeclarationHelper =
                 sourceText
 
         sourceText, minPos |> Option.defaultValue 0
-
-[<AutoOpen>]
-module internal TaggedText =
-    let toString (tts: TaggedText[]) =
-        tts |> Array.map (fun tt -> tt.Text) |> String.concat ""
 
 // http://www.fssnip.net/7S3/title/Intersperse-a-list
 module List =

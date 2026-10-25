@@ -1,5 +1,5 @@
-// #Conformance #TypesAndModules #GeneratedEqualityAndHashing 
-#light
+// #Conformance #TypesAndModules #GeneratedEqualityAndHashing
+
 
 // Sanity check generated equality
 

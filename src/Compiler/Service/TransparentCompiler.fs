@@ -60,7 +60,7 @@ type internal TcInfo =
         latestCcuSigForFile: ModuleOrNamespaceType option
 
         /// Accumulated diagnostics, last file first
-        tcDiagnosticsRev: (PhasedDiagnostic * FSharpDiagnosticSeverity)[] list
+        tcDiagnosticsRev: PhasedDiagnostic[] list
 
         tcDependencyFiles: string list
 
@@ -85,7 +85,7 @@ type internal TcIntermediate =
         moduleNamesDict: ModuleNamesDict
 
         /// Accumulated diagnostics, last file first
-        tcDiagnosticsRev: (PhasedDiagnostic * FSharpDiagnosticSeverity)[] list
+        tcDiagnosticsRev: PhasedDiagnostic[] list
 
         tcDependencyFiles: string list
 
@@ -125,6 +125,8 @@ type internal DependencyGraphType =
     | File
     /// A dependency graph for a project - it will contain all files in the project
     | Project
+    /// A dependency graph for a project without the implementation files that have a signature file
+    | ProjectSignatures
 
 [<Extension>]
 type internal Extensions =
@@ -217,6 +219,7 @@ module private TypeCheckingGraphProcessing =
         (graph: Graph<NodeToTypeCheck>)
         (work: NodeToTypeCheck -> TcInfo -> Async<Finisher<NodeToTypeCheck, TcInfo, PartialResult>>)
         (emptyState: TcInfo)
+        (includeArtificialImplFiles: bool)
         : Async<(int * PartialResult) list * TcInfo> =
         async {
 
@@ -253,6 +256,20 @@ module private TypeCheckingGraphProcessing =
                 ||> Array.fold (fun (fileResults, state) (item, (_, Finisher(finisher = finisher))) ->
                     let fileResult, state = finisher state
                     (item, fileResult) :: fileResults, state)
+
+            // When the implementation files that have a signature file were not type checked, their ArtificialImplFile
+            // nodes stand in for them: they add the signature to the implementation environment.
+            // They come after the physical files, so the signatures they need are in the state.
+            let state =
+                if includeArtificialImplFiles then
+                    results
+                    |> Array.choose (fun (item, (_, finisher)) ->
+                        match item with
+                        | NodeToTypeCheck.ArtificialImplFile _ -> Some finisher
+                        | NodeToTypeCheck.PhysicalFile _ -> None)
+                    |> Array.fold (fun state (Finisher(finisher = finisher)) -> finisher state |> snd) state
+                else
+                    state
 
             return finalFileResults, state
         }
@@ -376,6 +393,8 @@ type internal CompilerCaches(cacheSizes: CacheSizes) =
 
     member val BootstrapInfo = AsyncMemoize(cs.BootstrapInfoKeepStrongly, cs.BootstrapInfoKeepWeakly, name = "BootstrapInfo")
 
+    member val ParsingTcConfig = AsyncMemoize(cs.BootstrapInfoKeepStrongly, cs.BootstrapInfoKeepWeakly, name = "ParsingTcConfig")
+
     member val TcLastFile = AsyncMemoizeDisabled(cs.TcLastFileKeepStrongly, cs.TcLastFileKeepWeakly, name = "TcLastFile")
 
     member val TcIntermediate = AsyncMemoize(cs.TcIntermediateKeepStrongly, cs.TcIntermediateKeepWeakly, name = "TcIntermediate")
@@ -401,6 +420,7 @@ type internal CompilerCaches(cacheSizes: CacheSizes) =
         this.ParseAndCheckProject.Clear(shouldClear)
         this.BootstrapInfoStatic.Clear(shouldClear)
         this.BootstrapInfo.Clear(shouldClear)
+        this.ParsingTcConfig.Clear(shouldClear)
         this.TcIntermediate.Clear(snd >> shouldClear)
         this.AssemblyData.Clear(shouldClear)
         this.SemanticClassification.Clear(snd >> shouldClear)
@@ -419,6 +439,7 @@ type internal TransparentCompiler
         enableBackgroundItemKeyStoreAndSemanticClassification,
         enablePartialTypeChecking,
         parallelReferenceResolution,
+        shareImportedAssemblies,
         captureIdentifiersWhenParsing,
         getSource: (string -> Async<ISourceText option>) option,
         useChangeNotifications,
@@ -469,6 +490,7 @@ type internal TransparentCompiler
             enableBackgroundItemKeyStoreAndSemanticClassification,
             enablePartialTypeChecking,
             parallelReferenceResolution,
+            shareImportedAssemblies,
             captureIdentifiersWhenParsing,
             getSource,
             useChangeNotifications
@@ -490,7 +512,12 @@ type internal TransparentCompiler
 
         let applyCompilerOptions tcConfig =
             let fsiCompilerOptions = GetCoreFsiCompilerOptions tcConfig
-            ParseCompilerOptions(ignore, fsiCompilerOptions, otherOptions)
+
+            try
+                ParseCompilerOptions(ignore, fsiCompilerOptions, otherOptions)
+            with
+            | :? OperationCanceledException -> reraise ()
+            | exn -> errorRecovery exn range0
 
         let closure =
             LoadClosure.ComputeClosureOfScriptText(
@@ -607,8 +634,7 @@ type internal TransparentCompiler
                 tcConfig.primaryAssembly.Name,
                 tcConfig.GetTargetFrameworkDirectories(),
                 tcConfig.fsharpBinariesDir,
-                tcConfig.langVersion.SpecifiedVersion,
-                tcConfig.checkNullness
+                tcConfig.importReuseKey
             )
 
         caches.FrameworkImports.Get(
@@ -900,8 +926,16 @@ type internal TransparentCompiler
             tcConfigB.useSimpleResolution <- useSimpleResolution
 
             // Apply command-line arguments and collect more source files if they are in the arguments
+            // Wrap in try/catch to ensure command-line parsing errors are properly captured
+            // as diagnostics rather than escaping as exceptions
             let sourceFilesNew =
-                ApplyCommandLineArgs(tcConfigB, projectSnapshot.SourceFileNames, commandLineArgs)
+                try
+                    ApplyCommandLineArgs(tcConfigB, projectSnapshot.SourceFileNames, commandLineArgs)
+                with
+                | :? OperationCanceledException -> reraise ()
+                | exn ->
+                    errorRecovery exn range0
+                    projectSnapshot.SourceFileNames
 
             // Never open PDB files for the language service, even if --standalone is specified
             tcConfigB.openDebugInformationForLaterStaticLinking <- false
@@ -918,6 +952,7 @@ type internal TransparentCompiler
                 |> Some
 
             tcConfigB.parallelReferenceResolution <- parallelReferenceResolution
+            tcConfigB.shareImportedAssemblies <- shareImportedAssemblies
             tcConfigB.captureIdentifiersWhenParsing <- captureIdentifiersWhenParsing
 
             return tcConfigB, sourceFilesNew, loadClosureOpt
@@ -948,6 +983,34 @@ type internal TransparentCompiler
 
                 // Prepare the frameworkTcImportsCache
                 let! tcGlobals, frameworkTcImports = ComputeFrameworkImports tcConfig frameworkDLLs nonFrameworkResolutions
+
+                // If the tcGlobals was loaded from a different project, langVersion, realsig and pathMap may be
+                // different for each cached project.  So here we create a new tcGlobals, with the existing
+                // framework values and the updated realsig, langversion and pathMap
+                let tcGlobals =
+                    if
+                        tcGlobals.langVersion <> tcConfig.langVersion
+                        || tcGlobals.realsig <> tcConfig.realsig
+                        || tcGlobals.pathMap <> tcConfig.pathMap
+                    then
+                        TcGlobals(
+                            tcGlobals.compilingFSharpCore,
+                            tcGlobals.ilg,
+                            tcGlobals.fslibCcu,
+                            tcGlobals.directoryToResolveRelativePaths,
+                            tcGlobals.isInteractive,
+                            tcGlobals.checkNullness,
+                            tcGlobals.useReflectionFreeCodeGen,
+                            tcGlobals.tryFindSysTypeCcuHelper,
+                            tcGlobals.emitDebugInfoInQuotations,
+                            tcGlobals.noDebugAttributes,
+                            tcConfig.pathMap,
+                            tcConfig.langVersion,
+                            tcConfig.realsig,
+                            tcConfig.compilationMode
+                        )
+                    else
+                        tcGlobals
 
                 // Note we are not calling diagnosticsLogger.GetDiagnostics() anywhere for this task.
                 // This is ok because not much can actually go wrong here.
@@ -1013,7 +1076,6 @@ type internal TransparentCompiler
 
     let computeBootstrapInfoInner (projectSnapshot: ProjectSnapshot) =
         async {
-
             let! tcConfigB, sourceFiles, loadClosureOpt = ComputeTcConfigBuilder projectSnapshot
 
             // If this is a builder for a script, re-apply the settings inferred from the
@@ -1120,15 +1182,50 @@ type internal TransparentCompiler
                         delayedLogger.CommitDelayedDiagnostics diagnosticsLogger
                         diagnosticsLogger.GetDiagnostics()
                     | _ -> Array.ofList delayedLogger.Diagnostics
-                    |> Array.map (fun (diagnostic, severity) ->
+                    |> Array.map (fun (diagnostic) ->
                         let flatErrors =
                             bootstrapInfoOpt
                             |> Option.map (fun bootstrapInfo -> bootstrapInfo.TcConfig.flatErrors)
                             |> Option.defaultValue false // TODO: do we need to figure this out?
 
-                        FSharpDiagnostic.CreateFromException(diagnostic, severity, suggestNamesForErrors, flatErrors, None))
+                        FSharpDiagnostic.CreateFromException(diagnostic, suggestNamesForErrors, flatErrors, None))
 
                 return bootstrapInfoOpt, diagnostics
+            }
+        )
+
+    /// The TcConfig of a project, without importing its references. That is all that parsing a file needs,
+    /// while the bootstrap info also imports the referenced assemblies and type checks the referenced projects.
+    let ComputeParsingTcConfig (projectSnapshot: ProjectSnapshot) =
+        caches.ParsingTcConfig.Get(
+            projectSnapshot.NoFileVersionsKey,
+            async {
+                use _ =
+                    Activity.start
+                        "ComputeParsingTcConfig"
+                        [|
+                            Activity.Tags.project, projectSnapshot.ProjectFileName |> Path.GetFileName |> (!!)
+                        |]
+
+                let delayedLogger = CapturingDiagnosticsLogger("ParsingTcConfig")
+                use _ = new CompilationGlobalsScope(delayedLogger, BuildPhase.Parameter)
+
+                let! tcConfigOpt =
+                    async {
+                        try
+                            let! tcConfigB, _, _ = ComputeTcConfigBuilder projectSnapshot
+                            return Some(TcConfig.Create(tcConfigB, validate = false))
+                        with exn ->
+                            errorRecoveryNoRange exn
+                            return None
+                    }
+
+                let diagnostics =
+                    delayedLogger.Diagnostics
+                    |> List.map (fun diagnostic -> FSharpDiagnostic.CreateFromException(diagnostic, suggestNamesForErrors, false, None))
+                    |> Array.ofList
+
+                return tcConfigOpt, diagnostics
             }
         )
 
@@ -1269,7 +1366,7 @@ type internal TransparentCompiler
             return nodeGraph, graph
         }
 
-    let removeImplFilesThatHaveSignatures (projectSnapshot: ProjectSnapshot) (graph: Graph<FileIndex>) =
+    let removeImplFilesThatHaveSignatures keepLastFile (projectSnapshot: ProjectSnapshotBase<_>) (graph: Graph<FileIndex>) =
 
         let removeIndexes =
             projectSnapshot.SourceFileNames
@@ -1288,31 +1385,11 @@ type internal TransparentCompiler
                 | _ -> None)
             |> Set
 
-        graph
-        |> Seq.filter (fun x -> not (removeIndexes.Contains x.Key))
-        |> Seq.map (fun x -> x.Key, x.Value |> Array.filter (fun node -> not (removeIndexes.Contains node)))
-        |> Graph.make
-
-    let removeImplFilesThatHaveSignaturesExceptLastOne (projectSnapshot: ProjectSnapshotBase<_>) (graph: Graph<FileIndex>) =
-
         let removeIndexes =
-            projectSnapshot.SourceFileNames
-            |> Seq.mapi pair
-            |> Seq.groupBy (
-                snd
-                >> (fun fileName ->
-                    if fileName.EndsWith(".fsi") then
-                        fileName.Substring(0, fileName.Length - 1)
-                    else
-                        fileName)
-            )
-            |> Seq.map (snd >> Seq.toList)
-            |> Seq.choose (function
-                | [ idx1, _; idx2, _ ] -> max idx1 idx2 |> Some
-                | _ -> None)
-            |> Set
-            // Don't remove the last file
-            |> Set.remove (projectSnapshot.SourceFiles.Length - 1)
+            if keepLastFile then
+                removeIndexes |> Set.remove (projectSnapshot.SourceFiles.Length - 1)
+            else
+                removeIndexes
 
         graph
         |> Seq.filter (fun x -> not (removeIndexes.Contains x.Key))
@@ -1328,13 +1405,25 @@ type internal TransparentCompiler
             computeDependencyGraph
                 tcConfig
                 (priorSnapshot.SourceFiles |> Seq.map (fun f -> f.ParsedInput))
-                (removeImplFilesThatHaveSignaturesExceptLastOne priorSnapshot)
+                (removeImplFilesThatHaveSignatures true priorSnapshot)
+        )
+
+    let ComputeDependencyGraphForProjectSignatures (tcConfig: TcConfig) (projectSnapshot: ProjectSnapshotBase<FSharpParsedFile>) =
+
+        let key = projectSnapshot.SourceFiles.Key(DependencyGraphType.ProjectSignatures)
+
+        caches.DependencyGraph.Get(
+            key,
+            computeDependencyGraph
+                tcConfig
+                (projectSnapshot.SourceFiles |> Seq.map (fun f -> f.ParsedInput))
+                (removeImplFilesThatHaveSignatures false projectSnapshot)
         )
 
     let ComputeDependencyGraphForProject (tcConfig: TcConfig) (projectSnapshot: ProjectSnapshotBase<FSharpParsedFile>) =
 
         let key = projectSnapshot.SourceFiles.Key(DependencyGraphType.Project)
-        //caches.DependencyGraph.Get(key, computeDependencyGraph parsedInputs (removeImplFilesThatHaveSignatures projectSnapshot))
+
         caches.DependencyGraph.Get(
             key,
             computeDependencyGraph tcConfig (projectSnapshot.SourceFiles |> Seq.map (fun f -> f.ParsedInput)) id
@@ -1407,7 +1496,7 @@ type internal TransparentCompiler
 
                 let hadParseErrors =
                     file.ParseDiagnostics
-                    |> Array.exists (snd >> (=) FSharpDiagnosticSeverity.Error)
+                    |> Array.exists (fun diagnostic -> diagnostic.Severity = FSharpDiagnosticSeverity.Error)
 
                 let input, moduleNamesDict =
                     DeduplicateParsedInputModuleName prevTcInfo.moduleNamesDict input
@@ -1466,7 +1555,7 @@ type internal TransparentCompiler
 
                             let partialResult, tcState = finisher tcInfo.tcState
 
-                            let tcEnv, topAttribs, _checkImplFileOpt, ccuSigForFile = partialResult
+                            let tcEnv, topAttribs, _, ccuSigForFile, _ = partialResult
 
                             let tcEnvAtEndOfFile =
                                 if keepAllBackgroundResolutions then
@@ -1512,7 +1601,7 @@ type internal TransparentCompiler
                                      parsedInput)
                                     tcInfo.tcState
 
-                            let tcEnv, topAttribs, _checkImplFileOpt, ccuSigForFile = partialResult
+                            let tcEnv, topAttribs, _, ccuSigForFile, _ = partialResult
 
                             let tcEnvAtEndOfFile =
                                 if keepAllBackgroundResolutions then
@@ -1543,6 +1632,69 @@ type internal TransparentCompiler
             return ProjectSnapshotBase<_>(projectSnapshot.ProjectConfig, projectSnapshot.ReferencedProjects, parsedInputs |> Array.toList)
         }
 
+    /// Parse the files of a project, except the implementation files that have a signature file before them.
+    /// These get an empty placeholder: a project that is type checked from its signatures does not need them.
+    let parseSourceFilesExceptImplFilesWithSignatures (projectSnapshot: ProjectSnapshotWithSources) tcConfig =
+        async {
+            let sourceFiles = projectSnapshot.SourceFiles |> List.toArray
+
+            let signatureIndexes =
+                sourceFiles
+                |> Seq.mapi (fun idx file -> idx, file)
+                |> Seq.filter (fun (_, file) -> file.IsSignatureFile)
+                |> Seq.map (fun (idx, file) -> file.FileName, idx)
+                |> Map.ofSeq
+
+            let hasSignatureBefore idx (file: FSharpFileSnapshotWithSource) =
+                not file.IsSignatureFile
+                && signatureIndexes
+                   |> Map.tryFind (file.FileName + "i")
+                   |> Option.exists (fun sigIdx -> sigIdx < idx)
+
+            let! parsedFiles =
+                sourceFiles
+                |> Seq.mapi (fun idx file ->
+                    if hasSignatureBefore idx file then
+                        async.Return None
+                    else
+                        async {
+                            let! parsedFile = ComputeParseFile projectSnapshot tcConfig file
+                            return Some parsedFile
+                        })
+                |> MultipleDiagnosticsLoggers.Parallel
+
+            let signatureNames =
+                parsedFiles
+                |> Seq.choose id
+                |> Seq.filter (fun parsedFile -> parsedFile.IsSignatureFile)
+                |> Seq.map (fun parsedFile -> parsedFile.FileName, parsedFile.ParsedInput.QualifiedName)
+                |> Map.ofSeq
+
+            let parsedFiles =
+                (sourceFiles, parsedFiles)
+                ||> Array.map2 (fun file parsedFile ->
+                    match parsedFile with
+                    | Some parsedFile -> parsedFile
+                    | None ->
+                        let placeholder =
+                            ParsedInput.ImplFile(
+                                ParsedImplFileInput(
+                                    file.FileName,
+                                    false,
+                                    signatureNames[file.FileName + "i"],
+                                    [],
+                                    [],
+                                    (file.IsLastCompiland, file.IsExe),
+                                    SyntaxTrivia.ParsedInputTrivia.Empty,
+                                    Set.empty
+                                )
+                            )
+
+                        FSharpParsedFile(file.FileName, file.Version, file.Source, placeholder, [||]))
+
+            return ProjectSnapshotBase<_>(projectSnapshot.ProjectConfig, projectSnapshot.ReferencedProjects, parsedFiles |> Array.toList)
+        }
+
     // Type check file and all its dependencies
     let ComputeTcLastFile (bootstrapInfo: BootstrapInfo) (projectSnapshot: ProjectSnapshotWithSources) =
         let fileName = projectSnapshot.SourceFiles |> List.last |> (fun f -> f.FileName)
@@ -1564,6 +1716,7 @@ type internal TransparentCompiler
                         graph
                         (processGraphNode projectSnapshot bootstrapInfo dependencyFiles false)
                         bootstrapInfo.InitialTcInfo
+                        false
 
                 let lastResult = results |> List.head |> snd
 
@@ -1624,7 +1777,7 @@ type internal TransparentCompiler
 
                     let! result, tcInfo = ComputeTcLastFile bootstrapInfo snapshotWithSources
 
-                    let tcEnv, _topAttribs, checkedImplFileOpt, ccuSigForFile = result
+                    let tcEnv, _topAttribs, checkedImplFileOpt, ccuSigForFile, ownSigForFile = result
 
                     let tcState = tcInfo.tcState
 
@@ -1699,6 +1852,7 @@ type internal TransparentCompiler
                             tcDiagnostics,
                             keepAssemblyContents,
                             ccuSigForFile,
+                            ownSigForFile,
                             tcState.Ccu,
                             bootstrapInfo.TcImports,
                             tcEnv.AccessRights,
@@ -1739,10 +1893,41 @@ type internal TransparentCompiler
                         graph
                         (processGraphNode projectSnapshot bootstrapInfo dependencyFiles true)
                         bootstrapInfo.InitialTcInfo
+                        false
 
                 return results, tcInfo, parseDiagnostics
             }
         )
+
+    /// Type check a project from its signatures: the implementation files that have a signature file are not parsed
+    /// or type checked. This is enough to produce the assembly data for a project that another project references.
+    let ComputeTypeCheckProjectSignatures (bootstrapInfo: BootstrapInfo) (projectSnapshot: ProjectSnapshotWithSources) =
+        async {
+            use _ =
+                Activity.start
+                    "ComputeTypeCheckProjectSignatures"
+                    [|
+                        Activity.Tags.project, projectSnapshot.ProjectFileName |> Path.GetFileName |> (!!)
+                    |]
+
+            let! projectSnapshot = parseSourceFilesExceptImplFilesWithSignatures projectSnapshot bootstrapInfo.TcConfig
+
+            let parseDiagnostics =
+                projectSnapshot.SourceFiles
+                |> Seq.collect (fun f -> f.ParseDiagnostics)
+                |> Seq.toArray
+
+            let! graph, dependencyFiles = ComputeDependencyGraphForProjectSignatures bootstrapInfo.TcConfig projectSnapshot
+
+            let! results, tcInfo =
+                processTypeCheckingGraph
+                    graph
+                    (processGraphNode projectSnapshot bootstrapInfo dependencyFiles false)
+                    bootstrapInfo.InitialTcInfo
+                    true
+
+            return results, tcInfo, parseDiagnostics
+        }
 
     let TryGetRecentCheckResultsForFile
         (fileName: string, projectSnapshot: FSharpProjectSnapshot, userOpName: string)
@@ -1764,9 +1949,10 @@ type internal TransparentCompiler
         | Some(parseFileResults, FSharpCheckFileAnswer.Succeeded checkFileResults) -> Some(parseFileResults, checkFileResults)
         | _ -> None
 
-    let ComputeProjectExtras (bootstrapInfo: BootstrapInfo) (projectSnapshot: ProjectSnapshotWithSources) =
-        caches.ProjectExtras.Get(
-            projectSnapshot.SignatureKey,
+    /// When signaturesOnly is set, the implementation files that have a signature file are not type checked.
+    /// The result is then only good for producing the assembly data.
+    let ComputeProjectExtras (bootstrapInfo: BootstrapInfo) (projectSnapshot: ProjectSnapshotWithSources) (signaturesOnly: bool) =
+        let computation =
             async {
                 use _ =
                     Activity.start
@@ -1775,11 +1961,20 @@ type internal TransparentCompiler
                             Activity.Tags.project, projectSnapshot.ProjectFileName |> Path.GetFileName |> (!!)
                         |]
 
-                let! results, finalInfo, parseDiagnostics = ComputeParseAndCheckAllFilesInProject bootstrapInfo projectSnapshot
+                let! results, finalInfo, parseDiagnostics =
+                    if signaturesOnly then
+                        ComputeTypeCheckProjectSignatures bootstrapInfo projectSnapshot
+                    else
+                        ComputeParseAndCheckAllFilesInProject bootstrapInfo projectSnapshot
 
                 let assemblyName = bootstrapInfo.AssemblyName
                 let tcConfig = bootstrapInfo.TcConfig
                 let tcGlobals = bootstrapInfo.TcGlobals
+
+                let diagnosticsLogger =
+                    CompilationDiagnosticLogger("ComputeProjectExtras", tcConfig.diagnosticsOptions)
+
+                use _ = new CompilationGlobalsScope(diagnosticsLogger, BuildPhase.TypeCheck)
 
                 let results = results |> Seq.sortBy fst |> Seq.map snd |> Seq.toList
 
@@ -1790,6 +1985,8 @@ type internal TransparentCompiler
                 let tcState, _, ccuContents = CheckClosedInputSetFinish([], tcState)
 
                 let generatedCcu = tcState.Ccu.CloneWithFinalizedContents(ccuContents)
+
+                let mutable hasTypeProviderAssemblyAttrib = false
 
                 // Compute the identity of the generated assembly based on attributes, options etc.
                 // Some of this is duplicated from fsc.fs
@@ -1805,22 +2002,30 @@ type internal TransparentCompiler
                             errorRecoveryNoRange exn
                             None
 
-                    let locale =
-                        TryFindFSharpStringAttribute
-                            tcGlobals
-                            (tcGlobals.FindSysAttrib "System.Reflection.AssemblyCultureAttribute")
-                            topAttrs.assemblyAttrs
+                    let locale, assemVerFromAttrib =
+                        let mutable locale = None
+                        let mutable ver = None
 
-                    let assemVerFromAttrib =
-                        TryFindFSharpStringAttribute
-                            tcGlobals
-                            (tcGlobals.FindSysAttrib "System.Reflection.AssemblyVersionAttribute")
-                            topAttrs.assemblyAttrs
-                        |> Option.bind (fun v ->
-                            try
-                                Some(parseILVersion v)
-                            with _ ->
-                                None)
+                        for attr in topAttrs.assemblyAttrs do
+                            let flag = classifyAssemblyAttrib tcGlobals attr
+
+                            if hasFlag flag WellKnownAssemblyAttributes.AssemblyCultureAttribute then
+                                match attr with
+                                | Attrib(_, _, [ AttribStringArg s ], _, _, _, _) -> locale <- Some s
+                                | _ -> ()
+                            elif hasFlag flag WellKnownAssemblyAttributes.AssemblyVersionAttribute then
+                                match attr with
+                                | Attrib(_, _, [ AttribStringArg s ], _, _, _, _) ->
+                                    ver <-
+                                        (try
+                                            Some(parseILVersion s)
+                                         with _ ->
+                                             None)
+                                | _ -> ()
+                            elif hasFlag flag WellKnownAssemblyAttributes.TypeProviderAssemblyAttribute then
+                                hasTypeProviderAssemblyAttrib <- true
+
+                        locale, ver
 
                     let ver =
                         match assemVerFromAttrib with
@@ -1833,13 +2038,6 @@ type internal TransparentCompiler
                     try
                         // Assemblies containing type provider components cannot successfully be used via cross-assembly references.
                         // We return 'None' for the assembly portion of the cross-assembly reference
-                        let hasTypeProviderAssemblyAttrib =
-                            topAttrs.assemblyAttrs
-                            |> List.exists (fun (Attrib(tcref, _, _, _, _, _, _)) ->
-                                let nm = tcref.CompiledRepresentationForNamedType.BasicQualifiedName
-
-                                nm = !!typeof<Microsoft.FSharp.Core.CompilerServices.TypeProviderAssemblyAttribute>.FullName)
-
                         if tcState.CreatesGeneratedProvidedTypes || hasTypeProviderAssemblyAttrib then
                             ProjectAssemblyDataResult.Unavailable true
                         else
@@ -1859,9 +2057,19 @@ type internal TransparentCompiler
                         errorRecoveryNoRange exn
                         ProjectAssemblyDataResult.Unavailable true
 
+                let finalInfo =
+                    { finalInfo with
+                        tcDiagnosticsRev = diagnosticsLogger.GetDiagnostics() :: finalInfo.tcDiagnosticsRev
+                    }
+
                 return finalInfo, ilAssemRef, assemblyDataResult, checkedImplFiles, parseDiagnostics
             }
-        )
+
+        if signaturesOnly then
+            // The assembly data cache holds this result.
+            computation
+        else
+            caches.ProjectExtras.Get(projectSnapshot.SignatureKey, computation)
 
     let ComputeAssemblyData (projectSnapshot: ProjectSnapshot) fileName =
         caches.AssemblyData.Get(
@@ -1908,7 +2116,9 @@ type internal TransparentCompiler
 
                             let! snapshotWithSources = LoadSources bootstrapInfo projectSnapshot
 
-                            let! _, _, assemblyDataResult, _, _ = ComputeProjectExtras bootstrapInfo snapshotWithSources
+                            let! _, _, assemblyDataResult, _, _ =
+                                ComputeProjectExtras bootstrapInfo snapshotWithSources enablePartialTypeChecking
+
                             Trace.TraceInformation($"Using in-memory project reference: {name}")
 
                             return assemblyDataResult
@@ -1931,7 +2141,7 @@ type internal TransparentCompiler
                     let! snapshotWithSources = LoadSources bootstrapInfo projectSnapshot
 
                     let! tcInfo, ilAssemRef, assemblyDataResult, checkedImplFiles, parseDiagnostics =
-                        ComputeProjectExtras bootstrapInfo snapshotWithSources
+                        ComputeProjectExtras bootstrapInfo snapshotWithSources false
 
                     let diagnosticsOptions = bootstrapInfo.TcConfig.diagnosticsOptions
                     let fileName = DummyFileNameForRangesWithoutASpecificLocation
@@ -2028,7 +2238,8 @@ type internal TransparentCompiler
                                 bootstrapInfo.TcGlobals,
                                 bootstrapInfo.TcImports.GetImportMap(),
                                 sink.GetFormatSpecifierLocations(),
-                                None
+                                None,
+                                RelatedSymbolUseKind.All
                             )
 
                         let sckBuilder = SemanticClassificationKeyStoreBuilder()
@@ -2068,9 +2279,14 @@ type internal TransparentCompiler
                         sResolutions.CapturedNameResolutions
                         |> Seq.iter (fun cnr ->
                             let r = cnr.Range
-
-                            if preventDuplicates.Add struct (r.Start, r.End) then
+                            // Skip synthetic ranges (e.g., compiler-generated event handler values) (#4136)
+                            if not r.IsSynthetic && preventDuplicates.Add struct (r.Start, r.End) then
                                 builder.Write(cnr.Range, cnr.Item))
+
+                        sResolutions.CapturedRelatedSymbolUses
+                        |> Seq.iter (fun (m, item, _kind) ->
+                            if not m.IsSynthetic then
+                                builder.Write(m, item))
 
                         builder.TryBuildAndReset())
             }
@@ -2084,11 +2300,9 @@ type internal TransparentCompiler
             // TODO: might need to deal with exceptions here:
             use _ = new CompilationGlobalsScope(DiscardErrorsLogger, BuildPhase.Parse)
 
-            match! ComputeBootstrapInfo projectSnapshot with
+            match! ComputeParsingTcConfig projectSnapshot with
             | None, creationDiags -> return emptyParseResult fileName creationDiags
-            | Some bootstrapInfo, _ ->
-                let tcConfig = bootstrapInfo.TcConfig
-
+            | Some tcConfig, _ ->
                 let fileSnapshot =
                     projectSnapshot.SourceFiles |> List.find (fun f -> f.FileName = fileName)
 
@@ -2146,8 +2360,6 @@ type internal TransparentCompiler
                                 yield options.ApplyLineDirectives
                                 yield options.DiagnosticOptions.GlobalWarnAsError
                                 yield options.IsInteractive
-                                yield! (Option.toList options.IndentationAwareSyntax)
-                                yield! (Option.toList options.StrictIndentation)
                                 yield options.CompilingFSharpCore
                                 yield options.IsExe
                             ]
@@ -2271,6 +2483,9 @@ type internal TransparentCompiler
         member _.FrameworkImportsCache: FrameworkImportsCache =
             backgroundCompiler.FrameworkImportsCache
 
+        member _.SetReferenceStampProvider(getReferenceStamp: string -> DateTime) : unit =
+            backgroundCompiler.SetReferenceStampProvider getReferenceStamp
+
         member this.GetAssemblyData(options: FSharpProjectOptions, fileName, userOpName: string) : Async<ProjectAssemblyDataResult> =
             async {
                 let! snapshot = FSharpProjectSnapshot.FromOptions(options, documentSource)
@@ -2339,7 +2554,7 @@ type internal TransparentCompiler
                         fileName,
                         SourceTextNew.ofISourceText sourceText,
                         caret,
-                        DocumentSource.FileSystem,
+                        documentSource,
                         previewEnabled,
                         loadedTimeStamp,
                         otherFlags,
@@ -2439,13 +2654,14 @@ type internal TransparentCompiler
                 // Populate the cache.
                 let! _ = caches.ScriptClosure.Get(loadClosureKey, async { return loadClosure })
 
-                let sourceFiles =
+                let! sourceFiles =
                     loadClosure.SourceFiles
                     |> List.map (fun (sf, _) ->
                         if sf = fileName then
-                            currentSourceFile
+                            async.Return currentSourceFile
                         else
                             FSharpFileSnapshot.CreateFromDocumentSource(sf, documentSource))
+                    |> MultipleDiagnosticsLoggers.Parallel
 
                 let references =
                     loadClosure.References
@@ -2462,7 +2678,7 @@ type internal TransparentCompiler
                         fileName + ".fsproj",
                         None,
                         None,
-                        sourceFiles,
+                        List.ofArray sourceFiles,
                         references,
                         otherFlags,
                         List.empty,
@@ -2478,7 +2694,7 @@ type internal TransparentCompiler
                     let flaterrors = otherFlags |> List.contains "--flaterrors"
 
                     loadClosure.LoadClosureRootFileDiagnostics
-                    |> List.map (fun (exn, isError) -> FSharpDiagnostic.CreateFromException(exn, isError, false, flaterrors, None))
+                    |> List.map (fun diagnostic -> FSharpDiagnostic.CreateFromException(diagnostic, false, flaterrors, None))
 
                 return snapshot, (diags @ diagnostics.Diagnostics)
             }

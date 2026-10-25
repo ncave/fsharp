@@ -7,11 +7,14 @@ namespace FSharp.Compiler.CodeAnalysis
 
 open System
 open System.Collections.Generic
+open System.ComponentModel
 open System.Diagnostics
 open System.IO
 open System.Threading
 open FSharp.Compiler.IO
+open FSharp.Compiler.Import.Nullness
 open FSharp.Compiler.NicePrint
+open FSharp.Compiler.TypeHierarchy
 open Internal.Utilities.Library
 open Internal.Utilities.Library.Extras
 open Internal.Utilities.TypeHashing
@@ -20,6 +23,7 @@ open FSharp.Compiler
 open FSharp.Compiler.Syntax
 open FSharp.Compiler.AbstractIL.IL
 open FSharp.Compiler.AccessibilityLogic
+open FSharp.Compiler.AttributeChecking
 open FSharp.Compiler.CheckExpressionsOps
 open FSharp.Compiler.CheckDeclarations
 open FSharp.Compiler.CompilerConfig
@@ -67,21 +71,21 @@ type DelayedILModuleReader =
     val private name: string
     val private gate: obj
     val mutable private getStream: (CancellationToken -> Stream option)
-    val mutable private result: ILModuleReader
+    val mutable private result: ILModuleReader | null
 
     new(name, getStream) =
         {
             name = name
             gate = obj ()
             getStream = getStream
-            result = Unchecked.defaultof<_>
+            result = null
         }
 
     member this.OutputFile = this.name
 
     member this.TryGetILModuleReader() =
         // fast path
-        match box this.result with
+        match this.result with
         | null ->
             cancellable {
                 let! ct = Cancellable.token ()
@@ -89,7 +93,7 @@ type DelayedILModuleReader =
                 return
                     lock this.gate (fun () ->
                         // see if we have a result or not after the lock so we do not evaluate the stream more than once
-                        match box this.result with
+                        match this.result with
                         | null ->
                             try
                                 let streamOpt = this.getStream ct
@@ -112,9 +116,9 @@ type DelayedILModuleReader =
                             with ex ->
                                 Trace.TraceInformation("FCS: Unable to get an ILModuleReader: {0}", ex)
                                 None
-                        | _ -> Some this.result)
+                        | result -> Some result)
             }
-        | _ -> cancellable.Return(Some this.result)
+        | result -> cancellable.Return(Some result)
 
 [<RequireQualifiedAccess; NoComparison; CustomEquality>]
 type FSharpReferencedProject =
@@ -333,6 +337,7 @@ type FSharpCodeCompletionOptions =
     {
         SuggestPatternNames: bool
         SuggestObsoleteSymbols: bool
+        SuggestEditorBrowsableSymbols: EditorBrowsableState
         SuggestGeneratedOverrides: bool
         SuggestOverrideBodies: bool
     }
@@ -341,9 +346,17 @@ type FSharpCodeCompletionOptions =
         {
             SuggestPatternNames = true
             SuggestObsoleteSymbols = false
+            SuggestEditorBrowsableSymbols = EditorBrowsableState.Advanced
             SuggestGeneratedOverrides = true
             SuggestOverrideBodies = true
         }
+
+    member internal x.AllowUnseen =
+        UnseenItems.ofBool x.SuggestObsoleteSymbols UnseenItems.Obsolete
+        ||| (match x.SuggestEditorBrowsableSymbols with
+             | EditorBrowsableState.Always -> UnseenItems.None
+             | EditorBrowsableState.Never -> UnseenItems.EditorBrowsableAdvanced ||| UnseenItems.EditorBrowsableNever
+             | _ -> UnseenItems.EditorBrowsableAdvanced)
 
 /// A TypeCheckInfo represents everything we get back from the typecheck of a file.
 /// It acts like an in-memory database about the file.
@@ -355,6 +368,7 @@ type internal TypeCheckInfo
         _sTcConfig: TcConfig,
         g: TcGlobals,
         ccuSigForFile: ModuleOrNamespaceType,
+        ownSigForFile: ModuleOrNamespaceType,
         thisCcu: CcuThunk,
         tcImports: TcImports,
         tcAccessRights: AccessorDomain,
@@ -493,7 +507,7 @@ type internal TypeCheckInfo
     /// Looks at the exact name resolutions that occurred during type checking
     /// If 'membersByResidue' is specified, we look for members of the item obtained
     /// from the name resolution and filter them by the specified residue (?)
-    let GetPreciseItemsFromNameResolution (line, colAtEndOfNames, membersByResidue, filterCtors, resolveOverloads, allowObsolete) =
+    let GetPreciseItemsFromNameResolution (line, colAtEndOfNames, membersByResidue, filterCtors, resolveOverloads, allowUnseen) =
         let endOfNamesPos = mkPos line colAtEndOfNames
 
         // Logic below expects the list to be in reverse order of resolution
@@ -514,7 +528,7 @@ type internal TypeCheckInfo
             let targets =
                 ResolveCompletionTargets.All(ConstraintSolver.IsApplicableMethApprox g amap m)
 
-            let items = ResolveCompletionsInType ncenv nenv targets m ad true ty allowObsolete
+            let items = ResolveCompletionsInType ncenv nenv targets m ad true ty allowUnseen
             let items = List.map ItemWithNoInst items
             ReturnItemsOfType items g denv m filterCtors
 
@@ -524,7 +538,7 @@ type internal TypeCheckInfo
                 ResolveCompletionTargets.All(ConstraintSolver.IsApplicableMethApprox g amap m)
 
             let items =
-                ResolveCompletionsInType ncenv nenv targets m ad true (mkTyparTy tp) allowObsolete
+                ResolveCompletionsInType ncenv nenv targets m ad true (mkTyparTy tp) allowUnseen
 
             let items = List.map ItemWithNoInst items
             ReturnItemsOfType items g denv m filterCtors
@@ -561,7 +575,7 @@ type internal TypeCheckInfo
                 let targets =
                     ResolveCompletionTargets.All(ConstraintSolver.IsApplicableMethApprox g amap m)
 
-                let items = ResolveCompletionsInType ncenv nenv targets m ad false ty allowObsolete
+                let items = ResolveCompletionsInType ncenv nenv targets m ad false ty allowUnseen
                 let items = List.map ItemWithNoInst items
                 ReturnItemsOfType items g denv m filterCtors
 
@@ -674,51 +688,78 @@ type internal TypeCheckInfo
                     | None -> None)
             | _ -> [])
 
-    let GetNamedParametersAndSettableFields endOfExprPos allowObsolete =
+    let GetNamedParametersAndSettableFields endOfExprPos cursorLine (lineStr: string) allowUnseen =
         let cnrs =
             GetCapturedNameResolutions endOfExprPos ResolveOverloads.No
             |> ResizeArray.toList
             |> List.rev
 
-        let result =
-            match cnrs with
-            | CNR(Item.CtorGroup(_, (ctor :: _ as ctors)), _, denv, nenv, ad, m) :: _ ->
-                let props =
-                    ResolveCompletionsInType
-                        ncenv
-                        nenv
-                        ResolveCompletionTargets.SettablePropertiesAndFields
-                        m
-                        ad
-                        false
-                        ctor.ApparentEnclosingType
-                        allowObsolete
-
-                let parameters = CollectParameters ctors amap m
-                let items = props @ parameters
-                Some(denv, m, items)
-            | CNR(Item.MethodGroup(_, methods, _), _, denv, nenv, ad, m) :: _ ->
-                let props =
-                    methods
-                    |> List.collect (fun meth ->
-                        let retTy = meth.GetFSharpReturnType(amap, m, meth.FormalMethodInst)
-
-                        ResolveCompletionsInType
-                            ncenv
-                            nenv
-                            ResolveCompletionTargets.SettablePropertiesAndFields
-                            m
-                            ad
-                            false
-                            retTy
-                            allowObsolete)
-
-                let parameters = CollectParameters methods amap m
-                let items = props @ parameters
-                Some(denv, m, items)
+        // A ctor or method group under the cursor whose named parameters and settable fields can be
+        // offered as completions. For a ctor we surface settable props of the constructed type; for a
+        // method, of its return type(s).
+        let (|NamedArgGroup|_|) item =
+            match item with
+            | Item.CtorGroup(name, (_ :: _ as meths)) -> Some(name, meths, true)
+            | Item.MethodGroup(name, (_ :: _ as meths), _) -> Some(name, meths, false)
             | _ -> None
 
-        match result with
+        let buildGroup (meths: MethInfo list) isCtor nenv ad m =
+            let propTys =
+                if isCtor then
+                    [ (List.head meths).ApparentEnclosingType ]
+                else
+                    meths
+                    |> List.map (fun meth -> meth.GetFSharpReturnType(amap, m, meth.FormalMethodInst))
+
+            let props =
+                propTys
+                |> List.collect (fun ty ->
+                    ResolveCompletionsInType ncenv nenv ResolveCompletionTargets.SettablePropertiesAndFields m ad false ty allowUnseen)
+
+            nenv.DisplayEnv, m, props @ CollectParameters meths amap m
+
+        // Walk the whole position-filtered CNR list rather than only its head: after the first named
+        // argument, overload refinement or a trailing partial argument can push the ctor/method group
+        // off the head of the list.
+        let fromCnrs =
+            cnrs
+            |> List.tryPick (function
+                | CNR(NamedArgGroup(_, meths, isCtor), _, _, nenv, ad, m) -> Some(buildGroup meths isCtor nenv ad m)
+                | _ -> None)
+
+        // For an overloaded call with a malformed trailing argument the type-checker can abandon overload
+        // resolution before publishing any method-group CNR at endOfExprPos. Recover by re-resolving the
+        // long ident to the left of the cursor. Restricted to the cursor's own line, since lineStr only
+        // holds that line and columns on other lines of a multi-line call could match an unrelated ident.
+        let fromLineText () =
+            if
+                endOfExprPos.Line <> cursorLine
+                || endOfExprPos.Column <= 0
+                || endOfExprPos.Column > lineStr.Length
+            then
+                None
+            else
+                let plid = QuickParse.GetPartialLongNameEx(lineStr, endOfExprPos.Column - 1)
+                let lastName = plid.PartialIdent
+
+                if String.IsNullOrEmpty lastName then
+                    None
+                else
+                    let (nenv, ad), m = GetBestEnvForPos endOfExprPos
+
+                    ResolvePartialLongIdent
+                        ncenv
+                        nenv
+                        (ConstraintSolver.IsApplicableMethApprox g amap m)
+                        m
+                        ad
+                        plid.QualifyingIdents
+                        UnseenItems.None
+                    |> List.tryPick (function
+                        | NamedArgGroup(name, meths, isCtor) when name = lastName -> Some(buildGroup meths isCtor nenv ad m)
+                        | _ -> None)
+
+        match fromCnrs |> Option.orElseWith fromLineText with
         | None -> NameResResult.Empty
         | Some(denv, m, items) ->
             let items = List.map ItemWithNoInst items
@@ -729,6 +770,9 @@ type internal TypeCheckInfo
         let quals =
             sResolutions.CapturedExpressionTypings
             |> Seq.filter (fun (ty, nenv, _, m) ->
+                not m.IsSynthetic
+                &&
+
                 // We only want expression types that end at the particular position in the file we are looking at.
                 posEq m.End endOfExprPos
                 &&
@@ -802,7 +846,9 @@ type internal TypeCheckInfo
 
     /// Looks at the exact expression types at the position to the left of the
     /// residue then the source when it was typechecked.
-    let GetPreciseCompletionListFromExprTypings (parseResults: FSharpParseFileResults, endOfExprPos, filterCtors, allowObsolete: bool) =
+    let GetPreciseCompletionListFromExprTypings
+        (parseResults: FSharpParseFileResults, endOfExprPos, filterCtors, allowUnseen: UnseenItems)
+        =
 
         let thereWereSomeQuals, quals = GetExprTypingForPosition(endOfExprPos)
 
@@ -842,7 +888,7 @@ type internal TypeCheckInfo
                 let targets =
                     ResolveCompletionTargets.All(ConstraintSolver.IsApplicableMethApprox g amap m)
 
-                let items = ResolveCompletionsInType ncenv nenv targets m ad false ty allowObsolete
+                let items = ResolveCompletionsInType ncenv nenv targets m ad false ty allowUnseen
                 let items = items |> List.map ItemWithNoInst
                 let items = items |> RemoveDuplicateItems g
                 let items = items |> RemoveExplicitlySuppressed g
@@ -855,9 +901,9 @@ type internal TypeCheckInfo
                     ExprTypingsResult.None
 
     /// Find items in the best naming environment.
-    let GetEnvironmentLookupResolutions (nenv, ad, m, plid, filterCtors, showObsolete) =
+    let GetEnvironmentLookupResolutions (nenv, ad, m, plid, filterCtors, allowUnseen) =
         let items =
-            ResolvePartialLongIdent ncenv nenv (ConstraintSolver.IsApplicableMethApprox g amap m) m ad plid showObsolete
+            ResolvePartialLongIdent ncenv nenv (ConstraintSolver.IsApplicableMethApprox g amap m) m ad plid allowUnseen
 
         let items = items |> List.map ItemWithNoInst
         let items = items |> RemoveDuplicateItems g
@@ -866,16 +912,16 @@ type internal TypeCheckInfo
         (items, nenv.DisplayEnv, m)
 
     /// Find items in the best naming environment.
-    let GetEnvironmentLookupResolutionsAtPosition (cursorPos, plid, filterCtors, showObsolete) =
+    let GetEnvironmentLookupResolutionsAtPosition (cursorPos, plid, filterCtors, allowUnseen) =
         let (nenv, ad), m = GetBestEnvForPos cursorPos
-        GetEnvironmentLookupResolutions(nenv, ad, m, plid, filterCtors, showObsolete)
+        GetEnvironmentLookupResolutions(nenv, ad, m, plid, filterCtors, allowUnseen)
 
     /// Find record fields in the best naming environment.
-    let GetClassOrRecordFieldsEnvironmentLookupResolutions (cursorPos, plid, fieldsOnly, allowObsolete) =
+    let GetClassOrRecordFieldsEnvironmentLookupResolutions (cursorPos, plid, fieldsOnly, allowUnseen) =
         let (nenv, ad), m = GetBestEnvForPos cursorPos
 
         let items =
-            ResolvePartialLongIdentToClassOrRecdFields ncenv nenv m ad plid allowObsolete fieldsOnly
+            ResolvePartialLongIdentToClassOrRecdFields ncenv nenv m ad plid allowUnseen fieldsOnly
 
         let items = items |> List.map ItemWithNoInst
         let items = items |> RemoveDuplicateItems g
@@ -899,6 +945,7 @@ type internal TypeCheckInfo
     /// Is the item suitable for completion in a pattern
     let IsPatternCandidate (item: CompletionItem) =
         match item.Item with
+        | Item.RecdField f -> f.Tycon.IsEnumTycon
         | Item.Value v -> v.LiteralValue.IsSome
         | Item.ILField field -> field.LiteralValue.IsSome
         | Item.ActivePatternCase _
@@ -1154,10 +1201,10 @@ type internal TypeCheckInfo
             // Do not check a method with same name twice
             //type AA() =
             //    abstract a: unit -> unit
-            //    default _.a() = printfn "A"
+            //    default _.a() = printn "A"
             //type BB() =
             //    inherit AA()
-            //    member _.a() = printfn "B" (* This method covered the `AA.a` *)
+            //    member _.a() = printn "B" (* This method covered the `AA.a` *)
             //type CC() =
             //    inherit BB()
             //    override | (* Here should not suggest to override `AA.a` *)
@@ -1375,7 +1422,7 @@ type internal TypeCheckInfo
                     None,
                     ResolveTypeNamesToTypeRefs,
                     ResolveOverloads.Yes,
-                    options.SuggestObsoleteSymbols
+                    options.AllowUnseen
                 )
 
             match nameResItems with
@@ -1537,15 +1584,25 @@ type internal TypeCheckInfo
             loc,
             filterCtors,
             resolveOverloads,
-            isInRangeOperator,
+            completionContext: CompletionContext option,
             allSymbols: unit -> AssemblySymbol list,
             options: FSharpCodeCompletionOptions
         ) =
+        let isInRangeOperator =
+            match completionContext with
+            | Some CompletionContext.RangeOperator -> true
+            | _ -> false
+
+        let isSpread =
+            FindFirstNonWhitespacePosition lineStr (colAtEndOfNamesAndResidue - 1)
+            |> Option.exists (fun i ->
+                (i > 2 && lineStr[i - 3] <> '.' || i = 2)
+                && lineStr.AsSpan(i - 2).StartsWith("...".AsSpan()))
 
         // Are the last two chars (except whitespaces) = ".."
         let isLikeRangeOp =
             match FindFirstNonWhitespacePosition lineStr (colAtEndOfNamesAndResidue - 1) with
-            | Some x when x >= 1 && lineStr[x] = '.' && lineStr[x - 1] = '.' -> true
+            | Some x when not isSpread && x >= 1 && lineStr[x] = '.' && lineStr[x - 1] = '.' -> true
             | _ -> false
 
         // if last two chars are .. and we are not in range operator context - no completion
@@ -1564,7 +1621,7 @@ type internal TypeCheckInfo
                         None,
                         filterCtors,
                         resolveOverloads,
-                        options.SuggestObsoleteSymbols
+                        options.AllowUnseen
                     )
                 | Some residue ->
                     // Deals with cases when we have spaces between dot and\or identifier, like A  . $
@@ -1575,7 +1632,7 @@ type internal TypeCheckInfo
                         |> Option.orElseWith (fun _ -> FindFirstNonWhitespacePosition lineStr (colAtEndOfNamesAndResidue - 1))
 
                     match lastPos with
-                    | Some p when lineStr[p] = '.' ->
+                    | Some p when not isSpread && lineStr[p] = '.' ->
                         match FindFirstNonWhitespacePosition lineStr (p - 1) with
                         | Some colAtEndOfNames ->
                             let colAtEndOfNames = colAtEndOfNames + 1 // convert 0-based to 1-based
@@ -1586,7 +1643,7 @@ type internal TypeCheckInfo
                                 Some(residue),
                                 filterCtors,
                                 resolveOverloads,
-                                options.SuggestObsoleteSymbols
+                                options.AllowUnseen
                             )
                         | None -> NameResResult.Empty
                     | _ -> NameResResult.Empty
@@ -1614,7 +1671,7 @@ type internal TypeCheckInfo
                         lastDotPos
                         |> Option.orElseWith (fun _ -> FindFirstNonWhitespacePosition lineStr (colAtEndOfNamesAndResidue - 1))
                     with
-                    | Some p when lineStr[p] = '.' ->
+                    | Some p when not isSpread && lineStr[p] = '.' ->
                         match FindFirstNonWhitespacePosition lineStr (p - 1) with
                         | Some colAtEndOfNames ->
                             let colAtEndOfNames = colAtEndOfNames + 1 // convert 0-based to 1-based
@@ -1625,11 +1682,18 @@ type internal TypeCheckInfo
                         | None -> ValueNone
                     | _ -> ValueNone
 
+            // Wildcard _ should not resolve to the member's synthetic self-identifier via fallback.
+            let isDiscardIdentifier =
+                match residueOpt, origLongIdentOpt with
+                | None, Some [ "_" ] -> true
+                | _ -> false
+
             match nameResItems with
             | NameResResult.Cancel(denv, m) -> Some([], denv, m)
             | NameResResult.Members(FilterRelevantItems getItem exactMatchResidueOpt (items, denv, m)) ->
                 // lookup based on name resolution results successful
                 Some(items |> List.map (CompletionItem (getType ()) ValueNone), denv, m)
+            | _ when isDiscardIdentifier -> None
             | _ ->
                 match origLongIdentOpt with
                 | None -> None
@@ -1655,8 +1719,7 @@ type internal TypeCheckInfo
 
                             match leftOfDot with
                             | Some(pos, _) ->
-                                GetPreciseCompletionListFromExprTypings(parseResults, pos, filterCtors, options.SuggestObsoleteSymbols),
-                                true
+                                GetPreciseCompletionListFromExprTypings(parseResults, pos, filterCtors, options.AllowUnseen), true
                             | None ->
                                 // Can get here in a case like: if "f xxx yyy" is legal, and we do "f xxx y"
                                 // We have no interest in expression typings, those are only useful for dot-completion.  We want to fallback
@@ -1688,8 +1751,7 @@ type internal TypeCheckInfo
                     | _ ->
                         // Use an environment lookup as the last resort
                         let envItems, denv, m =
-                            let allowObsolete = options.SuggestObsoleteSymbols
-                            GetEnvironmentLookupResolutions(nenv, ad, m, plid, filterCtors, allowObsolete)
+                            GetEnvironmentLookupResolutions(nenv, ad, m, plid, filterCtors, options.AllowUnseen)
 
                         let envResult =
                             match nameResItems, (envItems, denv, m), qualItems with
@@ -1722,6 +1784,11 @@ type internal TypeCheckInfo
                                         &&
 
                                         match x.Symbol with
+                                        | :? FSharpActivePatternCase as symbol ->
+                                            match symbol.Item, completionContext with
+                                            | Item.ActivePatternCase case, Some(CompletionContext.Pattern _) ->
+                                                not (ItemIsUnseen ad g ncenv.amap m options.AllowUnseen (Item.Value case.ActivePatternVal))
+                                            | _ -> false
                                         | :? FSharpMemberOrFunctionOrValue as m when
                                             m.IsConstructor && filterCtors = ResolveTypeNamesToTypeRefs
                                             ->
@@ -1759,7 +1826,7 @@ type internal TypeCheckInfo
         let (nenv, _), m = GetBestEnvForPos cursorPos
 
         let fieldItems, _, _ =
-            GetClassOrRecordFieldsEnvironmentLookupResolutions(cursorPos, plid, true, options.SuggestObsoleteSymbols)
+            GetClassOrRecordFieldsEnvironmentLookupResolutions(cursorPos, plid, true, options.AllowUnseen)
 
         let fieldCompletionItems, _, _ as fieldsResult =
             (fieldItems, nenv.DisplayEnv, m) |> toCompletionItems
@@ -1792,6 +1859,16 @@ type internal TypeCheckInfo
             | atStart when atStart = 0 -> 0
             | otherwise -> otherwise - 1
 
+        let pos = mkPos line colAtEndOfNamesAndResidue
+
+        let completionContext =
+            match completionContextAtPos with
+            | Some(contextForPos, context) when contextForPos = pos -> context
+            | _ ->
+                parseResultsOpt
+                |> Option.map (fun x -> x.ParseTree)
+                |> Option.bind (fun parseTree -> ParsedInput.TryGetCompletionContext(pos, parseTree, lineStr))
+
         let getDeclaredItemsNotInRangeOpWithAllSymbols () =
             GetDeclaredItems(
                 parseResultsOpt,
@@ -1804,23 +1881,10 @@ type internal TypeCheckInfo
                 loc,
                 filterCtors,
                 resolveOverloads,
-                false,
+                completionContext,
                 getAllSymbols,
                 options
             )
-
-        let pos = mkPos line colAtEndOfNamesAndResidue
-
-        // Look for a "special" completion context
-        let completionContext =
-            // If the completion context we have computed higher up the stack is for the same position,
-            // reuse it, otherwise recompute
-            match completionContextAtPos with
-            | Some(contextForPos, context) when contextForPos = pos -> context
-            | _ ->
-                parseResultsOpt
-                |> Option.map (fun x -> x.ParseTree)
-                |> Option.bind (fun parseTree -> ParsedInput.TryGetCompletionContext(pos, parseTree, lineStr))
 
         let res =
             match completionContext with
@@ -1829,19 +1893,19 @@ type internal TypeCheckInfo
 
             // Completion at 'inherit C(...)"
             | Some(CompletionContext.Inherit(InheritanceContext.Class, (plid, _))) ->
-                GetEnvironmentLookupResolutionsAtPosition(mkPos line loc, plid, filterCtors, false)
+                GetEnvironmentLookupResolutionsAtPosition(mkPos line loc, plid, filterCtors, UnseenItems.None)
                 |> FilterRelevantItemsBy getItem None (getItem >> IsInheritsCompletionCandidate)
                 |> Option.map toCompletionItems
 
             // Completion at 'interface ..."
             | Some(CompletionContext.Inherit(InheritanceContext.Interface, (plid, _))) ->
-                GetEnvironmentLookupResolutionsAtPosition(mkPos line loc, plid, filterCtors, false)
+                GetEnvironmentLookupResolutionsAtPosition(mkPos line loc, plid, filterCtors, UnseenItems.None)
                 |> FilterRelevantItemsBy getItem None (getItem >> IsInterfaceCompletionCandidate)
                 |> Option.map toCompletionItems
 
             // Completion at 'implement ..."
             | Some(CompletionContext.Inherit(InheritanceContext.Unknown, (plid, _))) ->
-                GetEnvironmentLookupResolutionsAtPosition(mkPos line loc, plid, filterCtors, false)
+                GetEnvironmentLookupResolutionsAtPosition(mkPos line loc, plid, filterCtors, UnseenItems.None)
                 |> FilterRelevantItemsBy
                     getItem
                     None
@@ -1866,7 +1930,7 @@ type internal TypeCheckInfo
                             loc,
                             filterCtors,
                             resolveOverloads,
-                            false,
+                            None,
                             (fun () -> []),
                             options
                         )
@@ -1875,7 +1939,7 @@ type internal TypeCheckInfo
                 else
                     // { x. } can be either record construction or computation expression. Try to get all visible record fields first
                     match
-                        GetClassOrRecordFieldsEnvironmentLookupResolutions(mkPos line loc, plid, false, options.SuggestObsoleteSymbols)
+                        GetClassOrRecordFieldsEnvironmentLookupResolutions(mkPos line loc, plid, false, options.AllowUnseen)
                         |> toCompletionItems
                     with
                     | [], _, _ ->
@@ -1891,7 +1955,7 @@ type internal TypeCheckInfo
                             loc,
                             filterCtors,
                             resolveOverloads,
-                            false,
+                            None,
                             (fun () -> []),
                             options
                         )
@@ -1913,7 +1977,7 @@ type internal TypeCheckInfo
                         loc,
                         filterCtors,
                         resolveOverloads,
-                        false,
+                        None,
                         (fun () -> []),
                         options
                     )
@@ -1924,23 +1988,61 @@ type internal TypeCheckInfo
             | Some(CompletionContext.RecordField(RecordContext.CopyOnUpdate(identRange, (plid, _)))) ->
                 match GetRecdFieldsForCopyAndUpdateExpr(identRange, plid) with
                 | None ->
-                    Some(GetClassOrRecordFieldsEnvironmentLookupResolutions(mkPos line loc, plid, false, options.SuggestObsoleteSymbols))
+                    Some(GetClassOrRecordFieldsEnvironmentLookupResolutions(mkPos line loc, plid, false, options.AllowUnseen))
                     |> Option.map toCompletionItems
                 | Some(items, denv, m) -> Some(List.map ItemWithNoInst items, denv, m) |> Option.map toCompletionItems
 
             // Completion at ' { XXX = ... with ... } "
             | Some(CompletionContext.RecordField(RecordContext.Constructor(typeName))) ->
-                GetClassOrRecordFieldsEnvironmentLookupResolutions(mkPos line loc, [ typeName ], false, options.SuggestObsoleteSymbols)
+                GetClassOrRecordFieldsEnvironmentLookupResolutions(mkPos line loc, [ typeName ], false, options.AllowUnseen)
                 |> toCompletionItems
                 |> Some
 
             // No completion at '...: string'
             | Some(CompletionContext.RecordField(RecordContext.Declaration true)) -> None
 
+            // Completion at 'let r = { ...| }'
+            | Some(CompletionContext.RecordSpread RecordSpreadContext.Construction) ->
+                let envItems = getDeclaredItemsNotInRangeOpWithAllSymbols ()
+
+                envItems
+                |> Option.map (fun (items, denv, m) ->
+                    let items =
+                        [
+                            for completionItem in items do
+                                match completionItem.Item with
+                                | Item.Value vref when isRecdTy g vref.Type || isAnonRecdTy g vref.Type -> completionItem
+                                | _ -> ()
+                        ]
+
+                    items, denv, m)
+
+            // Completion at 'type R = { ...| }'
+            | Some(CompletionContext.RecordSpread RecordSpreadContext.Declaration) ->
+                let (nenv, ad), m = GetBestEnvForPos pos
+                let recordTycons = getRecordTyconsInScope g ncenv nenv ad m
+
+                let completionItems =
+                    [
+                        for tcref, item in recordTycons ->
+                            {
+                                ItemWithInst = ItemWithNoInst item
+                                Kind = CompletionItemKind.Other
+                                MinorPriority = 0
+                                IsOwnMember = false
+                                Type = Some tcref
+                                Unresolved = None
+                                CustomInsertText = ValueNone
+                                CustomDisplayText = ValueNone
+                            }
+                    ]
+
+                Some(completionItems, nenv.DisplayEnv, m)
+
             // Completion at ' SomeMethod( ... ) ' or ' [<SomeAttribute( ... )>] ' with named arguments
             | Some(CompletionContext.ParameterList(endPos, fields)) ->
                 let results =
-                    GetNamedParametersAndSettableFields endPos options.SuggestObsoleteSymbols
+                    GetNamedParametersAndSettableFields endPos line lineStr options.AllowUnseen
 
                 let declaredItems = getDeclaredItemsNotInRangeOpWithAllSymbols ()
 
@@ -1964,7 +2066,7 @@ type internal TypeCheckInfo
                             })
 
                     match declaredItems with
-                    | None -> Some(toCompletionItems (items, denv, m))
+                    | None -> Some(filtered, denv, m)
                     | Some(declItems, declaredDisplayEnv, declaredRange) -> Some(filtered @ declItems, declaredDisplayEnv, declaredRange)
                 | _ -> declaredItems
 
@@ -2044,11 +2146,6 @@ type internal TypeCheckInfo
                     // because providing generic parameters list is context aware, which we don't have here (yet).
                     None
                 | _ ->
-                    let isInRangeOperator =
-                        (match cc with
-                         | Some CompletionContext.RangeOperator -> true
-                         | _ -> false)
-
                     GetDeclaredItems(
                         parseResultsOpt,
                         lineStr,
@@ -2060,7 +2157,7 @@ type internal TypeCheckInfo
                         loc,
                         filterCtors,
                         resolveOverloads,
-                        isInRangeOperator,
+                        cc,
                         getAllSymbols,
                         options
                     )
@@ -2080,7 +2177,7 @@ type internal TypeCheckInfo
 
     member _.GetVisibleNamespacesAndModulesAtPosition(cursorPos: pos) : ModuleOrNamespaceRef list =
         let (nenv, ad), m = GetBestEnvForPos cursorPos
-        GetVisibleNamespacesAndModulesAtPoint ncenv nenv OpenQualified m ad false
+        GetVisibleNamespacesAndModulesAtPoint ncenv nenv OpenQualified m ad UnseenItems.None
 
     /// Determines if a long ident is resolvable at a specific point.
     member _.IsRelativeNameResolvable(cursorPos: pos, plid: string list, item: Item) : bool =
@@ -2098,15 +2195,25 @@ type internal TypeCheckInfo
     member scope.IsRelativeNameResolvableFromSymbol(cursorPos: pos, plid: string list, symbol: FSharpSymbol) : bool =
         scope.IsRelativeNameResolvable(cursorPos, plid, symbol.Item)
 
-    member scope.TryGetCapturedType(range) =
+    member scope.TryGetCapturedType(range: range) =
         sResolutions.CapturedExpressionTypings
-        |> Seq.tryFindBack (fun (_, _, _, m) -> equals m range)
+        |> Seq.tryFindBack (fun (_, _, _, m) -> equals (m.MakeSynthetic()) (range.MakeSynthetic()))
         |> Option.map (fun (ty, _, _, _) -> FSharpType(cenv, ty))
 
     member scope.TryGetCapturedDisplayContext(range) =
         sResolutions.CapturedExpressionTypings
         |> Seq.tryFindBack (fun (_, _, _, m) -> equals m range)
         |> Option.map (fun (_, q, _, _) -> FSharpDisplayContext(fun _ -> q.DisplayEnv))
+
+    member scope.ImportILType(ty: ILType) : FSharpType =
+        let amap = tcImports.GetImportMap()
+        let assemblyRef = ILAssemblyRef.Create("", None, None, false, None, None)
+        let scopeRef = ILScopeRef.Assembly assemblyRef
+
+        let typ =
+            ImportILTypeFromMetadata amap range0 scopeRef [] [] NullableAttributesSource.Empty ty
+
+        FSharpType(cenv, typ)
 
     /// Get the auto-complete items at a location
     member _.GetDeclarations(parseResultsOpt, line, lineStr, partialName, completionContextAtPos, getAllEntities, options) =
@@ -2142,13 +2249,19 @@ type internal TypeCheckInfo
                             items
 
                     let getAccessibility item =
-                        FSharpSymbol.Create(cenv, item).Accessibility
+                        match item with
+                        | Item.ActivePatternCase case -> FSharpAccessibility(case.ActivePatternVal.Accessibility)
+                        | _ -> FSharpSymbol.Create(cenv, item).Accessibility
 
-                    let currentNamespaceOrModule =
+                    let scopeInfo =
                         parseResultsOpt
                         |> Option.map (fun x -> x.ParseTree)
-                        |> Option.map (fun parsedInput ->
-                            ParsedInput.GetFullNameOfSmallestModuleOrNamespaceAtPoint(mkPos line 0, parsedInput))
+                        |> Option.map (fun parsedInput -> ParsedInput.getScopeInfo (mkPos line 0, parsedInput))
+
+                    let currentNamespaceOrModule =
+                        scopeInfo |> Option.map (fun struct (path, _) -> path)
+
+                    let currentScope = scopeInfo |> Option.map (fun struct (_, scope) -> scope)
 
                     let isAttributeApplication =
                         match ctx with
@@ -2163,6 +2276,7 @@ type internal TypeCheckInfo
                         getAccessibility,
                         items,
                         currentNamespaceOrModule,
+                        currentScope,
                         isAttributeApplication
                     ))
             (fun msg ->
@@ -2215,11 +2329,11 @@ type internal TypeCheckInfo
                         |> List.sortBy (fun d ->
                             let n =
                                 match d.Item with
-                                | Item.Types(_, AbbrevOrAppTy(tcref, _) :: _) -> 1 + tcref.TyparsNoRange.Length
+                                | Item.Types(_, AbbrevOrAppTy(tcref, _) :: _) -> 1 + tcref.Typars.Length
                                 // Put delegate ctors after types, sorted by #typars. RemoveDuplicateItems will remove FakeInterfaceCtor and DelegateCtor if an earlier type is also reported with this name
-                                | Item.DelegateCtor(AbbrevOrAppTy(tcref, _)) -> 1000 + tcref.TyparsNoRange.Length
+                                | Item.DelegateCtor(AbbrevOrAppTy(tcref, _)) -> 1000 + tcref.Typars.Length
                                 // Put type ctors after types, sorted by #typars. RemoveDuplicateItems will remove DefaultStructCtors if a type is also reported with this name
-                                | Item.CtorGroup(_, cinfo :: _) -> 1000 + 10 * cinfo.DeclaringTyconRef.TyparsNoRange.Length
+                                | Item.CtorGroup(_, cinfo :: _) -> 1000 + 10 * cinfo.DeclaringTyconRef.Typars.Length
                                 | _ -> 0
 
                             (d.Item.DisplayName, n))
@@ -2306,7 +2420,7 @@ type internal TypeCheckInfo
 
                 let tip = PrintUtilities.squashToWidth width tip
 
-                let tip = LayoutRender.toArray tip
+                let tip = LayoutRender.toRichText tip
                 ToolTipText.ToolTipText [ ToolTipElement.Single(tip, FSharpXmlDoc.None) ]
 
             | [] ->
@@ -2329,7 +2443,7 @@ type internal TypeCheckInfo
                             for line in lines ->
                                 let tip = wordL (TaggedText.tagStringLiteral line)
                                 let tip = PrintUtilities.squashToWidth width tip
-                                let tip = LayoutRender.toArray tip
+                                let tip = LayoutRender.toRichText tip
                                 ToolTipElement.Single(tip, FSharpXmlDoc.None)
                         ]
 
@@ -2655,8 +2769,8 @@ type internal TypeCheckInfo
                                     None
                                 else
                                     match tr.TypeReprInfo, tr.PublicPath with
-                                    | TILObjectRepr(TILObjectReprData(ILScopeRef.Assembly assemblyRef, _, _)), Some(PubPath parts) ->
-                                        let fullName = parts |> String.concat "."
+                                    | TILObjectRepr(TILObjectReprData(ILScopeRef.Assembly assemblyRef, _, _)), ValueSome pubpath ->
+                                        let fullName = pubpath.FullPath |> String.concat "."
                                         Some(FindDeclResult.ExternalDecl(assemblyRef.Name, FindDeclExternalSymbol.Type fullName))
                                     | _ -> None
                             | _ -> None
@@ -2759,6 +2873,9 @@ type internal TypeCheckInfo
     member _.PartialAssemblySignatureForFile =
         FSharpAssemblySignature(g, thisCcu, ccuSigForFile, tcImports, None, ccuSigForFile)
 
+    member _.FileSignature =
+        FSharpAssemblySignature(g, thisCcu, ownSigForFile, tcImports, None, ownSigForFile)
+
     member _.AccessRights = tcAccessRights
 
     member _.ProjectOptions = projectOptions
@@ -2772,8 +2889,14 @@ type internal TypeCheckInfo
     member _.GetFormatSpecifierLocationsAndArity() =
         sSymbolUses.GetFormatSpecifierLocationsAndArity()
 
-    member _.GetSemanticClassification(range: range option) : SemanticClassificationItem[] =
-        sResolutions.GetSemanticClassification(g, amap, sSymbolUses.GetFormatSpecifierLocationsAndArity(), range)
+    member _.GetSemanticClassification(range: range option, ?relatedSymbolKinds: RelatedSymbolUseKind) : SemanticClassificationItem[] =
+        sResolutions.GetSemanticClassification(
+            g,
+            amap,
+            sSymbolUses.GetFormatSpecifierLocationsAndArity(),
+            range,
+            ?relatedSymbolKinds = relatedSymbolKinds
+        )
 
     /// The resolutions in the file
     member _.ScopeResolutions = sResolutions
@@ -2809,8 +2932,6 @@ type FSharpParsingOptions =
         DiagnosticOptions: FSharpDiagnosticOptions
         LangVersionText: string
         IsInteractive: bool
-        IndentationAwareSyntax: bool option
-        StrictIndentation: bool option
         CompilingFSharpCore: bool
         IsExe: bool
     }
@@ -2827,8 +2948,6 @@ type FSharpParsingOptions =
             DiagnosticOptions = FSharpDiagnosticOptions.Default
             LangVersionText = LanguageVersion.Default.VersionText
             IsInteractive = false
-            IndentationAwareSyntax = None
-            StrictIndentation = None
             CompilingFSharpCore = false
             IsExe = false
         }
@@ -2841,8 +2960,6 @@ type FSharpParsingOptions =
             DiagnosticOptions = tcConfig.diagnosticsOptions
             LangVersionText = tcConfig.langVersion.VersionText
             IsInteractive = isInteractive
-            IndentationAwareSyntax = tcConfig.indentationAwareSyntax
-            StrictIndentation = tcConfig.strictIndentation
             CompilingFSharpCore = tcConfig.compilingFSharpCore
             IsExe = tcConfig.target.IsExe
         }
@@ -2855,8 +2972,6 @@ type FSharpParsingOptions =
             DiagnosticOptions = tcConfigB.diagnosticsOptions
             LangVersionText = tcConfigB.langVersion.VersionText
             IsInteractive = isInteractive
-            IndentationAwareSyntax = tcConfigB.indentationAwareSyntax
-            StrictIndentation = tcConfigB.strictIndentation
             CompilingFSharpCore = tcConfigB.compilingFSharpCore
             IsExe = tcConfigB.target.IsExe
         }
@@ -2870,20 +2985,20 @@ module internal ParseAndCheckFile =
         let diagnosticsCollector = ResizeArray<_>()
         let mutable errorCount = 0
 
-        let collectOne severity diagnostic =
+        let collectOne diagnostic =
             // 1. Extended diagnostic data should be created after typechecking because it requires a valid SymbolEnv
             // 2. Diagnostic message should be created during the diagnostic sink, because after typechecking
             //    the formatting of types in it may change (for example, 'a to obj)
             //
             // So we'll create a diagnostic later, but cache the FormatCore message now
-            diagnostic.Exception.Data["CachedFormatCore"] <- diagnostic.FormatCore(flatErrors, suggestNamesForErrors)
-            diagnosticsCollector.Add(struct (diagnostic, severity))
+            diagnostic.Exception.Data["CachedFormatCore"] <- diagnostic.FormatRichCore(flatErrors, suggestNamesForErrors)
+            diagnosticsCollector.Add(diagnostic)
 
-            if severity = FSharpDiagnosticSeverity.Error then
+            if diagnostic.Severity = FSharpDiagnosticSeverity.Error then
                 errorCount <- errorCount + 1
 
         // This function gets called whenever an error happens during parsing or checking
-        let diagnosticSink severity (diagnostic: PhasedDiagnostic) =
+        let diagnosticSink (diagnostic: PhasedDiagnostic) =
             // Sanity check here. The phase of an error should be in a phase known to the language service.
             let diagnostic =
                 if not (diagnostic.IsPhaseInCompile()) then
@@ -2906,13 +3021,13 @@ module internal ParseAndCheckFile =
 #if !NO_TYPEPROVIDERS
                 | {
                       Exception = :? TypeProviderError as tpe
-                  } -> tpe.Iter(fun exn -> collectOne severity { diagnostic with Exception = exn })
+                  } -> tpe.Iter(fun exn -> collectOne { diagnostic with Exception = exn })
 #endif
-                | _ -> collectOne severity diagnostic
+                | _ -> collectOne diagnostic
 
         let diagnosticsLogger =
             { new DiagnosticsLogger("DiagnosticsHandler") with
-                member _.DiagnosticSink(exn, severity) = diagnosticSink severity exn
+                member _.DiagnosticSink(diagnostic) = diagnosticSink diagnostic
                 member _.ErrorCount = errorCount
             }
 
@@ -2926,42 +3041,24 @@ module internal ParseAndCheckFile =
 
         member _.AnyErrors = errorCount > 0
 
-        member _.CollectedPhasedDiagnostics =
-            [|
-                for struct (diagnostic, severity) in diagnosticsCollector -> diagnostic, severity
-            |]
+        member _.CollectedPhasedDiagnostics = diagnosticsCollector.ToArray()
 
         member _.CollectedDiagnostics(symbolEnv: SymbolEnv option) =
             [|
-                for struct (diagnostic, severity) in diagnosticsCollector do
+                for diagnostic in diagnosticsCollector do
                     yield!
                         DiagnosticHelpers.ReportDiagnostic(
                             options,
                             false,
                             mainInputFileName,
                             diagnostic,
-                            severity,
                             suggestNamesForErrors,
                             flatErrors,
                             symbolEnv
                         )
             |]
 
-    let getLightSyntaxStatus fileName options =
-        let indentationAwareSyntaxOnByDefault =
-            List.exists (FileSystemUtils.checkSuffix fileName) FSharpIndentationAwareSyntaxFileSuffixes
-
-        let indentationSyntaxStatus =
-            if indentationAwareSyntaxOnByDefault then
-                (options.IndentationAwareSyntax <> Some false)
-            else
-                (options.IndentationAwareSyntax = Some true)
-
-        IndentationAwareSyntaxStatus(indentationSyntaxStatus, true)
-
-    let createLexerFunction fileName options lexbuf (errHandler: DiagnosticsHandler) (ct: CancellationToken) =
-        let indentationSyntaxStatus = getLightSyntaxStatus fileName options
-
+    let createLexerFunction options lexbuf (errHandler: DiagnosticsHandler) (ct: CancellationToken) =
         // If we're editing a script then we define INTERACTIVE otherwise COMPILED.
         // Since this parsing for intellisense we always define EDITING.
         let conditionalDefines =
@@ -2974,18 +3071,10 @@ module internal ParseAndCheckFile =
         // When analyzing files using ParseOneFile, i.e. for the use of editing clients, we do not apply line directives.
         // TODO(pathmap): expose PathMap on the service API, and thread it through here
         let lexargs =
-            mkLexargs (
-                conditionalDefines,
-                indentationSyntaxStatus,
-                lexResourceManager,
-                [],
-                errHandler.DiagnosticsLogger,
-                PathMap.empty,
-                options.ApplyLineDirectives
-            )
+            mkLexargs (conditionalDefines, lexResourceManager, [], errHandler.DiagnosticsLogger, PathMap.empty, options.ApplyLineDirectives)
 
         let tokenizer =
-            LexFilter.LexFilter(indentationSyntaxStatus, options.CompilingFSharpCore, Lexer.token lexargs true, lexbuf, false)
+            LexFilter.LexFilter(options.CompilingFSharpCore, Lexer.token lexargs true, lexbuf, false)
 
         if ct.CanBeCanceled then
             (fun _ ->
@@ -2994,8 +3083,8 @@ module internal ParseAndCheckFile =
         else
             (fun _ -> tokenizer.GetToken())
 
-    let createLexbuf langVersion strictIndentation sourceText =
-        UnicodeLexing.SourceTextAsLexbuf(true, LanguageVersion(langVersion), strictIndentation, sourceText)
+    let createLexbuf langVersion sourceText =
+        UnicodeLexing.SourceTextAsLexbuf(true, LanguageVersion(langVersion), sourceText)
 
     let matchBraces
         (
@@ -3015,11 +3104,11 @@ module internal ParseAndCheckFile =
 
         let matchingBraces = ResizeArray<_>()
 
-        usingLexbufForParsing (createLexbuf options.LangVersionText options.StrictIndentation sourceText, fileName) (fun lexbuf ->
+        usingLexbufForParsing (createLexbuf options.LangVersionText sourceText, fileName) (fun lexbuf ->
             let errHandler =
                 DiagnosticsHandler(false, fileName, options.DiagnosticOptions, suggestNamesForErrors, false)
 
-            let lexfun = createLexerFunction fileName options lexbuf errHandler ct
+            let lexfun = createLexerFunction options lexbuf errHandler ct
 
             let parenTokensBalance t1 t2 =
                 match t1, t2 with
@@ -3128,9 +3217,9 @@ module internal ParseAndCheckFile =
         use _ = UseBuildPhase BuildPhase.Parse
 
         let parseResult =
-            usingLexbufForParsing (createLexbuf options.LangVersionText options.StrictIndentation sourceText, fileName) (fun lexbuf ->
+            usingLexbufForParsing (createLexbuf options.LangVersionText sourceText, fileName) (fun lexbuf ->
 
-                let lexfun = createLexerFunction fileName options lexbuf errHandler ct
+                let lexfun = createLexerFunction options lexbuf errHandler ct
 
                 let isLastCompiland =
                     fileName.Equals(options.LastFileName, StringComparison.CurrentCultureIgnoreCase)
@@ -3177,7 +3266,7 @@ module internal ParseAndCheckFile =
             // If there was a loadClosure, replay the errors and warnings from resolution, excluding parsing
             loadClosure.LoadClosureRootFileDiagnostics |> List.iter diagnosticSink
 
-            let fileOfBackgroundError (diagnostic: PhasedDiagnostic, _) =
+            let fileOfBackgroundError (diagnostic: PhasedDiagnostic) =
                 match diagnostic.Range with
                 | Some m -> Some m.FileName
                 | None -> None
@@ -3211,28 +3300,28 @@ module internal ParseAndCheckFile =
                 for file, errorGroupedByFileName in hashLoadBackgroundDiagnosticsGroupedByFileName do
                     if sameFile file fileOfHashLoad then
                         for rangeOfHashLoad in rangesOfHashLoad do // Handle the case of two #loads of the same file
-                            let diagnostics =
-                                errorGroupedByFileName |> Array.map (fun (_, (pe, f)) -> pe.Exception, f) // Strip the build phase here. It will be replaced, in total, with TypeCheck
+                            let diagnostics = errorGroupedByFileName |> Array.map snd
+                            // Strip the build phase here. It will be replaced, in total, with TypeCheck
 
                             let errors =
                                 [
-                                    for err, severity in diagnostics do
-                                        if severity = FSharpDiagnosticSeverity.Error then
-                                            err
+                                    for err in diagnostics do
+                                        if err.Severity = FSharpDiagnosticSeverity.Error then
+                                            err.Exception
                                 ]
 
                             let warnings =
                                 [
-                                    for err, severity in diagnostics do
-                                        if severity = FSharpDiagnosticSeverity.Warning then
-                                            err
+                                    for err in diagnostics do
+                                        if err.Severity = FSharpDiagnosticSeverity.Warning then
+                                            err.Exception
                                 ]
 
                             let infos =
                                 [
-                                    for err, severity in diagnostics do
-                                        if severity = FSharpDiagnosticSeverity.Info then
-                                            err
+                                    for err in diagnostics do
+                                        if err.Severity = FSharpDiagnosticSeverity.Info then
+                                            err.Exception
                                 ]
 
                             let message = HashLoadedSourceHasIssues(infos, warnings, errors, rangeOfHashLoad)
@@ -3242,8 +3331,8 @@ module internal ParseAndCheckFile =
                             else errorR message
 
             // Replay other background errors.
-            for diagnostic, severity in otherBackgroundDiagnostics do
-                match severity with
+            for diagnostic in otherBackgroundDiagnostics do
+                match diagnostic.Severity with
                 | FSharpDiagnosticSeverity.Info -> informationalWarning diagnostic.Exception
                 | FSharpDiagnosticSeverity.Warning -> warning diagnostic.Exception
                 | FSharpDiagnosticSeverity.Error -> errorR diagnostic.Exception
@@ -3273,7 +3362,7 @@ module internal ParseAndCheckFile =
             tcState: TcState,
             moduleNamesDict: ModuleNamesDict,
             loadClosure: LoadClosure option,
-            backgroundDiagnostics: (PhasedDiagnostic * FSharpDiagnosticSeverity)[],
+            backgroundDiagnostics: PhasedDiagnostic[],
             suggestNamesForErrors: bool
         ) =
 
@@ -3318,7 +3407,7 @@ module internal ParseAndCheckFile =
                             new CompilationGlobalsScope(errHandler.DiagnosticsLogger, BuildPhase.TypeCheck)
 
                         let! result =
-                            CheckOneInputAndFinish(
+                            CheckOneInput(
                                 checkForErrors,
                                 tcConfig,
                                 tcImports,
@@ -3336,17 +3425,17 @@ module internal ParseAndCheckFile =
                         let mty =
                             Construct.NewEmptyModuleOrNamespaceType(ModuleOrNamespaceKind.Namespace true)
 
-                        return ((tcState.TcEnvFromSignatures, EmptyTopAttrs, [], [ mty ]), tcState)
+                        return ((tcState.TcEnvFromSignatures, EmptyTopAttrs, None, mty, mty), tcState)
                 }
 
             // Play background errors and warnings for this file.
             do
-                for err, severity in backgroundDiagnostics do
-                    match err.AdjustSeverity(tcConfig.diagnosticsOptions, severity) with
+                for diagnostic in backgroundDiagnostics do
+                    match diagnostic.AdjustSeverity(tcConfig.diagnosticsOptions) with
                     | FSharpDiagnosticSeverity.Hidden -> ()
-                    | s -> diagnosticSink (err, s)
+                    | s -> diagnosticSink { diagnostic with Severity = s }
 
-            let (tcEnvAtEnd, _, implFiles, ccuSigsForFiles), tcState = resOpt
+            let (tcEnvAtEnd, _, implFileOpt, ccuSigForFile, ownSigForFile), tcState = resOpt
 
             let symbolEnv = SymbolEnv(tcGlobals, tcState.Ccu, Some tcState.CcuSig, tcImports)
             let errors = errHandler.CollectedDiagnostics(Some symbolEnv)
@@ -3355,7 +3444,8 @@ module internal ParseAndCheckFile =
                 TypeCheckInfo(
                     tcConfig,
                     tcGlobals,
-                    List.head ccuSigsForFiles,
+                    ccuSigForFile,
+                    ownSigForFile,
                     tcState.Ccu,
                     tcImports,
                     tcEnvAtEnd.AccessRights,
@@ -3366,7 +3456,7 @@ module internal ParseAndCheckFile =
                     sink.GetSymbolUses(),
                     tcEnvAtEnd.NameEnv,
                     loadClosure,
-                    List.tryHead implFiles,
+                    implFileOpt,
                     sink.GetOpenDeclarations()
                 )
 
@@ -3412,6 +3502,9 @@ type FSharpCheckFileResults
 
     member _.Diagnostics = errors
 
+    member _.HasErrors =
+        errors |> Array.exists (fun d -> d.Severity = FSharpDiagnosticSeverity.Error)
+
     member _.HasFullTypeCheckInfo = details.IsSome
 
     member _.TryGetCurrentTcImports() =
@@ -3449,7 +3542,7 @@ type FSharpCheckFileResults
                     match Tokenization.FSharpKeywords.KeywordsDescriptionLookup kw with
                     | None -> ()
                     | Some kwDescription ->
-                        let kwText = kw |> TaggedText.tagKeyword |> wordL |> LayoutRender.toArray
+                        let kwText = kw |> TaggedText.tagKeyword |> wordL |> LayoutRender.toRichText
                         yield ToolTipElement.Single(kwText, FSharpXmlDoc.FromXmlText(Xml.XmlDoc([| kwDescription |], range0)))
             ]
 
@@ -3524,15 +3617,20 @@ type FSharpCheckFileResults
         | None -> [||]
         | Some(scope, _builderOpt) -> scope.GetFormatSpecifierLocationsAndArity()
 
-    member _.GetSemanticClassification(range: range option) =
+    member _.GetSemanticClassification(range: range option, ?relatedSymbolKinds: RelatedSymbolUseKind) =
         match details with
         | None -> [||]
-        | Some(scope, _builderOpt) -> scope.GetSemanticClassification(range)
+        | Some(scope, _builderOpt) -> scope.GetSemanticClassification(range, ?relatedSymbolKinds = relatedSymbolKinds)
 
     member _.PartialAssemblySignature =
         match details with
         | None -> failwith "not available"
         | Some(scope, _builderOpt) -> scope.PartialAssemblySignatureForFile
+
+    member _.FileSignature =
+        match details with
+        | None -> failwith "not available"
+        | Some(scope, _builderOpt) -> scope.FileSignature
 
     member _.ProjectContext =
         match details with
@@ -3552,6 +3650,9 @@ type FSharpCheckFileResults
         | None -> None
         | Some(scope, _) -> scope.TryGetCapturedDisplayContext(range)
 
+    member _.ImportILType(ty: ILType) =
+        scopeOptX |> Option.map _.ImportILType(ty)
+
     member _.GetAllUsesOfAllSymbolsInFile(?cancellationToken: CancellationToken) =
         match details with
         | None -> Seq.empty
@@ -3569,13 +3670,13 @@ type FSharpCheckFileResults
                             FSharpSymbolUse(symbolUse.DisplayEnv, symbol, inst, symbolUse.ItemOccurrence, symbolUse.Range)
             }
 
-    member _.GetUsesOfSymbolInFile(symbol: FSharpSymbol, ?cancellationToken: CancellationToken) =
+    member _.GetUsesOfSymbolInFile(symbol: FSharpSymbol, ?relatedSymbolKinds: RelatedSymbolUseKind, ?cancellationToken: CancellationToken) =
         match details with
         | None -> [||]
         | Some(scope, _builderOpt) ->
             [|
                 for symbolUse in
-                    scope.ScopeSymbolUses.GetUsesOfSymbol(symbol.Item)
+                    scope.ScopeSymbolUses.GetUsesOfSymbol(symbol.Item, ?relatedSymbolKinds = relatedSymbolKinds)
                     |> Seq.distinctBy (fun symbolUse -> symbolUse.ItemOccurrence, symbolUse.Range) do
                     cancellationToken |> Option.iter (fun ct -> ct.ThrowIfCancellationRequested())
 
@@ -3698,6 +3799,7 @@ type FSharpCheckFileResults
             tcErrors: FSharpDiagnostic[],
             keepAssemblyContents,
             ccuSigForFile,
+            ownSigForFile,
             thisCcu,
             tcImports,
             tcAccessRights,
@@ -3714,6 +3816,7 @@ type FSharpCheckFileResults
                 tcConfig,
                 tcGlobals,
                 ccuSigForFile,
+                ownSigForFile,
                 thisCcu,
                 tcImports,
                 tcAccessRights,
@@ -3745,7 +3848,7 @@ type FSharpCheckFileResults
             tcState: TcState,
             moduleNamesDict: ModuleNamesDict,
             loadClosure: LoadClosure option,
-            backgroundDiagnostics: (PhasedDiagnostic * FSharpDiagnosticSeverity)[],
+            backgroundDiagnostics: PhasedDiagnostic[],
             isIncompleteTypeCheckEnvironment: bool,
             projectOptions: FSharpProjectOptions,
             builder: IncrementalBuilder option,
@@ -3882,7 +3985,8 @@ type FSharpCheckProjectResults
         let optEnv0 = GetInitialOptimizationEnv(tcImports, tcGlobals)
         let tcConfig = getTcConfig ()
         let isIncrementalFragment = false
-        let tcVal = LightweightTcValForUsingInBuildMethodCall tcGlobals
+        // traitCtxtNone: checker results API — post-typecheck, SRTP constraints already resolved (audited for RFC FS-1043)
+        let tcVal = LightweightTcValForUsingInBuildMethodCall tcGlobals traitCtxtNone
 
         let optimizedImpls, _optimizationData, _ =
             ApplyAllOptimizations(tcConfig, tcGlobals, tcVal, outfile, importMap, isIncrementalFragment, optEnv0, thisCcu, mimpls)
@@ -3990,14 +4094,16 @@ type FSharpCheckProjectResults
     override _.ToString() =
         "FSharpCheckProjectResults(" + projectFileName + ")"
 
-type FsiInteractiveChecker(legacyReferenceResolver, tcConfig: TcConfig, tcGlobals: TcGlobals, tcImports: TcImports, tcState) =
+type FsiInteractiveChecker
+    (legacyReferenceResolver, tcConfig: TcConfig, tcGlobals: TcGlobals, tcImports: TcImports, tcState, ?keepAssemblyContents: bool) =
 
-    let keepAssemblyContents = false
+    let keepAssemblyContents = defaultArg keepAssemblyContents false
 
-    member _.ParseAndCheckInteraction(sourceText: ISourceText, ?userOpName: string) =
+    member _.ParseAndCheckInteraction(sourceText: ISourceText, ?userOpName: string, ?asmName: string) =
         cancellable {
             let userOpName = defaultArg userOpName "Unknown"
-            let fileName = Path.Combine(tcConfig.implicitIncludeDir, "stdin.fsx")
+            let asmName = defaultArg asmName "stdin"
+            let fileName = Path.Combine(tcConfig.implicitIncludeDir, asmName + ".fsx")
             let suggestNamesForErrors = true // Will always be true, this is just for readability
             // Note: projectSourceFiles is only used to compute isLastCompiland, and is ignored if Build.IsScript(mainInputFileName) is true (which it is in this case).
             let parsingOptions =
@@ -4087,6 +4193,12 @@ type FsiInteractiveChecker(legacyReferenceResolver, tcConfig: TcConfig, tcGlobal
             let typeCheckResults =
                 FSharpCheckFileResults(fileName, errors, Some tcFileInfo, dependencyFiles, None, false)
 
+            let checkedImplFiles =
+                if keepAssemblyContents then
+                    tcFileInfo.ImplementationFile |> Option.map List.singleton
+                else
+                    None
+
             let details =
                 (tcGlobals,
                  tcImports,
@@ -4095,9 +4207,9 @@ type FsiInteractiveChecker(legacyReferenceResolver, tcConfig: TcConfig, tcGlobal
                  Choice2Of2(tcFileInfo.ScopeSymbolUses |> Seq.singleton |> async.Return),
                  None,
                  (fun () -> None),
-                 mkSimpleAssemblyRef "stdin",
+                 mkSimpleAssemblyRef asmName,
                  tcState.TcEnvFromImpls.AccessRights,
-                 None,
+                 checkedImplFiles,
                  dependencyFiles,
                  Some projectOptions)
 

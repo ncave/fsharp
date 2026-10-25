@@ -1,5 +1,5 @@
-// #NoMono #NoMT #CodeGen #EmittedIL 
-#light
+// #NoMono #NoMT #CodeGen #EmittedIL
+
 
 let TestFunction12(p) =
     { contents = p+p }

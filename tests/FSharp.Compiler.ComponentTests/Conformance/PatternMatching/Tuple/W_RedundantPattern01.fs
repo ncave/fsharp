@@ -1,12 +1,12 @@
-// #Regression #Conformance #PatternMatching #Tuples 
-#light
+// #Regression #Conformance #PatternMatching #Tuples
+
 
 // Verify warning with redundant pattern
 
 
 let redPat () =
     function
-    | 1, _, _ 
+    | 1, _, _
         -> true
     | 1, _, _
         -> true

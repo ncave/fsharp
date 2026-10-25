@@ -16,13 +16,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="$(FSharpSourcesRoot)\Compiler\Utilities\NullnessShims.fs"/>
+    <Compile Include="$(FSharpSourcesRoot)\Compiler\Utilities\NullHelpers.fs"/>
     <EmbeddedText Include="$(FSharpSourcesRoot)\Compiler\Facilities\UtilsStrings.txt" />
     <Compile Include="$(FSharpSourcesRoot)\Compiler\Facilities\CompilerLocation.fs">
       <Link>CompilerLocation.fs</Link>
     </Compile>
     <Compile Include="..\unittests\TestLib.Utils.fs">
       <Link>UnitTests.TestLib.Utils.fs</Link>
+    </Compile>
+    <Compile Include="..\..\..\tests\FSharp.Test.Utilities\VSInstallDiscovery.fs">
+      <Link>VSInstallDiscovery.fs</Link>
     </Compile>
     <Compile Include="FSharpLanguageServiceTestable.fs" />
     <Compile Include="VsMocks.fs" />
@@ -50,13 +53,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.VisualStudio.Editor" Version="$(MicrosoftVisualStudioEditorVersion)" />
-    <PackageReference Include="Microsoft.VisualStudio.Designer.Interfaces" Version="$(MicrosoftVisualStudioDesignerInterfacesVersion)" />
-    <PackageReference Include="Microsoft.VisualStudio.Platform.VSEditor" Version="$(MicrosoftVisualStudioPlatformVSEditorVersion)" />
-    <PackageReference Include="Microsoft.VisualStudio.Shell.Design" Version="$(MicrosoftVisualStudioShellDesignVersion)" />
-    <PackageReference Include="Microsoft.Internal.VisualStudio.Shell.Framework" Version="$(MicrosoftInternalVisualStudioShellFrameworkVersion)" />
-    <PackageReference Include="Microsoft.VisualStudio.Threading" Version="$(MicrosoftVisualStudioThreadingVersion)" />
-    <PackageReference Include="XUnit" Version="$(XUnitVersion)" />
+    <PackageReference Include="Microsoft.VisualStudio.Editor" />
+    <PackageReference Include="Microsoft.VisualStudio.Designer.Interfaces" />
+    <PackageReference Include="Microsoft.VisualStudio.Platform.VSEditor" />
+    <PackageReference Include="Microsoft.VisualStudio.Shell.Design" />
+    <PackageReference Include="Microsoft.Internal.VisualStudio.Shell.Framework" />
+    <PackageReference Include="Microsoft.VisualStudio.Threading" />
+    <PackageReference Include="xunit.v3.extensibility.core" />
+    <PackageReference Include="xunit.v3.assert" />
   </ItemGroup>
 
 </Project>

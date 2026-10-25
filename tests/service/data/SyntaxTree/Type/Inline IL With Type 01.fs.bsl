@@ -33,7 +33,7 @@ ImplFile
                   (3,11--3,25), NoneAtLet, { LeadingKeyword = Let (3,0--3,3)
                                              InlineKeyword = Some (3,4--3,10)
                                              EqualsRange = Some (3,31--3,32) })],
-              (3,0--4,26));
+              (3,0--4,26), { InKeyword = None });
            Types
              ([SynTypeDefn
                  (SynComponentInfo
@@ -43,7 +43,7 @@ ImplFile
                           ([SynTyparDecl
                               ([], SynTypar (T, None, false), [],
                                { AmpersandRanges = [] })], (4,27--4,31))), [],
-                     [x],
+                     Some (LongIdent (SynLongIdent ([x], [], [None]))),
                      PreXmlDoc ((4,22), FSharp.Compiler.Xml.XmlDocCollector),
                      false, None, (4,32--4,33)),
                   Simple (None (4,32--4,33), (4,32--4,33)), [], None,

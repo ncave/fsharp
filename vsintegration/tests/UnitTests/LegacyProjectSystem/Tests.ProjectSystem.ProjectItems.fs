@@ -31,9 +31,9 @@ type Vs18OrNewerFactAttribute() =
         | _ -> base.Skip <- "Test requires Visual Studio 18.0 or newer (VISUALSTUDIOVERSION not set)"
 
 
-type ProjectItems() = 
+type ProjectItems() =
     inherit TheTests()
-    
+
     //TODO: look for a way to remove the helper functions
     static let ANYTREE = Tree("",Nil,Nil)
 
@@ -43,7 +43,7 @@ type ProjectItems() =
             let listener = project.Site.GetService(typeof<Salsa.VsMocks.IVsTrackProjectDocuments2Listener>) :?> Salsa.VsMocks.IVsTrackProjectDocuments2Listener
             project.ComputeSourcesAndFlags()
 
-            let containsSystemNumerics () = 
+            let containsSystemNumerics () =
                 project.CompilationOptions
                 |> Array.exists (fun f -> f.IndexOf("System.Numerics") <> -1)
 
@@ -51,8 +51,8 @@ type ProjectItems() =
             Assert.True(containsSystemNumerics (), "Project should contains reference to System.Numerics")
 
             let refContainer = project.GetReferenceContainer()
-            let reference = 
-                refContainer.EnumReferences() 
+            let reference =
+                refContainer.EnumReferences()
                 |> Seq.find(fun r -> r.SimpleName = "System.Numerics")
             (
                 use _guard = listener.OnAfterRemoveFiles.Subscribe(fun _ -> wasCalled <- true)
@@ -60,7 +60,7 @@ type ProjectItems() =
             )
 
             Assert.False(wasCalled, "No events from IVsTrackProjectDocuments2 are expected")
-            Assert.False(containsSystemNumerics(), "Project should not contains reference to System.Numerics")            
+            Assert.False(containsSystemNumerics(), "Project should not contains reference to System.Numerics")
             ))
 
     [<Fact>]
@@ -68,7 +68,7 @@ type ProjectItems() =
         this.MakeProjectAndDo(["orig.fs"], [], "", (fun project ->
             let absFilePath = Path.Combine(project.ProjectFolder, "a.fs")
             try
-                File.AppendAllText(absFilePath, "#light")
+                File.AppendAllText(absFilePath, "//")
                 // Note: this is not the same code path as the UI, but it is close
                 project.MoveNewlyAddedFileToBottomOfGroup (fun () ->
                     project.AddNewFileNodeToHierarchy(project,absFilePath) |> ignore)
@@ -85,7 +85,7 @@ type ProjectItems() =
             Directory.CreateDirectory(dir) |> ignore
             let absFilePath = Path.Combine(dir, "a.fs")
             try
-                File.AppendAllText(absFilePath, "#light")
+                File.AppendAllText(absFilePath, "//")
                 // Note: this is not the same code path as the UI, but it is close
                 project.MoveNewlyAddedFileToBottomOfGroup (fun () ->
                     project.AddNewFileNodeToHierarchy(project.FindChild("Folder"),absFilePath) |> ignore)
@@ -94,13 +94,13 @@ type ProjectItems() =
             finally
                 File.Delete(absFilePath)
             ))
-    
+
     [<Fact>]
     member public this.``AddNewItemBelow.ItemAppearsInRightSpot``() =
         this.MakeProjectAndDo(["orig1.fs"; "orig2.fs"], [], "", (fun project ->
             let absFilePath = Path.Combine(project.ProjectFolder, "new.fs")
             try
-                File.AppendAllText(absFilePath, "#light")
+                File.AppendAllText(absFilePath, "//")
                 // Note: this is not the same code path as the UI, but it is close
                 let orig1 = TheTests.FindNodeWithCaption(project, "orig1.fs")
                 project.MoveNewlyAddedFileBelow (orig1, fun () ->
@@ -117,13 +117,13 @@ type ProjectItems() =
             finally
                 File.Delete(absFilePath)
             ))
-    
+
     [<Fact>]
     member public this.``AddNewItemAbove.ItemAppearsInRightSpot.Case1``() =
         this.MakeProjectAndDo(["orig1.fs"; "orig2.fs"], [], "", (fun project ->
             let absFilePath = Path.Combine(project.ProjectFolder, "new.fs")
             try
-                File.AppendAllText(absFilePath, "#light")
+                File.AppendAllText(absFilePath, "//")
                 // Note: this is not the same code path as the UI, but it is close
                 let orig2 = TheTests.FindNodeWithCaption(project, "orig2.fs")
                 project.MoveNewlyAddedFileAbove (orig2, fun () ->
@@ -140,13 +140,13 @@ type ProjectItems() =
             finally
                 File.Delete(absFilePath)
             ))
-    
+
     [<Fact>]
     member public this.``AddNewItemAbove.ItemAppearsInRightSpot.Case2``() =
         this.MakeProjectAndDo(["orig1.fs"; "orig2.fs"], [], "", (fun project ->
             let absFilePath = Path.Combine(project.ProjectFolder, "new.fs")
             try
-                File.AppendAllText(absFilePath, "#light")
+                File.AppendAllText(absFilePath, "//")
                 // Note: this is not the same code path as the UI, but it is close
                 let orig1 = TheTests.FindNodeWithCaption(project, "orig1.fs")
                 project.MoveNewlyAddedFileAbove (orig1, fun () ->

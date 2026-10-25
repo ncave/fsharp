@@ -8,10 +8,12 @@ ImplFile
                 (Yes (3,0--3,20),
                  Record
                    (None, None,
-                    [SynExprRecordField
-                       ((SynLongIdent ([A], [], [None]), true),
-                        Some (3,10--3,11), Some (Const (Int32 1, (3,12--3,13))),
-                        (3,8--3,13), None)], (3,6--3,15)),
+                    [Field
+                       (SynExprRecordField
+                          ((SynLongIdent ([A], [], [None]), true),
+                           Some (3,10--3,11),
+                           Some (Const (Int32 1, (3,12--3,13))), (3,8--3,13)),
+                        None)], (3,6--3,15)),
                  [SynMatchClause
                     (Record
                        ([NamePatPairField
@@ -23,7 +25,8 @@ ImplFile
                             (4,8--4,13), Const (Int32 3, (4,12--4,13)), None)],
                         (4,2--4,15)), None, Ident a, (4,2--4,20), Yes,
                      { ArrowRange = Some (4,16--4,18)
-                       BarRange = Some (4,0--4,1) })], (3,0--4,20),
+                       BarRange = Some (4,0--4,1)
+                       WhenKeyword = None })], (3,0--4,20),
                  { MatchKeyword = (3,0--3,5)
                    WithKeyword = (3,16--3,20) }), (3,0--4,20))],
           PreXmlDoc ((1,0), FSharp.Compiler.Xml.XmlDocCollector), [], None,

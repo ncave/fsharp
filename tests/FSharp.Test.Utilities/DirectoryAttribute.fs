@@ -3,8 +3,14 @@
 open System
 open System.IO
 open System.Reflection
+open System.Threading.Tasks
 
+open Xunit
+open Xunit.v3
 open Xunit.Sdk
+
+// TheoryDataRow is in the Xunit namespace
+open type Xunit.TheoryDataRow
 
 open FSharp.Compiler.IO
 open FSharp.Test.Compiler
@@ -17,17 +23,20 @@ open TestFramework
 [<AttributeUsage(AttributeTargets.Method, AllowMultiple = true, Inherited = true)>]
 [<NoComparison; NoEquality>]
 type DirectoryAttribute(dir: string) =
-    inherit DataAttribute()
+    inherit DataAttributeBase()
+
     do if String.IsNullOrWhiteSpace(dir) then
             invalidArg "dir" "Directory cannot be null, empty or whitespace only."
 
     let directoryPath = normalizePathSeparator (Path.GetFullPath(dir))
     let mutable baselineSuffix = ""
     let mutable includes = Array.empty<string>
-    
+
     new([<ParamArray>] dirs: string[]) = DirectoryAttribute(Path.Combine(dirs) : string)
-    
+
     member _.BaselineSuffix with get() = baselineSuffix and set v = baselineSuffix <- v
     member _.Includes with get() = includes and set v = includes <- v
 
-    override _.GetData _ = createCompilationUnitForFiles baselineSuffix directoryPath includes
+    override _.GetData(_testMethod: MethodInfo, _disposalTracker: DisposalTracker) =
+        let data = createCompilationUnitForFiles baselineSuffix directoryPath includes
+        DataAttributeBase.WrapRows(data)

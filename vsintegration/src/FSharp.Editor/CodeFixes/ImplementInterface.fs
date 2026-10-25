@@ -30,8 +30,8 @@ type internal InterfaceState =
         Tokens: Tokenizer.SavedTokenInfo[]
     }
 
-// state machine not statically compilable
 // TODO: rewrite token arithmetics properly here
+// state machine not statically compilable (let rec in state machine)
 #nowarn "3511"
 
 [<ExportCodeFixProvider(FSharpConstants.FSharpLanguageName, Name = CodeFix.ImplementInterface); Shared>]
@@ -197,7 +197,6 @@ type internal ImplementInterfaceCodeFixProvider [<ImportingConstructor>] () =
                         context.Document.FilePath,
                         defines,
                         langVersionOpt,
-                        parsingOptions.StrictIndentation,
                         cancellationToken
                     )
 
@@ -245,7 +244,6 @@ type internal ImplementInterfaceCodeFixProvider [<ImportingConstructor>] () =
                                 false,
                                 false,
                                 langVersionOpt,
-                                parsingOptions.StrictIndentation,
                                 cancellationToken
                             )
 

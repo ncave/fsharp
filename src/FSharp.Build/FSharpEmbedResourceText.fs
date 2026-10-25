@@ -11,12 +11,17 @@ open Microsoft.Build.Utilities
 /// the task has already emitted the error message.
 exception TaskFailed
 
+[<MSBuildMultiThreadableTask>]
 type FSharpEmbedResourceText() as this =
     inherit Task()
     let mutable _embeddedText: ITaskItem[] = [||]
     let mutable _generatedSource: ITaskItem[] = [||]
     let mutable _generatedResx: ITaskItem[] = [||]
     let mutable _outputPath: string = ""
+
+    // Bound against `this` once; each call reads the injected TaskEnvironment late.
+    let rootedPath = TaskEnvironmentPaths.rootedPath this
+    let restorePaths = TaskEnvironmentPaths.restoreTaskPaths this
 
     let PrintErr (fileName, line, msg) =
         this.Log.LogError(null, null, null, fileName, line, 0, 0, 0, msg, Array.empty)
@@ -260,37 +265,26 @@ errNum,ident,\"string\""
     let stringBoilerPlatePrefix =
         @"
 open Microsoft.FSharp.Core.LanguagePrimitives.IntrinsicOperators
-open Microsoft.FSharp.Reflection
-open System.Reflection
 // (namespaces below for specific case of using the tool to compile FSharp.Core itself)
 open Microsoft.FSharp.Core
 open Microsoft.FSharp.Core.Operators
-open Microsoft.FSharp.Text
-open Microsoft.FSharp.Collections
-open Printf
 
+#nowarn ""1182"" // Generated boilerplate may include helper functions not referenced when the resource file has no entries
 #nowarn ""3262"" // The call to Option.ofObj below is applied in multiple compilation modes for GetString, sometimes the value is typed as a non-nullable string
-#if BUILDING_WITH_LKG
-#nowarn ""3261"" // Nullness warnings can happen due to LKG not having latest fixes
-#endif
 "
 
     let StringBoilerPlate fileName =
         @"
     // BEGIN BOILERPLATE
-    static let getCurrentAssembly () = System.Reflection.Assembly.GetExecutingAssembly()
-
-    static let getTypeInfo (t: System.Type) = t
-
     static let resources = lazy (new System.Resources.ResourceManager("""
         + fileName
-        + @""", getCurrentAssembly()))
+        + @""", System.Reflection.Assembly.GetExecutingAssembly()))
 
     static let GetString(name:string) =
         let s = resources.Value.GetString(name, System.Globalization.CultureInfo.CurrentUICulture)
     #if DEBUG
         if isNull s then
-            System.Diagnostics.Debug.Assert(false, sprintf ""**RESOURCE ERROR**: Resource token %s does not exist!"" name)
+            System.Diagnostics.Debug.Assert(false, $""**RESOURCE ERROR**: Resource token {name} does not exist!"")
     #endif
     #if NULLABLE
         Unchecked.nonNull s
@@ -299,90 +293,16 @@ open Printf
     #endif
 
 
-    static let mkFunctionValue (tys: System.Type[]) (impl:objnull->objnull) =
-        FSharpValue.MakeFunction(FSharpType.MakeFunctionType(tys.[0],tys.[1]), impl)
-
-    static let funTyC = typeof<(obj -> obj)>.GetGenericTypeDefinition()
-
-    static let isNamedType(ty:System.Type) = not (ty.IsArray ||  ty.IsByRef ||  ty.IsPointer)
-    static let isFunctionType (ty1:System.Type)  =
-        isNamedType(ty1) && getTypeInfo(ty1).IsGenericType && System.Type.op_Equality(ty1.GetGenericTypeDefinition(), funTyC)
-
-    static let rec destFunTy (ty:System.Type) =
-        if isFunctionType ty then
-            ty, ty.GetGenericArguments()
-        else
-            match getTypeInfo(ty).BaseType with
-            | null -> failwith ""destFunTy: not a function type""
-            | b -> destFunTy b
-
-    static let buildFunctionForOneArgPat (ty: System.Type) impl =
-        let _,tys = destFunTy ty
-        let rty = tys.[1]
-        // PERF: this technique is a bit slow (e.g. in simple cases, like 'sprintf ""%x""')
-        mkFunctionValue tys (fun inp -> impl rty inp)
-
-    #if !NULLABLE
-    static let capture1 (fmt:string) i args ty (go: obj list -> System.Type -> int -> obj) : obj =
-    #else
-    static let capture1 (fmt:string) i args ty (go: objnull list -> System.Type -> int -> obj) : obj =
-    #endif
-        match fmt.[i] with
-        | '%' -> go args ty (i+1)
-        | 'd'
-        | 'f'
-        | 's' -> buildFunctionForOneArgPat ty (fun rty n -> go (n :: args) rty (i+1))
-        | _ -> failwith ""bad format specifier""
-
     // newlines and tabs get converted to strings when read from a resource file
     // this will preserve their original intention
     static let postProcessString (s: string) =
         s.Replace(""\\n"",""\n"").Replace(""\\t"",""\t"").Replace(""\\r"",""\r"").Replace(""\\\"""", ""\"""")
 
-    static let createMessageString (messageString: string) (fmt: Printf.StringFormat<'T>) : 'T =
-        let fmt = fmt.Value // here, we use the actual error string, as opposed to the one stored as fmt
-        let len = fmt.Length
-
-        /// Function to capture the arguments and then run.
-        let rec capture args ty i =
-            if i >= len ||  (fmt.[i] = '%' && i+1 >= len) then
-                let b = new System.Text.StringBuilder()
-                b.AppendFormat(messageString, [| for x in List.rev args -> x |]) |> ignore
-    #if !NULLABLE
-                box(b.ToString())
-    #else
-                box(b.ToString()) |> Unchecked.nonNull
-    #endif
-            // REVIEW: For these purposes, this should be a nop, but I'm leaving it
-            // in incase we ever decide to support labels for the error format string
-            // E.g., ""<name>%s<foo>%d""
-            elif System.Char.IsSurrogatePair(fmt,i) then
-                capture args ty (i+2)
-            else
-                match fmt.[i] with
-                | '%' ->
-                    let i = i+1
-                    capture1 fmt i args ty capture
-                | _ ->
-                    capture args ty (i+1)
-
-        (unbox (capture [] (typeof<'T>) 0) : 'T)
-
-    static let mutable swallowResourceText = false
-
-    static let GetStringFunc((messageID: string),(fmt: Printf.StringFormat<'T>)) : 'T =
-        if swallowResourceText then
-            sprintf fmt
-        else
-            let mutable messageString = GetString(messageID)
-            messageString <- postProcessString messageString
-            createMessageString messageString fmt
+    static let FormatMessage(messageID: string, args: objnull array) : string =
+        System.String.Format(postProcessString (GetString messageID), args)
 
     static member GetTextOpt(key:string) : string option = GetString(key) |> Option.ofObj
 
-    /// If set to true, then all error messages will just return the filled 'holes' delimited by ',,,'s - this is for language-neutral testing (e.g. localization-invariant baselines).
-    static member SwallowResourceText with get () = swallowResourceText
-                                        and set (b) = swallowResourceText <- b
     // END BOILERPLATE
 "
 
@@ -391,15 +311,36 @@ open Printf
 
     static member GetTextOpt: key:string -> string option
 
-    /// If set to true, then all error messages will just return the filled 'holes' delimited by ',,,'s - this is for language-neutral testing (e.g. localization-invariant baselines).
-    static member SwallowResourceText: bool with get, set
     // END BOILERPLATE"
 
-    let generateResxAndSource (fileName: string) =
+    /// Marks a generated file as having the overloads taking classified text, and brings RichText into
+    /// scope for them
+    let richTextOpen = "open FSharp.Compiler.Text"
+
+    let generateResxAndSource (item: ITaskItem) =
+        let fileName = item.ItemSpec
+
+        // Record paths inside the try so failures during derivation still reach the shared handler below.
+        let mutable originalPaths = [ fileName ]
+
         try
+            let justFileName = Path.GetFileNameWithoutExtension(fileName) // .txt
+            let outFileName = Path.Combine(_outputPath, justFileName + ".fs")
+            let outFileSignatureName = Path.Combine(_outputPath, justFileName + ".fsi")
+            let outXmlFileName = Path.Combine(_outputPath, justFileName + ".resx")
+            originalPaths <- [ fileName; outFileName; outFileSignatureName; outXmlFileName ]
+
+            let rootedInput = rootedPath fileName
+            let rootedOut = rootedPath outFileName
+            let rootedSignature = rootedPath outFileSignatureName
+            let rootedXml = rootedPath outXmlFileName
+
             let printMessage fmt = Printf.ksprintf this.Log.LogMessage fmt
 
-            let justFileName = Path.GetFileNameWithoutExtension(fileName) // .txt
+            // Opt in with <RichText>true</RichText> on the EmbeddedText item. Only assemblies that can
+            // see FSharp.Compiler.Text.RichText are able to compile the classified overloads.
+            let richText =
+                System.String.Equals(item.GetMetadata "RichText", "true", System.StringComparison.OrdinalIgnoreCase)
 
             if justFileName |> Seq.exists (System.Char.IsLetterOrDigit >> not) then
                 Err(
@@ -410,42 +351,45 @@ open Printf
                         justFileName
                 )
 
-            let outFileName = Path.Combine(_outputPath, justFileName + ".fs")
-            let outFileSignatureName = Path.Combine(_outputPath, justFileName + ".fsi")
-            let outXmlFileName = Path.Combine(_outputPath, justFileName + ".resx")
+            // A generated file does not record whether it was generated with RichText, so the flag has
+            // to be recovered from the open the generator emits for it, or an existing file would be
+            // taken as up-to-date after the flag changed
+            let failedCondition =
+                if not (File.Exists rootedOut) then
+                    Some 1
+                elif not (File.Exists rootedXml) then
+                    Some 2
+                elif not (File.Exists rootedInput) then
+                    Some 3
+                elif File.GetLastWriteTimeUtc rootedInput > File.GetLastWriteTimeUtc rootedOut then
+                    Some 4
+                elif File.GetLastWriteTimeUtc rootedInput > File.GetLastWriteTimeUtc rootedXml then
+                    Some 5
+                elif
+                    richText
+                    <> (File.ReadLines rootedOut |> Seq.truncate 40 |> Seq.contains richTextOpen)
+                then
+                    Some 6
+                else
+                    None
 
-            let condition1 = File.Exists(outFileName)
-            let condition2 = condition1 && File.Exists(outXmlFileName)
-            let condition3 = condition2 && File.Exists(fileName)
-
-            let condition4 =
-                condition3
-                && (File.GetLastWriteTimeUtc(fileName) <= File.GetLastWriteTimeUtc(outFileName))
-
-            let condition5 =
-                condition4
-                && (File.GetLastWriteTimeUtc(fileName) <= File.GetLastWriteTimeUtc(outXmlFileName))
-
-            if condition5 then
+            match failedCondition with
+            | None ->
                 printMessage "Skipping generation of %s and %s from %s since up-to-date" outFileName outXmlFileName fileName
 
                 Some(fileName, outFileSignatureName, outFileName, outXmlFileName)
-            else
+            | Some failedCondition ->
                 printMessage
                     "Generating %s and %s from %s, because condition %d is false, see FSharpEmbedResourceText.fs in the F# source"
                     outFileName
                     outXmlFileName
                     fileName
-                    (if not condition1 then 1
-                     elif not condition2 then 2
-                     elif not condition3 then 3
-                     elif not condition4 then 4
-                     else 5)
+                    failedCondition
 
                 printMessage "Reading %s" fileName
 
                 let lines =
-                    File.ReadAllLines(fileName)
+                    File.ReadAllLines rootedInput
                     |> Array.mapi (fun i s -> i, s) // keep line numbers
                     |> Array.filter (fun (_i, s) -> not (s.StartsWith "#")) // filter out comments
 
@@ -491,9 +435,11 @@ open Printf
                     allStrs.Add(str, (line, ident))
 
                 printMessage "Generating %s" outFileName
-                use outStream = File.Create outFileName
+                use outStream = File.Create rootedOut
                 use out = new StreamWriter(outStream)
-                use outSignatureStream = File.Create outFileSignatureName
+
+                use outSignatureStream = File.Create rootedSignature
+
                 use outSignature = new StreamWriter(outSignatureStream)
                 fprintfn out "// This is a generated file; the original input is '%s'" fileName
                 fprintfn outSignature "// This is a generated file; the original input is '%s'" fileName
@@ -501,6 +447,11 @@ open Printf
                 fprintfn outSignature "namespace %s" justFileName
                 fprintfn out "%s" stringBoilerPlatePrefix
                 fprintfn outSignature "%s" stringBoilerPlatePrefix
+
+                if richText then
+                    fprintfn out "%s" richTextOpen
+                    fprintfn outSignature "%s" richTextOpen
+
                 fprintfn out "type internal SR private() ="
                 fprintfn outSignature "type internal SR ="
                 fprintfn outSignature "    private new: unit -> SR"
@@ -512,73 +463,97 @@ open Printf
                 // gen each resource method
                 stringInfos
                 |> Seq.iter (fun (lineNum, (optErrNum, ident), str, holes, _netFormatString) ->
-                    let formalArgs = new System.Text.StringBuilder()
-                    let actualArgs = new System.Text.StringBuilder()
-                    let mutable firstTime = true
-                    let mutable n = 0
-                    formalArgs.Append "(" |> ignore
+                    let parameters = holes |> Array.mapi (fun index holeType -> $"a{index}: {holeType}")
 
-                    for hole in holes do
-                        if firstTime then
-                            firstTime <- false
-                        else
-                            formalArgs.Append ", " |> ignore
-                            actualArgs.Append " " |> ignore
-
-                        formalArgs.Append(sprintf "a%d : %s" n hole) |> ignore
-                        actualArgs.Append(sprintf "a%d" n) |> ignore
-                        n <- n + 1
-
-                    formalArgs.Append ")" |> ignore
                     fprintfn out "    /// %s" str
                     fprintfn outSignature "    /// %s" str
                     fprintfn out "    /// (Originally from %s:%d)" fileName (lineNum + 1)
                     fprintfn outSignature "    /// (Originally from %s:%d)" fileName (lineNum + 1)
 
-                    let justPercentsFromFormatString =
-                        (holes
-                         |> Array.fold
-                             (fun acc holeType ->
-                                 acc
-                                 + match holeType with
-                                   | "System.Int32" -> ",,,%d"
-                                   | "System.UInt32" -> ",,,%x"
-                                   | "System.Double" -> ",,,%f"
-                                   | "System.String" -> ",,,%s"
-                                   | _ -> failwith "unreachable")
-                             "")
-                        + ",,,"
+                    let boxedArgs =
+                        holes |> Array.mapi (fun index _ -> $"box a{index}") |> String.concat "; "
 
                     let errPrefix =
                         match optErrNum with
                         | None -> ""
                         | Some n -> sprintf "%d, " n
 
-                    fprintfn
-                        out
-                        "    static member %s%s = (%sGetStringFunc(\"%s\",\"%s\") %s)"
-                        ident
-                        (formalArgs.ToString())
-                        errPrefix
-                        ident
-                        justPercentsFromFormatString
-                        (actualArgs.ToString())
+                    // A numbered message is a diagnostic message, and a diagnostic is created from rich
+                    // text, so the accessor returns text that is already converted - a message with
+                    // nothing classified in it is one unclassified part. Unnumbered messages are plain
+                    // strings spliced into other text and stay strings.
+                    let numberedReturnsRichText = richText && optErrNum.IsSome
+
+                    let messageExpr =
+                        let getString = $"""FormatMessage("{ident}", [| {boxedArgs} |])"""
+
+                        if numberedReturnsRichText then
+                            sprintf "RichText.mkText (%s)" getString
+                        else
+                            getString
+
+                    fprintfn out "    static member %s(%s) = (%s%s)" ident (String.concat ", " parameters) errPrefix messageExpr
 
                     let signatureMember =
                         let returnType =
                             match optErrNum with
                             | None -> "string"
+                            | Some _ when numberedReturnsRichText -> "int * RichText"
                             | Some _ -> "int * string"
 
                         if Array.isEmpty holes then
                             sprintf "    static member %s: unit -> %s" ident returnType
                         else
-                            holes
-                            |> Array.mapi (fun idx holeType -> sprintf "a%i: %s" idx holeType)
+                            parameters
                             |> String.concat " * "
                             |> fun parameters -> sprintf "    static member %s: %s -> %s" ident parameters returnType
 
-                    fprintfn outSignature "%s" signatureMember)
+                    fprintfn outSignature "%s" signatureMember
+
+                    // An overload taking the string holes as classified text, so that callers can keep
+                    // the classification of types and names they splice into the message. The string
+                    // overload is called with a sentinel per hole, which RichMessage then replaces with
+                    // the parts it stands for - see the RichMessage module.
+                    if richText && holes |> Array.contains "System.String" then
+                        let richHole holeType =
+                            if holeType = "System.String" then
+                                "RichText"
+                            else
+                                holeType
+
+                        let richParameters =
+                            holes |> Array.mapi (fun index holeType -> $"a{index}: {richHole holeType}")
+
+                        let richActualArgs =
+                            holes
+                            |> Array.mapi (fun idx holeType ->
+                                if holeType = "System.String" then
+                                    sprintf "rich a%d" idx
+                                else
+                                    sprintf "a%d" idx)
+                            |> String.concat ", "
+
+                        let format, richReturnType =
+                            match optErrNum with
+                            | None -> "text", "RichText"
+                            | Some _ -> "numbered", "int * RichText"
+
+                        fprintfn out "    /// %s" str
+                        fprintfn out "    /// (Originally from %s:%d)" fileName (lineNum + 1)
+
+                        fprintfn
+                            out
+                            "    static member %s(%s) = RichMessage.%s (fun rich -> SR.%s(%s))"
+                            ident
+                            (String.concat ", " richParameters)
+                            format
+                            ident
+                            richActualArgs
+
+                        fprintfn outSignature "    /// %s" str
+                        fprintfn outSignature "    /// (Originally from %s:%d)" fileName (lineNum + 1)
+
+                        fprintfn outSignature "    static member %s: %s -> %s" ident (String.concat " * " richParameters) richReturnType)
 
                 printMessage "Generating .resx for %s" outFileName
                 fprintfn out ""
@@ -607,13 +582,23 @@ open Printf
                     xnc.AppendChild(xd.CreateTextNode netFormatString) |> ignore
                     xd.LastChild.AppendChild xn |> ignore)
 
-                use outXmlStream = File.Create outXmlFileName
+                use outXmlStream = File.Create rootedXml
                 xd.Save outXmlStream
                 printMessage "Done %s" outFileName
                 Some(fileName, outFileSignatureName, outFileName, outXmlFileName)
-        with e ->
-            PrintErr(fileName, 0, sprintf "An exception occurred when processing '%s'\n%s" fileName (e.ToString()))
+        with
+        | TaskFailed -> None
+        | e ->
+            PrintErr(
+                fileName,
+                0,
+                sprintf "An exception occurred when processing '%s'\n%s" fileName (restorePaths (e.ToString()) originalPaths)
+            )
+
             None
+
+    interface IMultiThreadableTask with
+        member val TaskEnvironment = TaskEnvironment.Fallback with get, set
 
     [<Required>]
     member _.EmbeddedText
@@ -634,9 +619,7 @@ open Printf
     override this.Execute() =
 
         try
-            let generatedFiles =
-                this.EmbeddedText
-                |> Array.choose (fun item -> generateResxAndSource item.ItemSpec)
+            let generatedFiles = this.EmbeddedText |> Array.choose generateResxAndSource
 
             let generatedSource, generatedResx =
                 [|

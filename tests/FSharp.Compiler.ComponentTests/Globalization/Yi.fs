@@ -1,5 +1,5 @@
-﻿// #Globalization 
-#light
+﻿// #Globalization
+
 
 module ꁫꁬꁭꁮ
     type Foo =
@@ -7,7 +7,7 @@ module ꁫꁬꁭꁮ
         | Baz of int
         | Zoo of int
         | Yap of string
-        
+
 
     let ꁸꁹꁺꁻ = Foo.Bar(1)
 
@@ -26,7 +26,7 @@ module ꁫꁬꁭꁮ
             | Foo.Baz(_) -> "ꅯꅰꅱꅲꅳꅴꅵꅶꅷꅸ"
             | Foo.Zoo(_) -> "ꆍꆎꆏꆐꆑꆒꆓꆔꆕꆖ"
             | Foo.Yap(_) -> "ꃙꃚꃛꃜꃝꃞꃟꃠꃡꃢ"
-        
+
     let ꂽꂾꂿꃀꃁꃂꃃ = ꃅꃆꃇꃈꃉ(ꁸꁹꁺꁻ)
     let ꂍꂎꂏꂐꂑꂒ = ꃅꃆꃇꃈꃉ(ꅀꅁꅂꅃꅄ)
     let ꄋꄌꄍꄎꄏꄐꄑꄒꄓ = ꃅꃆꃇꃈꃉ(ꅩꅪꅫꅬꅭ)
@@ -37,7 +37,7 @@ module ꁫꁬꁭꁮ
         ꂍꂎꂏꂐꂑꂒ.ꄴꄵꄶꄷꄸꄹꄺꄻ(ꅀꅁꅂꅃꅄ) |> ignore
         ꄋꄌꄍꄎꄏꄐꄑꄒꄓ.ꄴꄵꄶꄷꄸꄹꄺꄻ(ꅩꅪꅫꅬꅭ) |> ignore
         ꄴꄵꄶꄷꄸꄹ.ꄴꄵꄶꄷꄸꄹꄺꄻ(ꂖꂗꂘꂙꂚꂛꂜ) |> ignore
-        
+
         "ꆿꇀꇁꇂꇃꇄꇅꇆꇇꇈ" |> ignore
         """ꆿꇀꇁꇂꇃꇄꇅꇆꇇꇈ"""
 

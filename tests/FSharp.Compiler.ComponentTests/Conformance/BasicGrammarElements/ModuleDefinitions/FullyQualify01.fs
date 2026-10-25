@@ -1,12 +1,12 @@
-// #Conformance #TypesAndModules #Modules 
-#light
+// #Conformance #TypesAndModules #Modules
+
 
 // Verify ability to fully qualify module identifiers
 
 module Test =
 
     module A =
-        module B = 
+        module B =
             module C =
                 module D =
                     let counter =

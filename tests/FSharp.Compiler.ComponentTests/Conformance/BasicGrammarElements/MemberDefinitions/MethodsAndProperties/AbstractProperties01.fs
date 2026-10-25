@@ -1,5 +1,5 @@
-// #Conformance #DeclarationElements #MemberDefinitions #MethodsAndProperties 
-#light
+// #Conformance #DeclarationElements #MemberDefinitions #MethodsAndProperties
+
 
 // Verify ability to override / inherit properties
 

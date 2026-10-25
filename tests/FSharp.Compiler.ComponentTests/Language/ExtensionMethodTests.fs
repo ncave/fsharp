@@ -38,25 +38,6 @@ let f (b:int) = b.PlusOne()
         |> withLangVersion80
         |> compile
         |> shouldSucceed
-        
-    [<Fact>]
-    let ``Extension method without toplevel attribute on type lang version 7`` () =
-        Fsx
-            """
-open System.Runtime.CompilerServices
-
-type Foo =
-    [<Extension>]
-    static member PlusOne (a:int) : int = a + 1
-
-let f (b:int) = b.PlusOne()
-            """
-        |> withLangVersion70
-        |> compile
-        |> shouldFail
-        |> withDiagnostics [
-            (Error 39, Line 8, Col 19, Line 8, Col 26, "The type 'Int32' does not define the field, constructor or member 'PlusOne'.")
-        ]
 
     [<Fact>]
     let ``Extension method without toplevel attribute on recursive type`` () =
@@ -76,7 +57,7 @@ let f (b:int) = b.PlusOne()
         |> withLangVersion80
         |> compile
         |> shouldSucceed
-    
+
     [<Fact>]
     let ``F# CSharpStyleExtensionMethod consumed in C#`` () =
         let fsharp =
@@ -113,48 +94,6 @@ namespace Consumer
             |> withReferences [ fsharp ]
 
         csharp |> compile |> shouldSucceed
-        
-    [<Fact>]
-    let ``F# lang version 7 CSharpStyleExtensionMethod consumed in C#`` () =
-        let fsharp =
-            FSharp
-                """
-module Hello
-
-open System.Runtime.CompilerServices
-
-type Foo =
-    [<Extension>]
-    static member PlusOne (a:int) : int = a + 1
-"""
-            |> withLangVersion70
-            |> withName "FSLib"
-
-        let csharp =
-            CSharp
-                """
-namespace Consumer
-{
-    using static Hello.Foo;
-
-    public class Class1
-    {
-        public Class1()
-        {
-            var meh = 1.PlusOne();
-        }
-    }
-}
-"""
-            |> withName "CSLib"
-            |> withReferences [ fsharp ]
-
-        csharp
-        |> compile
-        |> shouldFail
-        |> withDiagnostics [
-            (Error 1061, Line 9, Col 25, Line 9, Col 32, "'int' does not contain a definition for 'PlusOne' and no accessible extension method 'PlusOne' accepting a first argument of type 'int' could be found (are you missing a using directive or an assembly reference?)")
-        ]
 
     [<Fact>]
     let ``F# CSharpStyleExtensionMethod in recursive type consumed in C#`` () =
@@ -195,7 +134,7 @@ namespace Consumer
             |> withReferences [ fsharp ]
 
         csharp |> compile |> shouldSucceed
-    
+
     [<Fact>]
     let ``F# CSharpStyleExtensionMethod defined in top level module with attribute consumed in C#`` () =
         let fsharp =
@@ -283,7 +222,7 @@ namespace Consumer
     """
            |> withLangVersion80
            |> withName "FSLib"
-        
+
         let csharp =
             CSharp """
     namespace Consumer
@@ -302,7 +241,7 @@ namespace Consumer
 
             |> withName "CSLib"
             |> withReferences [ fsharp ]
-        
+
         csharp |> compile |> shouldSucceed
 
     [<Fact>]
@@ -316,7 +255,7 @@ namespace Consumer
     """
            |> withLangVersion80
            |> withName "FSLib"
-        
+
         let csharp =
             CSharp """
     namespace Consumer
@@ -335,7 +274,7 @@ namespace Consumer
 
             |> withName "CSLib"
             |> withReferences [ fsharp ]
-        
+
         csharp |> compile |> shouldSucceed
 
     [<Fact>]
@@ -350,7 +289,7 @@ namespace Consumer
     """
            |> withLangVersion80
            |> withName "FSLib"
-        
+
         let csharp =
             CSharp """
     namespace Consumer
@@ -369,9 +308,9 @@ namespace Consumer
 
             |> withName "CSLib"
             |> withReferences [ fsharp ]
-        
+
         csharp |> compile |> shouldSucceed
-    
+
     [<Fact>]
     let ``Recursive toplevel named module without Extension attribute and top level let binding with Extension attribute`` () =
         let fsharp =
@@ -383,7 +322,7 @@ namespace Consumer
     """
            |> withLangVersion80
            |> withName "FSLib"
-        
+
         let csharp =
             CSharp """
     namespace Consumer
@@ -402,7 +341,7 @@ namespace Consumer
 
             |> withName "CSLib"
             |> withReferences [ fsharp ]
-        
+
         csharp |> compile |> shouldSucceed
 
     [<Fact>]
@@ -418,7 +357,7 @@ type Bar =
     """
            |> withLangVersion80
            |> withName "FSLib"
-        
+
         let csharp =
             CSharp """
     namespace Consumer
@@ -436,9 +375,9 @@ type Bar =
     """
             |> withName "CSLib"
             |> withReferences [ fsharp ]
-        
+
         csharp |> compile |> shouldSucceed
-    
+
     [<Fact>]
     let ``Recursive named module with type with CSharp style extension can be consumed in CSharp`` () =
         let fsharp =
@@ -451,7 +390,7 @@ type Bar =
     """
             |> withLangVersion80
             |> withName "FSLib"
-        
+
         let csharp =
             CSharp """
     namespace Consumer
@@ -469,7 +408,7 @@ type Bar =
     """
             |> withName "CSLib"
             |> withReferences [ fsharp ]
-        
+
         csharp |> compile |> shouldSucceed
 
     [<Fact>]
@@ -502,7 +441,7 @@ type Bar =
            |> withLangVersion80
            |> withAdditionalSourceFile implementation
            |> withName "FSLib"
-        
+
         let csharp =
             CSharp """
     namespace Consumer
@@ -520,7 +459,7 @@ type Bar =
     """
             |> withName "CSLib"
             |> withReferences [ fsharp ]
-        
+
         csharp |> compile |> shouldSucceed
 
     [<Fact>]
@@ -553,7 +492,7 @@ type Bar =
            |> withLangVersion80
            |> withAdditionalSourceFile implementation
            |> withName "FSLib"
-        
+
         let csharp =
             CSharp """
     namespace Consumer
@@ -571,7 +510,7 @@ type Bar =
     """
             |> withName "CSLib"
             |> withReferences [ fsharp ]
-        
+
         csharp |> compile |> shouldSucceed
 
     [<Fact>]
@@ -588,7 +527,7 @@ type Bar =
     """
            |> withLangVersion80
            |> withName "FSLib"
-        
+
         let csharp =
             CSharp """
     namespace Consumer
@@ -607,7 +546,7 @@ type Bar =
 
             |> withName "CSLib"
             |> withReferences [ fsharp ]
-        
+
         csharp |> compile |> shouldSucceed
 
     [<Fact>]
@@ -630,7 +569,7 @@ namespace CSharpLib {
 }
     """
             |> withName "CSLib"
-        
+
         let fsharp =
             FSharp """
 module Module
@@ -646,9 +585,9 @@ module M =
            |> withLangVersion80
            |> withName "FSLib"
            |> withReferences [ csharp ]
-        
+
         fsharp |> compile |> shouldSucceed
-        
+
     [<Fact>]
     let ``F# CSharpStyleExtensionMethod consumed in F#`` () =
         let producer =
@@ -685,3 +624,236 @@ module FSLibConsumer =
             |> withReferences [ producer ]
 
         fsharp2 |> compile |> shouldSucceed
+
+    [<Fact>]
+    let ``Static extension members for types with same simple name but different namespaces should error`` () =
+        Fsx
+            """
+module Compiled
+
+type Task = { F: int }
+
+module CompiledExtensions =
+    type System.Threading.Tasks.Task with
+        static member CompiledStaticExtension() = ()
+
+    type Task with
+        static member CompiledStaticExtension() = ()
+            """
+        |> compile
+        |> shouldFail
+        |> withDiagnostics [
+            (Error 3356, Line 11, Col 23, Line 11, Col 46, "Extension members extending types with the same simple name 'Task' but different fully qualified names cannot be defined in the same module. Consider defining these extensions in separate modules.")
+        ]
+
+    [<Fact>]
+    let ``Static extension members for types with same simple name in different modules should succeed`` () =
+        Fsx
+            """
+module Compiled
+
+type Task = { F: int }
+
+module CompiledExtensions1 =
+    type System.Threading.Tasks.Task with
+        static member CompiledStaticExtension() = ()
+
+module CompiledExtensions2 =
+    type Task with
+        static member CompiledStaticExtension() = ()
+            """
+        |> compile
+        |> shouldSucceed
+
+    [<Fact>]
+    let ``Static extension members with nested module in between should error`` () =
+        Fsx
+            """
+module Compiled
+
+type Task = { F: int }
+
+module CompiledExtensions =
+    // First extension for System.Threading.Tasks.Task
+    type System.Threading.Tasks.Task with
+        static member Extension1() = ()
+
+    // Nested module - this is fine, shouldn't interfere with duplicate check
+    module Nested =
+        let someValue = 42
+        type OtherType = { X: int }
+
+    // Some other definition
+    let someBinding = 10
+
+    // Second extension for local Task type - this should clash with the first
+    type Task with
+        static member Extension2() = ()
+            """
+        |> compile
+        |> shouldFail
+        |> withDiagnostics [
+            (Error 3356, Line 21, Col 23, Line 21, Col 33, "Extension members extending types with the same simple name 'Task' but different fully qualified names cannot be defined in the same module. Consider defining these extensions in separate modules.")
+        ]
+
+    [<Fact>]
+    let ``Instance extension members for types with same simple name should succeed`` () =
+        Fsx
+            """
+module Compiled
+
+type Task = { F: int }
+
+module CompiledExtensions =
+    type System.Threading.Tasks.Task with
+        member _.InstanceExtension() = ()
+
+    type Task with
+        member _.InstanceExtension() = ()
+            """
+        |> compile
+        |> shouldSucceed
+
+    [<Fact>]
+    let ``Extension members on generic types with same simple name should error`` () =
+        Fsx
+            """
+module MyModule
+
+// Define a local List type different from System.Collections.Generic.List
+type List<'T> = { Items: 'T array }
+
+module Extensions =
+    type System.Collections.Generic.List<'T> with
+        static member Count(lst: System.Collections.Generic.List<'T>) = lst.Count
+
+    type List<'T> with
+        static member Count(lst: List<'T>) = lst.Items.Length
+            """
+        |> compile
+        |> shouldFail
+        |> withDiagnostics [
+            (Error 3356, Line 12, Col 23, Line 12, Col 28, "Extension members extending types with the same simple name 'List`1' but different fully qualified names cannot be defined in the same module. Consider defining these extensions in separate modules.")
+        ]
+
+    [<Fact>]
+    let ``Extension members with different member names but same type simple name should error`` () =
+        Fsx
+            """
+module Compiled
+
+type Task = { F: int }
+
+module CompiledExtensions =
+    type System.Threading.Tasks.Task with
+        static member FirstExtension() = ()
+
+    type Task with
+        static member DifferentName() = ()  // Different member name, but still same simple type name
+            """
+        |> compile
+        |> shouldFail
+        |> withDiagnostics [
+            (Error 3356, Line 11, Col 23, Line 11, Col 36, "Extension members extending types with the same simple name 'Task' but different fully qualified names cannot be defined in the same module. Consider defining these extensions in separate modules.")
+        ]
+
+    [<Fact>]
+    let ``Extensions defined in nested modules should succeed - separate IL containers`` () =
+        Fsx
+            """
+module Compiled
+
+type Task = { F: int }
+
+module OuterModule =
+    module NestedModule1 =
+        type System.Threading.Tasks.Task with
+            static member Extension1() = ()
+
+    module NestedModule2 =
+        type Task with
+            static member Extension2() = ()
+            """
+        |> compile
+        |> shouldSucceed
+
+    [<Fact>]
+    let ``Multiple extension members for same duplicate type should error per member`` () =
+        // Note: The current implementation reports an error per extension member (not per type)
+        // because each Val has its own range. This is more informative as it shows all problematic locations.
+        Fsx
+            """
+module Compiled
+
+type Task = { F: int }
+
+module CompiledExtensions =
+    type System.Threading.Tasks.Task with
+        static member Extension1() = ()
+        static member Extension2() = ()
+
+    type Task with
+        static member Extension3() = ()
+        static member Extension4() = ()
+            """
+        |> compile
+        |> shouldFail
+        |> withDiagnostics [
+            (Error 3356, Line 9, Col 23, Line 9, Col 33, "Extension members extending types with the same simple name 'Task' but different fully qualified names cannot be defined in the same module. Consider defining these extensions in separate modules.")
+            (Error 3356, Line 12, Col 23, Line 12, Col 33, "Extension members extending types with the same simple name 'Task' but different fully qualified names cannot be defined in the same module. Consider defining these extensions in separate modules.")
+            (Error 3356, Line 13, Col 23, Line 13, Col 33, "Extension members extending types with the same simple name 'Task' but different fully qualified names cannot be defined in the same module. Consider defining these extensions in separate modules.")
+        ]
+
+    [<Fact>]
+    let ``Instance inline extension members on builder types with same simple name should succeed`` () =
+        Fsx
+            """
+namespace NsA
+type BuilderBase() = class end
+
+namespace NsB
+type BuilderBase() = class end
+
+namespace Extensions
+module M =
+    type NsA.BuilderBase with
+        member inline this.Bind(x: int, f) = f x
+        member inline this.ReturnFrom(x: int) = x
+
+    type NsB.BuilderBase with
+        member inline this.Source(x: int) = x
+        member inline this.Bind(x: string, f) = f x
+            """
+        |> compile
+        |> shouldSucceed
+
+    [<Fact>]
+    let ``Mixed static and instance extension members - only static should error`` () =
+        Fsx
+            """
+module Compiled
+
+type Task = { F: int }
+
+module CompiledExtensions =
+    type System.Threading.Tasks.Task with
+        static member StaticExt() = ()
+
+    type Task with
+        member _.InstanceExt() = ()
+            """
+        |> compile
+        |> shouldSucceed
+
+    [<Fact>]
+    let ``IL extension method used with both instance and static call syntax`` () =
+        Fsx
+            """
+open System.Linq
+let xs : System.Collections.Generic.IEnumerable<int> = Seq.ofList [ 1; 2; 3 ]
+let a = xs.Select(fun x -> x + 1) |> Seq.length
+let b = System.Linq.Enumerable.Select(xs, (fun x -> x + 1)) |> Seq.length
+if a <> b then failwith "unexpected"
+            """
+        |> compileExeAndRun
+        |> shouldSucceed

@@ -1,5 +1,5 @@
-// #Conformance #PatternMatching #TypeTests 
-#light
+// #Conformance #PatternMatching #TypeTests
+
 
 open System
 
@@ -7,7 +7,7 @@ open System
 let testException (ex : obj) =
     let orgType = ex.GetType().ToString()
     match ex with
-    | :? System.NotSupportedException as dynamicType -> 
+    | :? System.NotSupportedException as dynamicType ->
         let typeStr = dynamicType.GetType().ToString()
         if typeStr <> orgType then
             false
@@ -20,7 +20,7 @@ let testException (ex : obj) =
         else
             true
     | _ -> false
-            
+
 if testException (new ArgumentException("") :> obj) <> true then exit 1
 if testException (new NotSupportedException("") :> obj) <> true then exit 1
 

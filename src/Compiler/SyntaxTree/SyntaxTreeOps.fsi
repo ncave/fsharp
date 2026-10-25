@@ -47,6 +47,9 @@ val pushUnaryArg: expr: SynExpr -> arg: Ident -> SynExpr
 
 val inline findSynAttribute: attrName: string -> synAttrs: SynAttributes -> bool
 
+[<return: Struct>]
+val (|LetOrUse|_|): expr: SynExpr -> (SynLetOrUse * bool * bool) voption
+
 /// Match a long identifier, including the case for single identifiers which gets a more optimized node in the syntax tree.
 [<return: Struct>]
 val (|LongOrSingleIdent|_|):
@@ -83,6 +86,12 @@ val (|SynExprErrorSkip|): p: SynExpr -> SynExpr
 
 [<return: Struct>]
 val (|SynExprParen|_|): e: SynExpr -> (SynExpr * range * range option * range) voption
+
+/// Collects the ordered sub-expressions of nested `SynExpr.Sequential`, avoiding deep recursion (empty if not a Sequential).
+val flattenSequentials: expr: SynExpr -> SynExpr list
+
+/// A pattern that collects all sequential expressions to avoid StackOverflowException
+val (|Sequentials|_|): SynExpr -> SynExpr list option
 
 val (|SynPatErrorSkip|): p: SynPat -> SynPat
 
@@ -153,8 +162,6 @@ val mkSynQMarkSet: m: range -> a: SynExpr -> b: SynExpr -> c: SynExpr -> SynExpr
 //val mkSynDotBrackSliceGet: m:range -> mDot:range -> arr:SynExpr -> sliceArg:SynIndexerArg -> SynExpr
 
 //val mkSynDotBrackSeqSliceGet: m:range -> mDot:range -> arr:SynExpr -> argsList:SynIndexerArg list -> SynExpr
-
-val mkSynDotParenGet: mLhs: range -> mDot: range -> a: SynExpr -> b: SynExpr -> SynExpr
 
 val mkSynUnit: m: range -> SynExpr
 
@@ -268,6 +275,15 @@ module SynInfo =
 
     val emptySynArgInfo: SynArgInfo
 
+    /// Rotate any `[<return: X>]` attributes from a binding's prefix attribute list into the
+    /// arity-info return position (`SynValInfo.retInfo`), so that the attributes reach the
+    /// return-value metadata slot rather than `Val.Attribs`.
+    ///
+    /// This is a lowering step, applied while normalizing a binding for checking rather than in
+    /// the parser, so `SynBinding.attributes` keeps reporting the attributes where they were
+    /// written.
+    val RotateReturnAttributes: attrs: SynAttribute list -> valSynData: SynValData -> SynAttribute list * SynValData
+
     /// Infer the syntactic information for a 'let' or 'member' definition, based on the argument pattern,
     /// any declared return information (e.g. .NET attributes on the return element), and the r.h.s. expression
     /// in the case of 'let' definitions.
@@ -300,6 +316,9 @@ val mkSynBinding:
         memberFlagsOpt: SynMemberFlags option *
         trivia: SynBindingTrivia ->
             SynBinding
+
+val mkSynLetBangBinding:
+    mKeyword: range -> headPat: SynPat -> rhs: SynExpr -> debugPoint: DebugPointAtBinding -> mBind: range -> SynBinding
 
 val NonVirtualMemberFlags: k: SynMemberKind -> SynMemberFlags
 

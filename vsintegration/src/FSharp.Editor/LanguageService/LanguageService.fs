@@ -6,10 +6,13 @@ open System
 open System.ComponentModel.Design
 open System.Runtime.InteropServices
 open System.Threading
+open System.Threading.Tasks
 open System.IO
 open System.Collections.Immutable
 open Microsoft.CodeAnalysis
 open Microsoft.CodeAnalysis.Options
+open Microsoft.ServiceHub.Framework
+open Microsoft.VisualStudio.Copilot
 open FSharp.Compiler
 open FSharp.Compiler.CodeAnalysis
 open FSharp.NativeInterop
@@ -20,6 +23,7 @@ open Microsoft.VisualStudio.LanguageServices.Implementation.LanguageService
 open Microsoft.VisualStudio.LanguageServices.Implementation.ProjectSystem
 open Microsoft.VisualStudio.Shell
 open Microsoft.VisualStudio.Shell.Interop
+open Microsoft.VisualStudio.Shell.ServiceBroker
 open Microsoft.VisualStudio.Text.Outlining
 open Microsoft.CodeAnalysis.ExternalAccess.FSharp
 open Microsoft.CodeAnalysis.Host.Mef
@@ -53,6 +57,15 @@ type internal RoamingProfileStorageLocation(keyName: string) =
 type internal FSharpWorkspaceServiceFactory
     [<Composition.ImportingConstructor>]
     (editorOptions: EditorOptions, metadataAsSourceService: FSharpMetadataAsSourceService) =
+
+    static do
+        FSharp.Compiler.Caches.EvictionProcessor.Error.Add(fun ex ->
+            ThreadHelper.JoinableTaskFactory.RunAsync(fun () ->
+                task {
+                    do! ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync()
+                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex).Throw()
+                })
+            |> ignore)
 
     let tryGetMetadataSnapshot (workspace: VisualStudioWorkspace) (path, timeStamp) =
         try
@@ -101,13 +114,13 @@ type internal FSharpWorkspaceServiceFactory
     let enableFastFindReferences =
         editorOptions.LanguageServicePerformance.EnableFastFindReferencesAndRename
 
-    let isInlineParameterNameHintsEnabled =
-        editorOptions.Advanced.IsInlineParameterNameHintsEnabled
+    let isInlayParameterNameHintsEnabled =
+        editorOptions.Advanced.IsInlayParameterNameHintsEnabled
 
-    let isInlineTypeHintsEnabled = editorOptions.Advanced.IsInlineTypeHintsEnabled
+    let isInlayTypeHintsEnabled = editorOptions.Advanced.IsInlayTypeHintsEnabled
 
-    let isInlineReturnTypeHintsEnabled =
-        editorOptions.Advanced.IsInlineReturnTypeHintsEnabled
+    let isInlayReturnTypeHintsEnabled =
+        editorOptions.Advanced.IsInlayReturnTypeHintsEnabled
 
     let enablePartialTypeChecking =
         editorOptions.LanguageServicePerformance.EnablePartialTypeChecking
@@ -139,9 +152,9 @@ type internal FSharpWorkspaceServiceFactory
                     nameof enableParallelReferenceResolution, enableParallelReferenceResolution
                     nameof enableInMemoryCrossProjectReferences, enableInMemoryCrossProjectReferences
                     nameof enableFastFindReferences, enableFastFindReferences
-                    nameof isInlineParameterNameHintsEnabled, isInlineParameterNameHintsEnabled
-                    nameof isInlineTypeHintsEnabled, isInlineTypeHintsEnabled
-                    nameof isInlineReturnTypeHintsEnabled, isInlineReturnTypeHintsEnabled
+                    nameof isInlayParameterNameHintsEnabled, isInlayParameterNameHintsEnabled
+                    nameof isInlayTypeHintsEnabled, isInlayTypeHintsEnabled
+                    nameof isInlayReturnTypeHintsEnabled, isInlayReturnTypeHintsEnabled
                     nameof enablePartialTypeChecking, enablePartialTypeChecking
                     nameof keepAllBackgroundResolutions, keepAllBackgroundResolutions
                     nameof keepAllBackgroundSymbolUses, keepAllBackgroundSymbolUses
@@ -249,6 +262,7 @@ type internal FSharpSettingsFactory [<Composition.ImportingConstructor>] (settin
 
 [<Guid(FSharpConstants.packageGuidString)>]
 [<ProvideOptionPage(typeof<FSharp.Interactive.FsiPropertyPage>, "F# Tools", "F# Interactive", 6000s, 6001s, true)>] // true = supports automation
+[<ProvideOptionPage(typeof<FSharp.Interactive.FSharpCompilerPropertyPage>, "F# Tools", "Compiler", 6000s, 6015s, true)>]
 
 [<ProvideKeyBindingTable("{dee22b65-9761-4a26-8fb2-759b971d6dfc}", 6001s)>] // <-- resource ID for localised name
 
@@ -279,15 +293,11 @@ type internal FSharpSettingsFactory [<Composition.ImportingConstructor>] (settin
 [<ProvideEditorExtension(typeof<FSharpEditorFactory>, ".fsi", 64)>]
 [<ProvideEditorExtension(typeof<FSharpEditorFactory>, ".fsscript", 64)>]
 [<ProvideEditorExtension(typeof<FSharpEditorFactory>, ".fsx", 64)>]
-[<ProvideEditorExtension(typeof<FSharpEditorFactory>, ".ml", 64)>]
-[<ProvideEditorExtension(typeof<FSharpEditorFactory>, ".mli", 64)>]
 [<ProvideEditorFactory(typeof<FSharpEditorFactory>, 101s, CommonPhysicalViewAttributes = Constants.FSharpEditorFactoryPhysicalViewAttributes)>]
 [<ProvideLanguageExtension(typeof<FSharpLanguageService>, ".fs")>]
 [<ProvideLanguageExtension(typeof<FSharpLanguageService>, ".fsi")>]
 [<ProvideLanguageExtension(typeof<FSharpLanguageService>, ".fsx")>]
 [<ProvideLanguageExtension(typeof<FSharpLanguageService>, ".fsscript")>]
-[<ProvideLanguageExtension(typeof<FSharpLanguageService>, ".ml")>]
-[<ProvideLanguageExtension(typeof<FSharpLanguageService>, ".mli")>]
 [<ProvideBraceCompletion(FSharpConstants.FSharpLanguageName)>]
 [<ProvideLanguageService(languageService = typeof<FSharpLanguageService>,
                          strLanguageName = FSharpConstants.FSharpLanguageName,
@@ -414,6 +424,9 @@ type internal FSharpPackage() as this =
 
 #if DEBUG
     override _.RegisterOnAfterPackageLoadedAsyncWork(afterPackageLoadedTasks: PackageLoadTasks) =
+        // The base schedules LoadComponentsInBackgroundAfterSolutionFullyLoadedAsync, which registers Copilot.
+        base.RegisterOnAfterPackageLoadedAsyncWork(afterPackageLoadedTasks)
+
         afterPackageLoadedTasks.AddTask(
             false,
             fun _ _ ->
@@ -424,6 +437,49 @@ type internal FSharpPackage() as this =
                 }
         )
 #endif
+
+    member private this.RegisterCopilotContextProviderAsync(cancellationToken: CancellationToken) : Task =
+        task {
+            try
+                // Copilot's registration part blocks on the main thread while MEF constructs it, so a background
+                // request deadlocks against the Git provider's request for it on the main thread at solution open.
+                do! this.JoinableTaskFactory.SwitchToMainThreadAsync(alwaysYield = true, cancellationToken = cancellationToken)
+
+                let! container = this.GetServiceAsync(typeof<SVsBrokeredServiceContainer>)
+
+                match container with
+                | :? IBrokeredServiceContainer as container ->
+                    // The Interactions service also serves ICopilotRegistrationService.
+                    let! registration =
+                        container
+                            .GetFullAccessServiceBroker()
+                            .GetProxyAsync<ICopilotRegistrationService>(CopilotDescriptors.InteractionService, cancellationToken)
+
+                    use registration = registration
+
+                    match registration with
+                    | null -> ()
+                    | registration ->
+                        let moniker =
+                            ServiceMoniker(
+                                FSharpConstants.copilotSymbolProviderName,
+                                Version CopilotDescriptors.CurrentContextProviderVersion
+                            )
+
+                        do! registration.RegisterContextProviderAsync(moniker, cancellationToken)
+                | _ -> ()
+            with ex when not (ex :? OperationCanceledException) ->
+                DebugHelpers.FSharpOutputPane.logExceptionWithContext (ex, "Registering the Copilot context provider")
+        }
+
+    override this.LoadComponentsInBackgroundAfterSolutionFullyLoadedAsync(cancellationToken) : Task =
+        let baseComponents =
+            base.LoadComponentsInBackgroundAfterSolutionFullyLoadedAsync(cancellationToken)
+
+        task {
+            do! baseComponents
+            do! this.RegisterCopilotContextProviderAsync(cancellationToken)
+        }
 
     override _.RoslynLanguageName = FSharpConstants.FSharpLanguageName
     (*override this.CreateWorkspace() = this.ComponentModel.GetService<VisualStudioWorkspaceImpl>() *)

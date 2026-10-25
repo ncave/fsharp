@@ -7,7 +7,8 @@ ImplFile
           [Types
              ([SynTypeDefn
                  (SynComponentInfo
-                    ([], None, [], [ClassWithDo],
+                    ([], None, [],
+                     Some (LongIdent (SynLongIdent ([ClassWithDo], [], [None]))),
                      PreXmlDoc ((4,0), FSharp.Compiler.Xml.XmlDocCollector),
                      false, None, (4,5--4,16)),
                   ObjectModel
@@ -31,7 +32,7 @@ ImplFile
                              NoneAtDo, { LeadingKeyword = Do (5,4--5,6)
                                          InlineKeyword = None
                                          EqualsRange = None })], false, false,
-                         (5,4--6,22))], (5,4--6,22)), [],
+                         (5,4--6,22), { InKeyword = None })], (5,4--6,22)), [],
                   Some
                     (ImplicitCtor
                        (None, [], Const (Unit, (4,16--4,18)), None,
@@ -43,7 +44,9 @@ ImplFile
            Types
              ([SynTypeDefn
                  (SynComponentInfo
-                    ([], None, [], [InternalType],
+                    ([], None, [],
+                     Some
+                       (LongIdent (SynLongIdent ([InternalType], [], [None]))),
                      PreXmlDoc ((8,4), FSharp.Compiler.Xml.XmlDocCollector),
                      false, None, (8,9--8,21)),
                   Simple
@@ -55,7 +58,8 @@ ImplFile
                     WithKeyword = None })], (8,4--8,27));
            NestedModule
              (SynComponentInfo
-                ([], None, [], [InternalModule],
+                ([], None, [],
+                 Some (LongIdent (SynLongIdent ([InternalModule], [], []))),
                  PreXmlDoc ((10,4), FSharp.Compiler.Xml.XmlDocCollector), false,
                  None, (10,4--10,25)), false,
               [Let
@@ -71,7 +75,7 @@ ImplFile
                       Yes (11,8--11,17), { LeadingKeyword = Let (11,8--11,11)
                                            InlineKeyword = None
                                            EqualsRange = Some (11,14--11,15) })],
-                  (11,8--11,17))], false, (10,4--11,17),
+                  (11,8--11,17), { InKeyword = None })], false, (10,4--11,17),
               { ModuleKeyword = Some (10,4--10,10)
                 EqualsRange = Some (10,26--10,27) });
            Open
