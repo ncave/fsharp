@@ -3062,6 +3062,8 @@ and [<Sealed>] TcImports
                         referenceAssemblyAttribOpt = None
                         referenceAssemblySignatureHash = None
                         pathMap = tcConfig.pathMap
+                        moduleCustomDebugInfoRows = []
+                        methodCustomDebugInfoRows = Map.empty
                     }
                     AbstractIL.ILBinaryWriter.WriteILBinaryFile (args, ilModule, id)
                 with Failure msg ->
