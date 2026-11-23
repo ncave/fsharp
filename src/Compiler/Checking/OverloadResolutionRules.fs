@@ -122,7 +122,7 @@ let private isStaticallyResolvedTypeParam (tp: Typar) =
     | TyparStaticReq.None -> false
 
 /// The type carried by a formal parameter.
-let private paramDataType (ParamData(_, _, _, _, _, _, _, ty)) = ty
+let private paramDataType (ParamData(_, _, _, _, _, _, _, ty, _)) = ty
 
 /// True if any of these parameters' types mentions a comparable (non-SRTP) type variable — from a
 /// method type parameter OR an enclosing-type type parameter. The latter lets constructors and

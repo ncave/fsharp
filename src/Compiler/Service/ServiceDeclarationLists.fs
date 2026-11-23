@@ -570,7 +570,7 @@ module internal DescriptionListsImpl =
             if isGenerated i f then
                 initial.Display
             else
-                let display = layoutOfParamData denv (ParamData(false, false, false, NotOptional, NoCallerInfo, Some f.Id, ReflectedArgInfo.None, f.FormalType))
+                let display = layoutOfParamData denv (ParamData(false, false, false, NotOptional, NoCallerInfo, Some f.Id, ReflectedArgInfo.None, f.FormalType, []))
                 toRichText display
 
         MethodGroupItemParameter(
@@ -579,7 +579,7 @@ module internal DescriptionListsImpl =
           display=display,
           isOptional=false)
 
-    let ParamOfParamData g denv (ParamData(_isParamArrayArg, _isInArg, _isOutArg, optArgInfo, _callerInfo, nmOpt, _reflArgInfo, pty) as paramData) =
+    let ParamOfParamData g denv (ParamData(_isParamArrayArg, _isInArg, _isOutArg, optArgInfo, _callerInfo, nmOpt, _reflArgInfo, pty, _attribs) as paramData) =
         let display = layoutOfParamData denv paramData
         let display = toRichText display
         MethodGroupItemParameter(
@@ -592,7 +592,7 @@ module internal DescriptionListsImpl =
     let PrettyParamsOfParamDatas g denv typarInst (paramDatas:ParamData list) paramTy =
         let paramInfo, paramTypes =
             paramDatas
-            |> List.map (fun (ParamData(isParamArrayArg, _isInArg, _isOutArg, optArgInfo, _callerInfo, nmOpt, _reflArgInfo, pty)) ->
+            |> List.map (fun (ParamData(isParamArrayArg, _isInArg, _isOutArg, optArgInfo, _callerInfo, nmOpt, _reflArgInfo, pty, _attribs)) ->
                 let isOptArg = optArgInfo.IsOptional
                 match nmOpt, isOptArg, tryDestOptionTy denv.g pty with
                 // Layout an optional argument
@@ -730,7 +730,7 @@ module internal DescriptionListsImpl =
                     // This is good enough as we don't provide ways to display info for the second curried argument
                     let firstCurriedParamDatas =
                         firstCurriedArgInfo
-                        |> List.map (ParamNameAndType.FromArgInfo >> fun (ParamNameAndType(nmOpt, pty)) -> ParamData(false, false, false, NotOptional, NoCallerInfo, nmOpt, ReflectedArgInfo.None, pty))
+                        |> List.map (ParamNameAndType.FromArgInfo >> fun (ParamNameAndType(nmOpt, pty)) -> ParamData(false, false, false, NotOptional, NoCallerInfo, nmOpt, ReflectedArgInfo.None, pty, []))
 
                     // Adjust the return type so it only strips the first argument
                     let curriedRetTy =
@@ -810,7 +810,7 @@ module internal DescriptionListsImpl =
         | Item.Trait traitInfo ->
             let paramDatas =
                 [ for pty in traitInfo.GetLogicalArgumentTypes(g) do
-                    ParamData(false, false, false, OptionalArgInfo.NotOptional, CallerInfo.NoCallerInfo, None, ReflectedArgInfo.None, pty) ]
+                    ParamData(false, false, false, OptionalArgInfo.NotOptional, CallerInfo.NoCallerInfo, None, ReflectedArgInfo.None, pty, []) ]
             let retTy = traitInfo.GetReturnType(g)
             let _prettyTyparInst, prettyParams, prettyRetTyL, _prettyConstraintsL = PrettyParamsOfParamDatas g denv item.TyparInstantiation paramDatas retTy
             prettyParams, prettyRetTyL
@@ -826,7 +826,7 @@ module internal DescriptionListsImpl =
             | None ->
                 let argNamesAndTys = ParamNameAndTypesOfUnaryCustomOperation g minfo
                 let argTys, _ = PrettyTypes.PrettifyTypes g (argNamesAndTys |> List.map (fun (ParamNameAndType(_, ty)) -> ty))
-                let paramDatas = (argNamesAndTys, argTys) ||> List.map2 (fun (ParamNameAndType(nmOpt, _)) argTy -> ParamData(false, false, false, NotOptional, NoCallerInfo, nmOpt, ReflectedArgInfo.None, argTy))
+                let paramDatas = (argNamesAndTys, argTys) ||> List.map2 (fun (ParamNameAndType(nmOpt, _)) argTy -> ParamData(false, false, false, NotOptional, NoCallerInfo, nmOpt, ReflectedArgInfo.None, argTy, []))
                 let retTy = minfo.GetFSharpReturnType(amap, m, minfo.FormalMethodInst)
                 let _prettyTyparInst, prettyParams, prettyRetTyL, _prettyConstraintsL = PrettyParamsOfParamDatas g denv item.TyparInstantiation paramDatas retTy
 
@@ -843,7 +843,7 @@ module internal DescriptionListsImpl =
             let (SigOfFunctionForDelegate(_, _, _, delFuncTy)) = GetSigOfFunctionForDelegate infoReader delTy m AccessibleFromSomewhere
 
             // No need to pass more generic type information in here since the instantiations have already been applied
-            let _prettyTyparInst, prettyParams, prettyRetTyL, _prettyConstraintsL = PrettyParamsOfParamDatas g denv item.TyparInstantiation [ParamData(false, false, false, NotOptional, NoCallerInfo, None, ReflectedArgInfo.None, delFuncTy)] delTy
+            let _prettyTyparInst, prettyParams, prettyRetTyL, _prettyConstraintsL = PrettyParamsOfParamDatas g denv item.TyparInstantiation [ParamData(false, false, false, NotOptional, NoCallerInfo, None, ReflectedArgInfo.None, delFuncTy, [])] delTy
 
             // FUTURE: prettyTyparInst is the pretty version of the known instantiations of type parameters in the output. It could be returned
             // for display as part of the method group

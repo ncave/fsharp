@@ -4405,7 +4405,7 @@ and TcPseudoMemberSpec cenv newOk env synTypes tpenv synMemberSig m =
             for argInfos in curriedArgInfos do
                 for argInfo in argInfos do
                     let info = CrackParamAttribsInfo g argInfo
-                    let (ParamAttribs(isParamArrayArg, isInArg, isOutArg, optArgInfo, callerInfo, reflArgInfo)) = info
+                    let (ParamAttribs(isParamArrayArg, isInArg, isOutArg, optArgInfo, callerInfo, reflArgInfo, _attribs)) = info
                     if isParamArrayArg || isInArg || isOutArg || optArgInfo.IsOptional || callerInfo <> CallerInfo.NoCallerInfo || reflArgInfo <> ReflectedArgInfo.None then
                         errorR(Error(FSComp.SR.tcTraitMayNotUseComplexThings(), m))
 
@@ -10395,7 +10395,7 @@ and CalledMethHasSingleArgumentGroupOfThisLength n (calledMeth: MethInfo) =
     | _ -> false
 
 and isSimpleFormalArg info =
-    let (ParamAttribs(isParamArrayArg, _isInArg, isOutArg, optArgInfo, callerInfo, _reflArgInfo)) = info
+    let (ParamAttribs(isParamArrayArg, _isInArg, isOutArg, optArgInfo, callerInfo, _reflArgInfo, _attribs)) = info
     not isParamArrayArg && not isOutArg && not optArgInfo.IsOptional && callerInfo = NoCallerInfo
 
 and GenerateMatchingSimpleArgumentTypes (cenv: cenv) (calledMeth: MethInfo) mItem =
@@ -10721,7 +10721,7 @@ and TcAdhocChecksOnLibraryMethods (cenv: cenv) (env: TcEnv) isInstance (finalCal
     if HasHeadType g g.tcref_System_Collections_Generic_Dictionary finalCalledMethInfo.ApparentEnclosingType &&
         finalCalledMethInfo.IsConstructor &&
         not (finalCalledMethInfo.GetParamDatas(cenv.amap, mItem, finalCalledMeth.CalledTyArgs)
-            |> List.existsSquared (fun (ParamData(_, _, _, _, _, _, _, ty)) ->
+            |> List.existsSquared (fun (ParamData(_, _, _, _, _, _, _, ty, _)) ->
                 HasHeadType g g.tcref_System_Collections_Generic_IEqualityComparer ty)) then
 
         match argsOfAppTy g finalCalledMethInfo.ApparentEnclosingType with

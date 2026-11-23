@@ -271,9 +271,10 @@ type ParamData =
         callerInfo: CallerInfo *
         nameOpt: Ident option *
         reflArgInfo: ReflectedArgInfo *
-        ttype: TType
+        ttype: TType *
+        attribs: Attribs
 
-type ParamAttribs = ParamAttribs of isParamArrayArg: bool * isInArg: bool * isOutArg: bool * optArgInfo: OptionalArgInfo * callerInfo: CallerInfo * reflArgInfo: ReflectedArgInfo
+type ParamAttribs = ParamAttribs of isParamArrayArg: bool * isInArg: bool * isOutArg: bool * optArgInfo: OptionalArgInfo * callerInfo: CallerInfo * reflArgInfo: ReflectedArgInfo * attribs: Attribs
 
 let CrackParamAttribsInfo g (ty: TType, argInfo: ArgReprInfo) =
     let attribs = argInfo.Attribs.AsList()
@@ -339,7 +340,7 @@ let CrackParamAttribsInfo g (ty: TType, argInfo: ArgReprInfo) =
             | ValueSome optTy when typeEquiv g g.int32_ty optTy -> CallerFilePath
             | _ -> CallerLineNumber
 
-    ParamAttribs(isParamArrayArg, isInArg, isOutArg, optArgInfo, callerInfo, reflArgInfo)
+    ParamAttribs(isParamArrayArg, isInArg, isOutArg, optArgInfo, callerInfo, reflArgInfo, attribs)
 
 #if !NO_TYPEPROVIDERS
 
@@ -691,7 +692,7 @@ let private ComputeILMethodParamAttribs g (ilMethInfo: ILMethInfo) amap m =
                 if p.Type.TypeRef.FullName = "System.Int32" then CallerFilePath
                 else CallerLineNumber
 
-         ParamAttribs(isParamArrayArg, isInArg, isOutArg, optArgInfo, callerInfo, reflArgInfo) ] ]
+         ParamAttribs(isParamArrayArg, isInArg, isOutArg, optArgInfo, callerInfo, reflArgInfo, []) ] ]
 
 // Extension view drops the object arg from ParamMetadata, so IsILExtensionMethod is part of the key.
 let private getILMethodParamAttribsTable =
@@ -1419,7 +1420,7 @@ type MethInfo =
             [[]]
         | RecdCtor(g, ty) ->
             (tcrefOfAppTy g ty).TrueInstanceFieldsAsList
-            |> List.map (fun _ -> ParamAttribs(false, false, false, NotOptional, NoCallerInfo, ReflectedArgInfo.None))
+            |> List.map (fun _ -> ParamAttribs(false, false, false, NotOptional, NoCallerInfo, ReflectedArgInfo.None, []))
             |> List.singleton
 
 #if !NO_TYPEPROVIDERS
@@ -1435,7 +1436,7 @@ type MethInfo =
                     | None -> ReflectedArgInfo.None
                 let isOutArg = p.PUntaint((fun p -> p.IsOut && not p.IsIn), m)
                 let isInArg = p.PUntaint((fun p -> p.IsIn && not p.IsOut), m)
-                ParamAttribs(isParamArrayArg, isInArg, isOutArg, optArgInfo, NoCallerInfo, reflArgInfo)] ]
+                ParamAttribs(isParamArrayArg, isInArg, isOutArg, optArgInfo, NoCallerInfo, reflArgInfo, [])] ]
 #endif
 
     /// Get the signature of an abstract method slot.
@@ -1556,8 +1557,8 @@ type MethInfo =
 
             let paramAttribs = x.GetParamAttribs(amap, m)
             (paramAttribs, paramNamesAndTypes) ||> List.map2 (List.map2 (fun info (ParamNameAndType(nmOpt, pty)) ->
-                 let (ParamAttribs(isParamArrayArg, isInArg, isOutArg, optArgInfo, callerInfo, reflArgInfo)) = info
-                 ParamData(isParamArrayArg, isInArg, isOutArg, optArgInfo, callerInfo, nmOpt, reflArgInfo, pty)))
+                 let (ParamAttribs(isParamArrayArg, isInArg, isOutArg, optArgInfo, callerInfo, reflArgInfo, attribs)) = info
+                 ParamData(isParamArrayArg, isInArg, isOutArg, optArgInfo, callerInfo, nmOpt, reflArgInfo, pty, attribs)))
 
     member x.HasGenericRetTy() =
         match x with
@@ -1576,7 +1577,7 @@ type MethInfo =
 
     /// Get the ParamData objects for the parameters of a MethInfo
     member x.HasParamArrayArg(amap, m, minst) =
-        x.GetParamDatas(amap, m, minst) |> List.existsSquared (fun (ParamData(isParamArrayArg, _, _, _, _, _, _, _)) -> isParamArrayArg)
+        x.GetParamDatas(amap, m, minst) |> List.existsSquared (fun (ParamData(isParamArrayArg, _, _, _, _, _, _, _, _)) -> isParamArrayArg)
 
     /// Select all the type parameters of the declaring type of a method.
     ///
@@ -2270,7 +2271,7 @@ type PropInfo =
     /// Get the details of the indexer parameters associated with the property
     member x.GetParamDatas(amap, m) =
         x.GetParamNamesAndTypes(amap, m)
-        |> List.map (fun (ParamNameAndType(nmOpt, paramTy)) -> ParamData(false, false, false, NotOptional, NoCallerInfo, nmOpt, ReflectedArgInfo.None, paramTy))
+        |> List.map (fun (ParamNameAndType(nmOpt, paramTy)) -> ParamData(false, false, false, NotOptional, NoCallerInfo, nmOpt, ReflectedArgInfo.None, paramTy, []))
 
     /// Get the types of the indexer parameters associated with the property
     member x.GetParamTypes(amap, m) =
