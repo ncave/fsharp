@@ -45,8 +45,7 @@ open FSharp.Compiler.GraphChecking
 //-------------------------------------------------------------------------
 // InteractiveChecker
 //-------------------------------------------------------------------------
-
-type internal TcResult = TcEnv * TopAttribs * CheckedImplFile option * ModuleOrNamespaceType
+type internal TcResult = TcEnv * TopAttribs * CheckedImplFile option * ModuleOrNamespaceType * ModuleOrNamespaceType
 type internal TcErrors = FSharpDiagnostic[]
 
 type internal CompilerState = {
@@ -231,12 +230,12 @@ module internal ParseAndCheck =
         let loadClosure = None
         let keepAssemblyContents = true
 
-        let tcEnvAtEnd, _topAttrs, implFile, ccuSigForFile = tcResult
+        let tcEnvAtEnd, _topAttrs, implFileOpt, ccuSigForFile, ownSigForFile = tcResult
         let errors = Array.append parseResults.Diagnostics tcErrors
 
-        let scope = TypeCheckInfo (compilerState.tcConfig, compilerState.tcGlobals, ccuSigForFile, tcState.Ccu, compilerState.tcImports, tcEnvAtEnd.AccessRights,
+        let scope = TypeCheckInfo (compilerState.tcConfig, compilerState.tcGlobals, ccuSigForFile, ownSigForFile, tcState.Ccu, compilerState.tcImports, tcEnvAtEnd.AccessRights,
                                 projectFileName, fileName, Some compilerState.projectOptions, sink.GetResolutions(), sink.GetSymbolUses(), tcEnvAtEnd.NameEnv,
-                                loadClosure, implFile, sink.GetOpenDeclarations())
+                                loadClosure, implFileOpt, sink.GetOpenDeclarations())
         FSharpCheckFileResults (fileName, errors, Some scope, parseResults.DependencyFiles, None, keepAssemblyContents)
 
     let TypeCheckClosedInputSet (parseResults: FSharpParseFileResults[], tcState, compilerState, subscriber) =
@@ -248,7 +247,7 @@ module internal ParseAndCheck =
 
             let (result, errors), (tcState, moduleNamesDict) = compilerState.checkCache.GetOrAdd(checkCacheKey, typeCheckOneInput)
 
-            let _, _, implFile, _ = result
+            let _, _, implFile, _, _ = result
             match subscriber, implFile with
             | Some subscriber, Some implFile ->
                 let cenv = SymbolEnv(compilerState.tcGlobals, tcState.Ccu, Some tcState.CcuSig, compilerState.tcImports)
@@ -387,7 +386,7 @@ type InteractiveChecker internal (compilerStateCache) =
         let parseFileResults = parseFile fileName
         let checkFileResults = CheckFile (projectFileName, parseFileResults, tcState, moduleNamesDict, compilerState)
         let (tcResult, _tcErrors), (tcState, _moduleNamesDict) = compilerState.checkCache.[fileName]
-        let _tcEnvAtEndFile, topAttrsFile, implFile, _ccuSigForFile = tcResult
+        let _tcEnvAtEndFile, topAttrsFile, implFile, _ccuSigForFile, _ownSigForFile = tcResult
 
         // collect errors
         let parseErrorsBefore = parseResults |> Array.collect (fun p -> p.Diagnostics)

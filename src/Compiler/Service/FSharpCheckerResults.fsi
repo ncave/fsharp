@@ -256,6 +256,7 @@ type internal TypeCheckInfo =
         _sTcConfig: TcConfig *
         g: TcGlobals *
         ccuSigForFile: ModuleOrNamespaceType *
+        ownSigForFile: ModuleOrNamespaceType *
         thisCcu: CcuThunk *
         tcImports: TcImports *
         tcAccessRights: AccessorDomain *

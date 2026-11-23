@@ -2,7 +2,8 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
     <DisableImplicitFSharpCoreReference>true</DisableImplicitFSharpCoreReference>
   </PropertyGroup>
 
@@ -19,9 +20,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- <PackageReference Include="FSharp.Core" Version="9.0.0" /> -->
-    <PackageReference Include="Buildalyzer" Version="*" />
-    <PackageReference Include="Fable.Core" Version="*" />
-    <PackageReference Include="Fable.Import.Browser" Version="*" />
+    <!-- <PackageReference Include="FSharp.Core" Version="11.0.101 " /> -->
+    <PackageReference Include="Buildalyzer" Version="9.0.0" />
+    <PackageReference Include="Fable.Core" Version="5.6.1" />
+    <PackageReference Include="Fable.Import.Browser" Version="1.4.0" />
   </ItemGroup>
 </Project>
