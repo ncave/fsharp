@@ -547,7 +547,7 @@ let tryExpectedArgCountForCustomOperator ceenv (nm: Ident) =
                 | None -> false
                 | Some args ->
                     args
-                    |> List.exists (fun (ParamAttribs(isParamArrayArg, _isInArg, isOutArg, optArgInfo, _callerInfo, _reflArgInfo)) ->
+                    |> List.exists (fun (ParamAttribs(isParamArrayArg, _isInArg, isOutArg, optArgInfo, _callerInfo, _reflArgInfo, _attribs)) ->
                         isParamArrayArg || isOutArg || optArgInfo.IsOptional))
 
         if not isSpecial && nums |> List.forall (fun v -> v >= 0 && v = nums[0]) then

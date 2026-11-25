@@ -2534,7 +2534,7 @@ type FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
         checkIsResolved()
         match d with
         | P p ->
-            [ [ for ParamData(isParamArrayArg, isInArg, isOutArg, optArgInfo, _callerInfo, nmOpt, _reflArgInfo, pty) in p.GetParamDatas(cenv.amap, range0) do
+            [ [ for ParamData(isParamArrayArg, isInArg, isOutArg, optArgInfo, _callerInfo, nmOpt, _reflArgInfo, pty, _attribs) in p.GetParamDatas(cenv.amap, range0) do
                     // INCOMPLETENESS: Attribs is empty here, so we can't look at attributes for
                     // either .NET or F# parameters
                     let argInfo: ArgReprInfo = { Name=nmOpt; Attribs=WellKnownValAttribs.Empty; OtherRange=None }
@@ -2553,10 +2553,9 @@ type FSharpMemberOrFunctionOrValue(cenv, d:FSharpMemberOrValData, item) =
         | M m | C m ->
             [ for argTys in m.GetParamDatas(cenv.amap, range0, m.FormalMethodInst) do
                  yield
-                   [ for ParamData(isParamArrayArg, isInArg, isOutArg, optArgInfo, _callerInfo, nmOpt, _reflArgInfo, pty) in argTys do
-                // INCOMPLETENESS: Attribs is empty here, so we can't look at attributes for
-                // either .NET or F# parameters
-                        let argInfo: ArgReprInfo = { Name=nmOpt; Attribs=WellKnownValAttribs.Empty; OtherRange=None }
+                   [ for ParamData(isParamArrayArg, isInArg, isOutArg, optArgInfo, _callerInfo, nmOpt, _reflArgInfo, pty, attribs) in argTys do 
+                        let attribs = WellKnownValAttribs(attribs, WellKnownValAttributes.None)
+                        let argInfo: ArgReprInfo = { Name=nmOpt; Attribs=attribs; OtherRange=None }
                         let m =
                             match nmOpt with
                             | Some v -> v.idRange

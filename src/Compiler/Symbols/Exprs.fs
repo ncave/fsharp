@@ -554,6 +554,7 @@ module FSharpExprConvert =
                 // not comparison and failed for a different reason, we'd spuriously hide that failure here; but in fact the only code
                 // paths which get here have no other constraints.
                 | ErrorResult _ when List.exists hasConditionalTypar tyargs -> []
+                | ErrorResult (warns, err) -> ReportWarnings (err::warns); [] // temporary, ignores the error
                 | res -> CommitOperationResult res
             let env = { env with suppressWitnesses = true }
             witnessExprs |> List.map (fun arg ->

@@ -1613,7 +1613,7 @@ module InfoMemberPrinting =
         | DeclaringType
 
     /// Format the arguments of a method
-    let layoutParamData denv (ParamData(isParamArray, _isInArg, _isOutArg, optArgInfo, _callerInfo, nmOpt, _reflArgInfo, pty)) =
+    let layoutParamData denv (ParamData(isParamArray, _isInArg, _isOutArg, optArgInfo, _callerInfo, nmOpt, _reflArgInfo, pty, _attribs)) =
         let isOptArg = optArgInfo.IsOptional
         // detect parameter type, if ptyOpt is None - this is .NET style optional argument
         let ptyOpt = tryDestOptionTy denv.g pty

@@ -12,6 +12,11 @@
     <DotNetTool Condition="'$(DotNetTool)' == ''">$(DotNetExePath)</DotNetTool>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <FsLexPath>$(ArtifactsDir)/bin/fslex/$(Configuration)/$(FSharpNetCoreProductTargetFramework)/$(NETCoreSdkRuntimeIdentifier)/fslex.dll</FsLexPath>
+    <FsYaccPath>$(ArtifactsDir)/bin/fsyacc/$(Configuration)/$(FSharpNetCoreProductTargetFramework)/$(NETCoreSdkRuntimeIdentifier)/fsyacc.dll</FsYaccPath>
+  </PropertyGroup>
+
   <!-- Build FsLex files. -->
   <Target Name="CallFsLex"
           Inputs="@(FsLex)"

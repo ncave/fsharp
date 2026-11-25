@@ -4027,8 +4027,8 @@ module EstablishTypeDefinitionCores =
 
                                             // Extract parameter attributes including optional and caller info flags
                                             // This ensures delegates have proper metadata for optional parameters
-                                            let (ParamAttribs(_, isInArg, isOutArg, optArgInfo, _, _)) = CrackParamAttribsInfo g (ty, argInfo)
-                                            TSlotParam(Option.map textOfId argInfo.Name, ty, isInArg, isOutArg, optArgInfo.IsOptional, argInfo.Attribs.AsList()))
+                                            let (ParamAttribs(_, isInArg, isOutArg, optArgInfo, _, _, attribs)) = CrackParamAttribsInfo g (ty, argInfo)
+                                            TSlotParam(Option.map textOfId argInfo.Name, ty, isInArg, isOutArg, optArgInfo.IsOptional, attribs))
                                   TFSharpDelegate (MakeSlotSig("Invoke", thisTy, ttps, [], [fparams], returnTy))
                               | _ ->
                                   error(InternalError("should have inferred tycon kind", m))
