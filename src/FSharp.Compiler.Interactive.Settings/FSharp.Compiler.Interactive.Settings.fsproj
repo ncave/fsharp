@@ -18,6 +18,7 @@
     <!-- FSInteractiveSettings.txt has no string entries, so the generated boilerplate
          includes GetStringFunc which is never referenced. -->
     <TolerateUnusedBindings>true</TolerateUnusedBindings>
+    <CompressMetadata>false</CompressMetadata>
   </PropertyGroup>
 
   <!-- If building FCS solution directly, set paths explicitly -->

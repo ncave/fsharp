@@ -13,6 +13,7 @@
     <NoWarn>$(NoWarn);64;1204</NoWarn>         <!--Temporary fix for sourcebuild -->
     <AssemblyName>FSharp.Compiler.Service</AssemblyName>
     <AllowCrossTargeting>true</AllowCrossTargeting>
+    <DefineConstants>$(DefineConstants);EXPORT_METADATA</DefineConstants>
     <DefineConstants>$(DefineConstants);COMPILER</DefineConstants>
 	<DefineConstants Condition="$(DotNetBuildUseMonoRuntime) == 'true'">$(DefineConstants);BUILD_USING_MONO</DefineConstants>
 	<Nullable>enable</Nullable>
@@ -48,7 +49,7 @@
   <PropertyGroup Condition="'$(Configuration)' != 'Proto'">
     <NoOptimizationData>false</NoOptimizationData>
     <NoInterfaceData>false</NoInterfaceData>
-    <CompressMetadata>true</CompressMetadata>
+    <CompressMetadata>false</CompressMetadata>
   </PropertyGroup>
 
   <PropertyGroup>
